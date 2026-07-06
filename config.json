@@ -19,11 +19,14 @@
       "developer": {
         "file": ".claude/agents/developer.md",
         "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
+        "skills": ["test-yazimi"],
         "next": "reviewer"
       },
       "reviewer": {
         "file": ".claude/agents/reviewer.md",
         "tools": ["Read", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
         "verdict": { "onApprove": null, "onReject": "developer" }
       }
     }

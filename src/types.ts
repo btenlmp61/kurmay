@@ -21,6 +21,11 @@ export interface AgentNodeConfig {
   file: string;
   /** Bu ajanın kullanabileceği Claude Code araçları */
   tools: string[];
+  /** .rules/<ad>.md dosyaları — içerikleri system prompt'a HER ZAMAN eklenir */
+  rules?: string[];
+  /** .skill/<ad>/SKILL.md becerileri — ad+açıklama listelenir, ajan ilgili görürse
+   *  dosyayı Read ile kendisi okur (frontmatter'da inline: true ise tamamı gömülür) */
+  skills?: string[];
   /** İsteğe bağlı model override'ı (config'deki genel "model" alanını ezer) */
   model?: string;
   /** true ise bu ajanın çıktısı sonrasında kullanıcı onayı beklenir */

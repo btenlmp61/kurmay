@@ -1,0 +1,4 @@
+- Yorum satırlarını ve kullanıcıya görünen metinleri Türkçe yaz.
+- Var olan kod stilini ve dosya düzenini koru; gereksiz yeniden biçimlendirme yapma.
+- Görev kapsamı dışına çıkma: istenmeyen refactor, ekstra özellik veya "iyileştirme" ekleme.
+- Harici bağımlılık eklemeden önce mevcut araçlarla çözülüp çözülemeyeceğini değerlendir.

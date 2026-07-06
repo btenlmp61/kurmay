@@ -18,6 +18,8 @@ Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`.
 |---|---|
 | `config.json` | TEK config: sağlayıcı (anthropic/ollama), baseUrl/apiKey/model, targetDir, uiPort ve workflow grafı. Boş string ("") alanlar tanımsız sayılır |
 | `.claude/agents/*.md` | Ajan personaları (system prompt). İçlerinde "X'i çağır" talimatı YOK — geçişler orkestratörün işi |
+| `.rules/*.md` | Her zaman geçerli kısıtlar; config'de `rules: [...]` ile ajana bağlanır, tam içerik system prompt'a gömülür (kısa tutulmalı) |
+| `.skill/<ad>/SKILL.md` | Beceriler (progressive disclosure): prompt'a sadece ad+açıklama+mutlak yol girer, ajan Read ile kendisi okur; `inline: true` frontmatter'ı tamamını gömer. Tembel beceri Read aracı gerektirir (yüklemede doğrulanır) |
 | `src/orchestrator.ts` | Graf motoru: onay duraklaması, verdict dallanması, reject döngüsü (maxCycles korumalı) |
 | `src/runAgent.ts` | Agent SDK `query()` sarmalayıcısı; md gövdesi `systemPrompt: {preset claude_code, append}` olarak gider; araçlar allowedTools ile kısıtlı |
 | `src/verdict.ts` | Reviewer raporundan `{approved, issues[]}` çıkarma. İki yol: ANTHROPIC_API_KEY varsa messages.parse + structured output (şema API'de garanti); yoksa Agent SDK + Zod + 1 retry |

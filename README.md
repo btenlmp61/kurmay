@@ -115,9 +115,20 @@ Düğüm alanları:
 |---|---|
 | `file` | Ajanın md dosyası (frontmatter: `name`, `description`; gövde: system prompt) |
 | `tools` | İzin verilen Claude Code araçları |
+| `rules` | `.rules/<ad>.md` dosyaları — içerikleri system prompt'a **her zaman** eklenir |
+| `skills` | `.skill/<ad>/SKILL.md` becerileri — ad+açıklama listelenir, ajan ilgili görürse dosyayı kendisi okur |
 | `model` | İsteğe bağlı model override'ı (config'deki genel `model`i ezer) |
 | `requiresUserApproval` | `true` ise çıktı sonrası terminalde onay beklenir |
 | `next` | Koşulsuz geçiş (null/yok = akış biter) |
 | `verdict` | `{ onApprove, onReject }` — çıktıdan structured karar çıkarılır ve dallanılır |
+
+## Kurallar ve beceriler
+
+İki mekanizmanın doğası farklıdır:
+
+- **Kural** (`.rules/<ad>.md`) — her zaman geçerli kısıt (kodlama standardı, "asla X yapma"). Tam içeriği system prompt'a gömülür, bu yüzden **kısa tut**; her koşuda token harcar.
+- **Beceri** (`.skill/<ad>/SKILL.md`) — gerektiğinde başvurulan yöntem bilgisi. Frontmatter'ı (`name`, `description`) zorunludur; system prompt'a yalnızca ad + açıklama + dosya yolu yazılır, ajan görevle ilgili görürse dosyayı `Read` ile kendisi okur (progressive disclosure). Kısa bir beceriyi tamamen gömmek için frontmatter'a `inline: true` ekle.
+
+Var olmayan kural/beceri referansı, tembel beceriye rağmen `Read` aracı olmayan ajan gibi tutarsızlıklar yüklemede reddedilir.
 
 `verdict` ve `next` aynı düğümde birlikte kullanılamaz; kenarların var olan ajanlara işaret ettiği yüklemede doğrulanır.
