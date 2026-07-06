@@ -1,0 +1,31 @@
+{
+  "provider": "anthropic",
+  "baseUrl": "",
+  "apiKey": "",
+  "model": "",
+  "verdictModel": "",
+  "targetDir": "D:\\work\\testapp",
+
+  "workflow": {
+    "entry": "architect",
+    "maxCycles": 5,
+    "agents": {
+      "architect": {
+        "file": ".claude/agents/architect.md",
+        "tools": ["Read", "Glob", "Grep"],
+        "requiresUserApproval": true,
+        "next": "developer"
+      },
+      "developer": {
+        "file": ".claude/agents/developer.md",
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        "next": "reviewer"
+      },
+      "reviewer": {
+        "file": ".claude/agents/reviewer.md",
+        "tools": ["Read", "Glob", "Grep", "Bash"],
+        "verdict": { "onApprove": null, "onReject": "developer" }
+      }
+    }
+  }
+}
