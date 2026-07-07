@@ -16,15 +16,27 @@ export const ReviewVerdictSchema = z.object({
 
 export type ReviewVerdict = z.infer<typeof ReviewVerdictSchema>;
 
+/**
+ * Karar şemasının Agent SDK outputFormat için JSON Schema hali.
+ * DİKKAT: z.toJSONSchema'nın eklediği "$schema" başlığı outputFormat'ı
+ * SESSİZCE bozar (success döner ama structured_output boş kalır) — bu yüzden
+ * burada çıkarılıyor. Doğrulandı: 2026-07-07 A/B testi.
+ */
+export function reviewVerdictJsonSchema(): Record<string, unknown> {
+  const schema = z.toJSONSchema(ReviewVerdictSchema) as Record<string, unknown>;
+  delete schema.$schema;
+  return schema;
+}
+
 export interface AgentNodeConfig {
   /** Ajanın system prompt'unu içeren md dosyası (config dosyasının dizinine göre) */
   file: string;
   /** Bu ajanın kullanabileceği Claude Code araçları */
   tools: string[];
-  /** .rules/<ad>.md dosyaları — içerikleri system prompt'a HER ZAMAN eklenir */
+  /** .claude/rules/<ad>.md dosyaları — içerikleri system prompt'a HER ZAMAN eklenir */
   rules?: string[];
-  /** .skill/<ad>/SKILL.md becerileri — ad+açıklama listelenir, ajan ilgili görürse
-   *  dosyayı Read ile kendisi okur (frontmatter'da inline: true ise tamamı gömülür) */
+  /** .claude/skills/<ad>/SKILL.md becerileri — ad+açıklama listelenir, ajan ilgili
+   *  görürse dosyayı Read ile kendisi okur (frontmatter'da inline: true ise tamamı gömülür) */
   skills?: string[];
   /** İsteğe bağlı model override'ı (config'deki genel "model" alanını ezer) */
   model?: string;
@@ -47,6 +59,12 @@ export interface WorkflowConfig {
   agents: Record<string, AgentNodeConfig>;
 }
 
+/** MCP sunucu tanımı — Claude Code'un .mcp.json formatıyla birebir aynı.
+ *  stdio: { command, args?, env? }  |  uzak: { type: "http"|"sse", url, headers? } */
+export type McpServerJson =
+  | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: "http" | "sse"; url: string; headers?: Record<string, string> };
+
 /** Sağlayıcı bağlantı bilgileri — hem Anthropic hem Ollama aynı alanları kullanır */
 export interface ProviderConfig {
   /** "anthropic": Claude API / Claude Code oturumu. "ollama": yerel Ollama sunucusu */
@@ -61,6 +79,9 @@ export interface ProviderConfig {
   verdictModel?: string;
   /** Geliştirmenin yapılacağı hedef proje dizini (CLI --cwd bayrağı bunu ezer) */
   targetDir?: string;
+  /** MCP sunucuları. Bir ajanın bu sunucuların araçlarını kullanabilmesi için
+   *  tools listesine "mcp__<sunucu>" (tümü) veya "mcp__<sunucu>__<araç>" eklenmeli */
+  mcpServers?: Record<string, McpServerJson>;
 }
 
 /** Tek config dosyasının tamamı: bağlantı bilgileri + iş akışı grafı */
@@ -75,5 +96,15 @@ export interface AgentDefinition {
   name: string;
   description: string;
   systemPrompt: string;
+  /** Ajanın çıktı JSON şeması (md frontmatter "output" alanından; verdict
+   *  düğümlerinde yerleşik karar şeması kullanılır). Tanımlıysa ajan Agent
+   *  SDK'nin outputFormat'ıyla çalışır ve şemaya uyan JSON üretir. */
+  outputSchema?: Record<string, unknown>;
   config: AgentNodeConfig;
+}
+
+/** Bir ajan koşusunun sonucu: serbest metin + varsa şemaya uyan JSON */
+export interface AgentRunResult {
+  text: string;
+  structured?: unknown;
 }

@@ -43,6 +43,9 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 #stream .ok { color:var(--teal); }
 #stream .err { color:var(--red); }
 #stream .warn { color:var(--amber); }
+#stream details.structured { margin:4px 0 8px; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
+#stream details.structured summary { cursor:pointer; color:var(--muted); font-size:11px; }
+#stream details.structured pre { white-space:pre-wrap; margin:6px 0 2px; max-height:260px; overflow-y:auto; }
 .issue { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; font-size:13px; }
 .sev { font-size:11px; padding:1px 8px; border-radius:999px; white-space:nowrap; }
 .sev.low { background:var(--amberBg); color:var(--amber); }
@@ -169,12 +172,21 @@ function handle(e) {
       addLog(e.ts, esc(trunc(e.text, 240)), "muted");
       break;
     case "tool_used":
-      addLog(e.ts, `⚙ ${esc(e.tool)}`, "muted");
+      if (!e.detail) break;
+      addLog(e.ts, `⚙ ${esc(e.tool)}: ${esc(e.detail)}`, "muted");
       break;
     case "agent_finished":
       states[e.agent] = "done";
       renderPipeline();
       addLog(e.ts, `<b>${esc(e.agent)}</b> bitti`, "ok");
+      if (e.structured !== undefined) {
+        const d = document.createElement("details");
+        d.className = "structured";
+        d.innerHTML = `<summary>${esc(e.agent)} yapılandırılmış çıktısı</summary><pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
+        const s = $("stream");
+        s.appendChild(d);
+        s.scrollTop = s.scrollHeight;
+      }
       break;
     case "approval_required":
       $("approvalTitle").textContent = `${e.agent} çıktısı onayını bekliyor`;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import type { AgentDefinition, AgentNodeConfig, WorkflowConfig } from "./types.js";
+import { reviewVerdictJsonSchema, type AgentDefinition, type AgentNodeConfig, type WorkflowConfig } from "./types.js";
 
 interface LoadedRule {
   name: string;
@@ -17,7 +17,7 @@ interface LoadedSkill {
 }
 
 function loadRule(name: string, projectRoot: string, agentKey: string): LoadedRule {
-  const rulePath = path.resolve(projectRoot, ".rules", `${name}.md`);
+  const rulePath = path.resolve(projectRoot, ".claude", "rules", `${name}.md`);
   if (!fs.existsSync(rulePath)) {
     throw new Error(`"${agentKey}" ajanının kuralı bulunamadı: ${rulePath}`);
   }
@@ -25,7 +25,7 @@ function loadRule(name: string, projectRoot: string, agentKey: string): LoadedRu
 }
 
 function loadSkill(name: string, projectRoot: string, agentKey: string): LoadedSkill {
-  const skillPath = path.resolve(projectRoot, ".skill", name, "SKILL.md");
+  const skillPath = path.resolve(projectRoot, ".claude", "skills", name, "SKILL.md");
   if (!fs.existsSync(skillPath)) {
     throw new Error(`"${agentKey}" ajanının becerisi bulunamadı: ${skillPath}`);
   }
@@ -50,8 +50,18 @@ function composeSystemPrompt(
   persona: string,
   rules: LoadedRule[],
   skills: LoadedSkill[],
+  mcpTools: string[],
 ): string {
   const parts = [persona];
+
+  if (mcpTools.length > 0) {
+    parts.push(
+      "## MCP araçların\n\n" +
+        "Şu MCP araçlarına erişimin var: " + mcpTools.join(", ") + "\n" +
+        "Bu araçlar oturum başında araç listende görünmeyebilir — görünmüyorsa " +
+        "ToolSearch ile adını aratıp yükle, ilgili işler için Bash yerine bunları tercih et.",
+    );
+  }
 
   if (rules.length > 0) {
     parts.push(
@@ -124,11 +134,31 @@ export function loadAgents(
       );
     }
 
+    // Çıktı şeması: verdict düğümü HER ZAMAN yerleşik karar şemasını kullanır
+    // (dallanma buna güvenir); diğer düğümler md frontmatter'daki "output"u alır
+    let outputSchema: Record<string, unknown> | undefined;
+    if (config.verdict) {
+      if (data.output) {
+        console.warn(
+          `⚠ "${key}" verdict düğümü — md'deki "output" şeması yok sayılıyor, yerleşik karar şeması kullanılacak`,
+        );
+      }
+      outputSchema = reviewVerdictJsonSchema();
+    } else if (data.output && typeof data.output === "object") {
+      outputSchema = data.output as Record<string, unknown>;
+    }
+
     agents.set(key, {
       key,
       name: (data.name as string) ?? key,
       description: (data.description as string) ?? "",
-      systemPrompt: composeSystemPrompt(content.trim(), rules, skills),
+      systemPrompt: composeSystemPrompt(
+        content.trim(),
+        rules,
+        skills,
+        config.tools.filter((t) => t.startsWith("mcp__")),
+      ),
+      outputSchema,
       config,
     });
   }

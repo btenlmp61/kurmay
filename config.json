@@ -5,6 +5,7 @@
   "model": "",
   "verdictModel": "",
   "targetDir": "D:\\work\\testapp",
+  "mcpServers": {},
 
   "workflow": {
     "entry": "architect",

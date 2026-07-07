@@ -1,27 +1,35 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
 import type { EventBus } from "./events.js";
-import type { AgentDefinition, ProviderConfig } from "./types.js";
+import type { AgentDefinition, AgentRunResult, ProviderConfig } from "./types.js";
 
-/**
- * Bir ajanı Claude Agent SDK ile çalıştırır. Ajan, md dosyasındaki personayı
- * system prompt eki olarak alır ve yalnızca workflow.json'da izin verilen
- * araçları kullanabilir. config.json'da baseUrl tanımlıysa (örn. Ollama)
- * istekler o adrese yönlendirilir. Dönen değer ajanın nihai metin çıktısıdır.
- */
-export async function runAgent(
+/** Araç çağrısından insan-okur bir detay çıkarır (log için). Boş dönerse loglanmaz. */
+function toolDetail(input: unknown): string {
+  if (!input || typeof input !== "object") return "";
+  const i = input as Record<string, unknown>;
+  for (const key of ["description", "file_path", "path", "pattern", "command", "url", "query"]) {
+    const value = i[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().replace(/\s+/g, " ").slice(0, 120);
+    }
+  }
+  return "";
+}
+
+/** Şema denemeleri tükendiğinde dönen işaret — akışı öldürmez, şemasız tekrara düşülür */
+const SCHEMA_FAILED = Symbol("schema_failed");
+
+async function executeQuery(
   agent: AgentDefinition,
   prompt: string,
   cwd: string,
   cfg: ProviderConfig,
   bus: EventBus,
-): Promise<string> {
-  console.log(`\n━━━ ▶ ${agent.name} çalışıyor ━━━`);
-  bus.emit({ type: "agent_started", agent: agent.key });
-
+  useSchema: boolean,
+): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
-  let result = "";
+  const result: AgentRunResult = { text: "" };
 
   for await (const message of query({
     prompt,
@@ -32,6 +40,12 @@ export async function runAgent(
       systemPrompt: { type: "preset", preset: "claude_code", append: agent.systemPrompt },
       allowedTools: agent.config.tools,
       permissionMode: "acceptEdits",
+      ...(useSchema && agent.outputSchema
+        ? { outputFormat: { type: "json_schema" as const, schema: agent.outputSchema } }
+        : {}),
+      ...(cfg.mcpServers && Object.keys(cfg.mcpServers).length > 0
+        ? { mcpServers: cfg.mcpServers as Record<string, McpServerConfig> }
+        : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
     },
@@ -42,19 +56,65 @@ export async function runAgent(
           console.log(block.text);
           bus.emit({ type: "agent_text", agent: agent.key, text: block.text });
         } else if (block.type === "tool_use") {
-          console.log(`  🔧 ${block.name}`);
-          bus.emit({ type: "tool_used", agent: agent.key, tool: block.name });
+          const detail = toolDetail(block.input);
+          console.log(`  🔧 ${block.name}${detail ? `: ${detail}` : ""}`);
+          // Detaysız araç çağrıları loglanmaz — panelde gürültü yaratıyordu
+          if (detail) {
+            bus.emit({ type: "tool_used", agent: agent.key, tool: block.name, detail });
+          }
         }
       }
     } else if (message.type === "result") {
       if (message.subtype === "success") {
-        result = message.result;
+        result.text = message.result;
+        if (message.structured_output !== undefined) {
+          result.structured = message.structured_output;
+        }
+      } else if (message.subtype === "error_max_structured_output_retries") {
+        return SCHEMA_FAILED;
       } else {
         throw new Error(`${agent.name} hata ile durdu: ${message.subtype}`);
       }
     }
   }
 
-  bus.emit({ type: "agent_finished", agent: agent.key, output: result });
+  return result;
+}
+
+/**
+ * Bir ajanı Claude Agent SDK ile çalıştırır. Ajan, md dosyasındaki personayı
+ * system prompt eki olarak alır ve yalnızca config'de izin verilen araçları
+ * kullanabilir. outputSchema tanımlıysa SDK'nin yerleşik structured output'u
+ * devreye girer; model şemaya uyan çıktıyı üretemezse (retry hakkı biterse)
+ * akışı düşürmek yerine ajan bir kez ŞEMASIZ yeniden çalıştırılır — orkestratör
+ * metin çıktıyla da ilerleyebilir (verdict için ayrıca metinden çıkarma yedeği var).
+ */
+export async function runAgent(
+  agent: AgentDefinition,
+  prompt: string,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+): Promise<AgentRunResult> {
+  console.log(`\n━━━ ▶ ${agent.name} çalışıyor ━━━`);
+  bus.emit({ type: "agent_started", agent: agent.key });
+
+  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true);
+
+  if (result === SCHEMA_FAILED) {
+    const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
+    console.warn(`\n⚠ ${note}`);
+    bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
+    result = await executeQuery(agent, prompt, cwd, cfg, bus, false);
+    if (result === SCHEMA_FAILED) {
+      throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
+    }
+  }
+
+  if (agent.outputSchema && result.structured === undefined) {
+    console.warn(`⚠ ${agent.name}: yapılandırılmış çıktı alınamadı, metin kullanılacak`);
+  }
+
+  bus.emit({ type: "agent_finished", agent: agent.key, output: result.text, structured: result.structured });
   return result;
 }

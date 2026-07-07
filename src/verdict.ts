@@ -1,9 +1,13 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z } from "zod";
 import { buildAgentEnv } from "./config.js";
-import { ReviewVerdictSchema, type ProviderConfig, type ReviewVerdict } from "./types.js";
+import {
+  reviewVerdictJsonSchema,
+  ReviewVerdictSchema,
+  type ProviderConfig,
+  type ReviewVerdict,
+} from "./types.js";
 
 /**
  * Reviewer'ın serbest metin raporundan karar nesnesi çıkarır.
@@ -58,58 +62,41 @@ async function extractWithStructuredOutput(
   return response.parsed_output;
 }
 
-// ── Yol 2: Agent SDK (Claude Code oturumu veya Ollama; JSON + Zod doğrulaması) ──
+// ── Yol 2: Agent SDK'nin yerleşik structured output'u (Claude Code oturumu veya
+//    Ollama; API key gerekmez). Şema uyumunu SDK zorlar ve gerekirse kendisi
+//    yeniden dener; Zod ayrıştırması yalnızca TypeScript tipi kazanmak için. ──
 
 async function extractWithAgentSdk(
   reviewText: string,
   cfg: ProviderConfig,
 ): Promise<ReviewVerdict> {
-  const jsonSchema = JSON.stringify(z.toJSONSchema(ReviewVerdictSchema), null, 2);
   const env = buildAgentEnv(cfg);
   const model = cfg.verdictModel ?? cfg.model;
-  let retryNote = "";
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const prompt = [
-      buildExtractionPrompt(reviewText),
-      "",
-      "Cevabını YALNIZCA şu JSON şemasına uyan tek bir JSON nesnesi olarak ver;",
-      "başka hiçbir metin, açıklama veya kod bloğu işareti ekleme:",
-      jsonSchema,
-      retryNote,
-    ].join("\n");
-
-    let text = "";
-    for await (const message of query({
-      prompt,
-      options: {
-        allowedTools: [],
-        permissionMode: "default",
-        maxTurns: 1,
-        ...(env ? { env } : {}),
-        ...(model ? { model } : {}),
+  for await (const message of query({
+    prompt: buildExtractionPrompt(reviewText),
+    options: {
+      allowedTools: [],
+      permissionMode: "default",
+      // maxTurns kısıtı KOYMA: SDK, şemaya uymayan çıktıyı ek turlarla kendisi
+      // düzeltir; tek turda kesilirse structured_output boş kalır (yaşandı)
+      outputFormat: {
+        type: "json_schema",
+        schema: reviewVerdictJsonSchema(),
       },
-    })) {
-      if (message.type === "result" && message.subtype === "success") {
-        text = message.result;
-      }
-    }
-
-    // Model kod bloğuna sarmış veya önüne metin koymuş olabilir — JSON gövdesini ayıkla
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start !== -1 && end > start) {
-      try {
-        const parsed = ReviewVerdictSchema.safeParse(JSON.parse(text.slice(start, end + 1)));
+      ...(env ? { env } : {}),
+      ...(model ? { model } : {}),
+    },
+  })) {
+    if (message.type === "result") {
+      if (message.subtype === "success" && message.structured_output !== undefined) {
+        const parsed = ReviewVerdictSchema.safeParse(message.structured_output);
         if (parsed.success) return parsed.data;
-        retryNote = `\nÖnceki denemen şemaya uymadı: ${parsed.error.message}\nBu hataları düzelterek SADECE geçerli JSON döndür.`;
-      } catch (err) {
-        retryNote = `\nÖnceki denemen geçerli JSON değildi (${err instanceof Error ? err.message : err}). SADECE geçerli JSON döndür.`;
+        throw new Error(`Reviewer kararı şemaya uymadı: ${parsed.error.message}`);
       }
-    } else {
-      retryNote = "\nÖnceki denemende JSON nesnesi bulunamadı. SADECE geçerli JSON döndür.";
+      throw new Error(`Reviewer kararı çıkarılamadı: ${message.subtype}`);
     }
   }
 
-  throw new Error("Reviewer kararı 2 denemede de şemaya uygun ayrıştırılamadı");
+  throw new Error("Reviewer kararı çıkarılamadı: sonuç mesajı gelmedi");
 }

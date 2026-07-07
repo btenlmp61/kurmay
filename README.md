@@ -78,6 +78,7 @@ Boş (`""`) bırakılan alan "tanımsız" sayılır ve sağlayıcının varsayı
 | `model` | Ajanların varsayılan modeli. Anthropic'te boşsa Claude Code varsayılanı; **Ollama'da zorunlu** (örn. `qwen3-coder:30b`) |
 | `verdictModel` | Karar çıkarma adımının modeli (boşsa `model`) |
 | `targetDir` | Geliştirmenin yapılacağı hedef proje dizini (`--cwd` bayrağı bunu ezer) |
+| `mcpServers` | MCP sunucu tanımları (Claude Code `.mcp.json` formatı) — aşağıda |
 | `workflow` | İş akışı grafı — aşağıda |
 
 ### Ollama'ya geçiş
@@ -97,6 +98,29 @@ Aynı dosyada sadece sağlayıcı alanlarını değiştir:
 
 Gereksinimler: Anthropic API uyumluluğu olan güncel bir Ollama sürümü ve indirilen model (`ollama pull qwen3-coder:30b`). Tüm istekler (ajanlar + karar çıkarma) `baseUrl`'e yönlendirilir; Anthropic hesabı gerekmez. Not: Yerel modellerin araç kullanma becerisi bulut modellerinden zayıftır — agentic akış için güçlü bir coder modeli önerilir.
 
+## MCP sunucuları
+
+Ajanlara MCP araçları vermek iki adım:
+
+**1. Sunucuyu tanımla** (`mcpServers` — Claude Code `.mcp.json` formatının aynısı):
+
+```json
+"mcpServers": {
+  "everything": { "command": "cmd", "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-everything"] },
+  "github":     { "type": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer ..." } }
+}
+```
+
+Windows'ta `npx` ile başlayan stdio sunucularını `cmd /c` ile sarmala.
+
+**2. Ajana izin ver** — ilgili düğümün `tools` listesine ekle:
+
+```json
+"tools": ["Read", "Write", "Edit", "Bash", "mcp__github"]
+```
+
+`mcp__<sunucu>` sunucunun tüm araçlarına, `mcp__<sunucu>__<araç>` tek araca izin verir. Tanımsız sunucuya işaret eden araç yüklemede reddedilir. Ajanın system prompt'una erişebildiği MCP araçları otomatik yazılır (MCP araçları oturum başında ertelenmiş yüklenir; ajan gerekirse ToolSearch ile bulur — bu yönlendirme de otomatik eklenir).
+
 ## İş akışını özelleştirme (`workflow`)
 
 Yeni ajan eklemek = bir md dosyası + `workflow.agents`'a bir düğüm:
@@ -115,8 +139,8 @@ Düğüm alanları:
 |---|---|
 | `file` | Ajanın md dosyası (frontmatter: `name`, `description`; gövde: system prompt) |
 | `tools` | İzin verilen Claude Code araçları |
-| `rules` | `.rules/<ad>.md` dosyaları — içerikleri system prompt'a **her zaman** eklenir |
-| `skills` | `.skill/<ad>/SKILL.md` becerileri — ad+açıklama listelenir, ajan ilgili görürse dosyayı kendisi okur |
+| `rules` | `.claude/rules/<ad>.md` dosyaları — içerikleri system prompt'a **her zaman** eklenir |
+| `skills` | `.claude/skills/<ad>/SKILL.md` becerileri — ad+açıklama listelenir, ajan ilgili görürse dosyayı kendisi okur |
 | `model` | İsteğe bağlı model override'ı (config'deki genel `model`i ezer) |
 | `requiresUserApproval` | `true` ise çıktı sonrası terminalde onay beklenir |
 | `next` | Koşulsuz geçiş (null/yok = akış biter) |
@@ -126,8 +150,8 @@ Düğüm alanları:
 
 İki mekanizmanın doğası farklıdır:
 
-- **Kural** (`.rules/<ad>.md`) — her zaman geçerli kısıt (kodlama standardı, "asla X yapma"). Tam içeriği system prompt'a gömülür, bu yüzden **kısa tut**; her koşuda token harcar.
-- **Beceri** (`.skill/<ad>/SKILL.md`) — gerektiğinde başvurulan yöntem bilgisi. Frontmatter'ı (`name`, `description`) zorunludur; system prompt'a yalnızca ad + açıklama + dosya yolu yazılır, ajan görevle ilgili görürse dosyayı `Read` ile kendisi okur (progressive disclosure). Kısa bir beceriyi tamamen gömmek için frontmatter'a `inline: true` ekle.
+- **Kural** (`.claude/rules/<ad>.md`) — her zaman geçerli kısıt (kodlama standardı, "asla X yapma"). Tam içeriği system prompt'a gömülür, bu yüzden **kısa tut**; her koşuda token harcar.
+- **Beceri** (`.claude/skills/<ad>/SKILL.md`) — gerektiğinde başvurulan yöntem bilgisi. Frontmatter'ı (`name`, `description`) zorunludur; system prompt'a yalnızca ad + açıklama + dosya yolu yazılır, ajan görevle ilgili görürse dosyayı `Read` ile kendisi okur (progressive disclosure). Kısa bir beceriyi tamamen gömmek için frontmatter'a `inline: true` ekle.
 
 Var olmayan kural/beceri referansı, tembel beceriye rağmen `Read` aracı olmayan ajan gibi tutarsızlıklar yüklemede reddedilir.
 

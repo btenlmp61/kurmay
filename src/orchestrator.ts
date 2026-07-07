@@ -2,22 +2,49 @@ import { askUserApproval, type WebApprovalChannel } from "./approval.js";
 import type { EventBus } from "./events.js";
 import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
-import type { AgentDefinition, ProviderConfig, WorkflowConfig } from "./types.js";
+import {
+  ReviewVerdictSchema,
+  type AgentDefinition,
+  type AgentRunResult,
+  type ProviderConfig,
+  type ReviewVerdict,
+  type WorkflowConfig,
+} from "./types.js";
+
+interface AgentOutput {
+  name: string;
+  result: AgentRunResult;
+}
 
 interface RunContext {
   task: string;
   /** Her ajanın en güncel çıktısı — sonraki ajanların prompt'una enjekte edilir */
-  outputs: Map<string, { name: string; output: string }>;
+  outputs: Map<string, AgentOutput>;
   /** Reject döngüsünden veya kullanıcı reddinden gelen düzeltme talebi */
   feedback?: string;
+}
+
+/** Onay/aktarım için görünüm: yapılandırılmış çıktı varsa okunur JSON, yoksa metin */
+function outputView(result: AgentRunResult): string {
+  return result.structured !== undefined
+    ? JSON.stringify(result.structured, null, 2)
+    : result.text;
 }
 
 function buildPrompt(agent: AgentDefinition, ctx: RunContext): string {
   const parts: string[] = [`# Görev\n${ctx.task}`];
 
+  // Ajanlar birbirleriyle yapılandırılmış format üzerinden konuşur:
+  // önceki ajanın çıktısı varsa şemalı JSON olarak enjekte edilir
   for (const [key, entry] of ctx.outputs) {
-    if (key !== agent.key) {
-      parts.push(`# "${entry.name}" ajanının çıktısı\n${entry.output}`);
+    if (key === agent.key) continue;
+    if (entry.result.structured !== undefined) {
+      parts.push(
+        `# "${entry.name}" ajanının çıktısı (yapılandırılmış JSON)\n` +
+          "```json\n" + JSON.stringify(entry.result.structured, null, 2) + "\n```",
+      );
+    } else {
+      parts.push(`# "${entry.name}" ajanının çıktısı\n${entry.result.text}`);
     }
   }
 
@@ -25,7 +52,7 @@ function buildPrompt(agent: AgentDefinition, ctx: RunContext): string {
     parts.push(`# Düzeltilmesi gerekenler (öncelikli)\n${ctx.feedback}`);
   }
 
-  parts.push("Rolünün gerektirdiği işi yap ve çıktı formatına uy.");
+  parts.push("Rolünün gerektirdiği işi yap.");
   return parts.join("\n\n");
 }
 
@@ -49,14 +76,14 @@ export async function runWorkflow(
 
   while (current !== null) {
     const agent: AgentDefinition = agents.get(current)!;
-    const output = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus);
-    ctx.outputs.set(agent.key, { name: agent.name, output });
+    const result = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus);
+    ctx.outputs.set(agent.key, { name: agent.name, result });
     ctx.feedback = undefined;
 
     // 1) Kullanıcı onayı gereken düğüm: terminal veya web'den — hangisi önce cevap verirse.
     //    Reddedilirse yorumla birlikte aynı düğüm tekrarlanır.
     if (agent.config.requiresUserApproval) {
-      const approval = await askUserApproval(agent.name, output, bus, web);
+      const approval = await askUserApproval(agent.name, outputView(result), bus, web);
       if (!approval.approved) {
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);
@@ -64,9 +91,18 @@ export async function runWorkflow(
       }
     }
 
-    // 2) Verdict düğümü: structured output ile karar çıkar, karara göre dallan
+    // 2) Verdict düğümü: karar doğrudan ajanın yapılandırılmış çıktısından alınır
+    //    (outputFormat şemayı SDK'de zorlar); gelmediyse metinden çıkarma yedeği
     if (agent.config.verdict) {
-      const verdict = await extractVerdict(output, cfg);
+      let verdict: ReviewVerdict;
+      const parsed = ReviewVerdictSchema.safeParse(result.structured);
+      if (parsed.success) {
+        verdict = parsed.data;
+      } else {
+        console.log("⚠ Yapılandırılmış karar alınamadı, rapor metninden çıkarılıyor…");
+        verdict = await extractVerdict(result.text, cfg);
+      }
+
       bus.emit({
         type: "verdict",
         agent: agent.key,

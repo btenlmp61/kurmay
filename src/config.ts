@@ -40,6 +40,20 @@ export function loadAppConfig(configPath: string): AppConfig {
   }
   if (!cfg.workflow.maxCycles) cfg.workflow.maxCycles = 5;
 
+  // Ajanların tools listesindeki mcp__ araçları tanımlı bir sunucuya işaret etmeli
+  for (const [key, node] of Object.entries(cfg.workflow.agents)) {
+    for (const tool of node.tools) {
+      if (tool.startsWith("mcp__")) {
+        const serverName = tool.slice(5).split("__")[0];
+        if (!cfg.mcpServers?.[serverName]) {
+          throw new Error(
+            `config: "${key}" ajanı "${tool}" aracını istiyor ama "${serverName}" mcpServers içinde tanımlı değil`,
+          );
+        }
+      }
+    }
+  }
+
   return cfg;
 }
 
