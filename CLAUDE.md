@@ -26,7 +26,8 @@ Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`.
 | `src/approval.ts` | Onay yarışı: terminal (e/h) ve web POST /approval aynı anda dinlenir, kazanan geçerli, kaybeden iptal (AbortController / cancel) |
 | `src/events.ts` | EventBus: tüm adımlar tipli olay olarak yayınlanır; terminal/panel/JSONL hepsi dinleyici |
 | `src/server.ts` | Node http (bağımlılıksız): GET / panel, GET /events SSE, POST /approval, POST /task (sadece sunucu modunda) |
-| `ui/index.html` | Panel: ajan hattı, olay akışı, karar kartı, onay kartı, görev girişi, yapılandırılmış çıktı kartları. Kütüphanesiz, koyu mod destekli |
+| `ui/index.html` | Panel: ajan hattı, olay akışı, karar kartı, onay kartı, görev girişi, yapılandırılmış çıktı kartları. Onay ve çıktı kartlarında `renderDiff()` ile before/after kod-inceleme diff'i (kırmızı/yeşil). Kütüphanesiz, koyu mod destekli |
+| `.claude/launch.json` | Preview aracı için `alpai-serve` (npm run serve, port 4141) — panel geliştirmede önizleme sunucusu |
 | `runs/*.jsonl` | Koşu başına olay kaydı |
 
 ## Yapılandırılmış ajan iletişimi
@@ -34,7 +35,13 @@ Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`.
 - Her ajanın çıktı şeması kendi md dosyasının frontmatter'ında (`output:` — YAML JSON-schema). Verdict düğümü frontmatter'a bakmaz, yerleşik karar şemasını (`reviewVerdictJsonSchema()`) kullanır.
 - Ajanlar birbirine serbest metin değil şemalı JSON aktarır (orchestrator buildPrompt, ```json bloğu olarak enjekte eder); panelde "yapılandırılmış çıktı" kartı olarak görünür.
 - Reviewer kararı doğrudan `structured_output`'tan alınır; gelmezse verdict.ts metinden çıkarma yedeğine düşer.
-- Şemalar: architect `{summary, technical_decisions[], assumptions[], file_plan[{path,action,description}], steps[], risks[]}`; developer `{changes[{file,action,description}], deviations[], verification}`; reviewer `{approved, issues[{file,description,severity}], summary}`.
+- Şemalar: architect `{summary, technical_decisions[], assumptions[], file_plan[{path,action,summary,changes[{location,before,after,rationale}]}], steps[], risks[]}`; developer `{changes[{file,action,summary,hunks[{location,before,after}]}], deviations[], verification}`; reviewer `{approved, issues[{file,description,severity}], summary}`.
+
+## Kod-inceleme tarzı onay (A yolu)
+
+- architect ve developer çıktıları **diff biçiminde**: her dosya değişikliği `before`/`after` kod parçalarıyla (architect'te `file_plan[].changes[]`, developer'da `changes[].hunks[]`). Böylece kullanıcı planı gerçek bir kod incelemesi gibi görür.
+- Onay duraklaması **architect'te** (kodlamadan ÖNCE önerilen diff'i onaylarsın); developer'ın *gerçek* diff'ini otomatik reviewer onaylar/reddeder. Kullanıcı istedi ama EKLENMEDİ: developer sonrası ikinci bir insan onay düğümü (isteğe bağlı, tek `requiresUserApproval` ile eklenir).
+- Panel: `approval_required` olayı artık `structured`'ı da taşır; `renderDiff()` file_plan/changes'ı before(kırmızı)/after(yeşil) render eder, tanımadığı yapıda (reviewer kararı) metne düşer. `#approvalText > pre` ID özgüllüğü hunk arka planlarını eziyordu — daraltılarak düzeltildi.
 
 ## Kritik bilinenler (tekrar keşfetme)
 
@@ -56,4 +63,11 @@ Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`.
 ## Test durumu
 
 - Uçtan uca doğrulanmış (gerçek koşularla): tek görev modu, sunucu modu (2 ardışık görev), web'den onay, yapılandırılmış verdict yolu, ajanlar arası JSON aktarımı, hedef dizine yazım. Test hedefi: `D:\work\testapp` (basit todo uygulaması).
+- Diff/kod-inceleme onayı: panel `renderDiff` before/after render'ı preview aracıyla doğrulandı (CSS özgüllük hatası bulunup düzeltildi); gerçek koşuda architect diff-şekilli plan üretti ve kullanıcı çalıştığını doğruladı.
 - **Henüz gerçek koşuda görülmemiş**: reviewer RED → developer düzeltme döngüsü (tüm koşular ilk turda onaylandı), kullanıcı reddi (h + yorum) yolu, Ollama sağlayıcısı (bu makinede Ollama kurulu değil), şemasız-yeniden-deneme yolu (error_max_structured_output_retries yakalanınca).
+
+## Açık işler (kaldığımız yer — 2026-07-08)
+
+- **Commit edilmedi**: diff/kod-inceleme onayı değişiklikleri (architect.md, developer.md, events.ts, approval.ts, orchestrator.ts, ui/index.html) + yeni `.claude/launch.json`. Kullanıcı "çalışıyor" dedi; sıradaki adım büyük ihtimalle `git add -A && commit && push`.
+- İstenmiş ama yapılmamış: developer sonrası isteğe bağlı ikinci insan-onay düğümü (yukarıda "A yolu" notu).
+- `runs/` ve `node_modules/` .gitignore'da; `.claude/launch.json` commit'lenmeli mi kullanıcıya sorulabilir (preview'e özgü, zararsız).
