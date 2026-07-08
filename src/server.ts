@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ApprovalResult, WebApprovalChannel } from "./approval.js";
+import { parseRunAt, type ApprovalResult, type ScheduleOutcome, type WebApprovalChannel } from "./approval.js";
 import type { EventBus } from "./events.js";
 
 export interface UiServer {
@@ -21,7 +21,8 @@ export interface UiServerOptions {
  *
  *   GET  /          panel sayfası (ui/index.html)
  *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
- *   POST /approval  { approved: boolean, comment?: string } — bekleyen onayı çözer
+ *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
+ *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
  *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
  */
 export function startUiServer(
@@ -32,6 +33,7 @@ export function startUiServer(
   const uiPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
   const sseClients = new Set<http.ServerResponse>();
   let pendingApproval: ((r: ApprovalResult) => void) | null = null;
+  let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
 
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
@@ -71,13 +73,48 @@ export function startUiServer(
           return;
         }
         try {
-          const parsed = JSON.parse(body) as { approved?: unknown; comment?: unknown };
+          const parsed = JSON.parse(body) as { approved?: unknown; comment?: unknown; runAt?: unknown };
           const comment =
             typeof parsed.comment === "string" && parsed.comment.trim()
               ? parsed.comment.trim()
               : undefined;
-          pendingApproval({ approved: Boolean(parsed.approved), comment });
+          // runAt panelden ISO metin (datetime-local) ya da epoch ms gelebilir
+          let runAt: number | undefined;
+          if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) {
+            runAt = parsed.runAt;
+          } else if (typeof parsed.runAt === "string") {
+            runAt = parseRunAt(parsed.runAt);
+          }
+          pendingApproval({ approved: Boolean(parsed.approved), comment, runAt });
           pendingApproval = null;
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true }));
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+        }
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/schedule") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        if (!pendingSchedule) {
+          res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "bekleyen zamanlama yok" }));
+          return;
+        }
+        try {
+          const parsed = JSON.parse(body) as { action?: unknown };
+          if (parsed.action !== "run" && parsed.action !== "cancel") {
+            res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ ok: false, error: "action 'run' veya 'cancel' olmalı" }));
+            return;
+          }
+          pendingSchedule(parsed.action === "run" ? "run_now" : "cancelled");
+          pendingSchedule = null;
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: true }));
         } catch {
@@ -127,6 +164,13 @@ export function startUiServer(
       }),
     cancel: () => {
       pendingApproval = null;
+    },
+    waitSchedule: () =>
+      new Promise((resolve) => {
+        pendingSchedule = resolve;
+      }),
+    cancelSchedule: () => {
+      pendingSchedule = null;
     },
   };
 

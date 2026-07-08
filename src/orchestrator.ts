@@ -1,4 +1,4 @@
-import { askUserApproval, type WebApprovalChannel } from "./approval.js";
+import { askUserApproval, waitForScheduledTime, type WebApprovalChannel } from "./approval.js";
 import type { EventBus } from "./events.js";
 import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
@@ -88,6 +88,23 @@ export async function runWorkflow(
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);
         continue;
+      }
+
+      // Onaylandı ama ileri bir zaman verildiyse, o zamana kadar kodda gerçek
+      // bir duraklama. Bekleme sırasında panelden/terminalden erken çalıştırma
+      // ya da iptal edilebilir (üç kanal yarışır).
+      if (approval.runAt && approval.runAt > Date.now()) {
+        bus.emit({ type: "run_scheduled", agent: agent.key, runAt: approval.runAt });
+        console.log(`\n⏰ ${agent.name} planı ${new Date(approval.runAt).toLocaleString()} için zamanlandı — bekleniyor…`);
+        const { outcome, source } = await waitForScheduledTime(approval.runAt, web);
+        if (outcome === "cancelled") {
+          bus.emit({ type: "run_schedule_cancelled", agent: agent.key, source });
+          console.log(`\n🛑 Zamanlama iptal edildi (${source}) — koşu sonlandırılıyor.`);
+          bus.emit({ type: "workflow_finished" });
+          return;
+        }
+        bus.emit({ type: "run_resumed", agent: agent.key, source });
+        console.log(`\n▶ ${outcome === "run_now" ? "Erken çalıştırma" : "Zamanı geldi"} (${source}) — devam ediliyor.`);
       }
     }
 

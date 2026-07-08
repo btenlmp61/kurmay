@@ -6,12 +6,43 @@ export interface ApprovalResult {
   approved: boolean;
   /** Reddedildiyse kullanıcının düzeltme talebi */
   comment?: string;
+  /** Onaylandıysa çalıştırmanın erteleneceği zaman (epoch ms). Yoksa/geçmişse hemen. */
+  runAt?: number;
 }
 
-/** Web panelinden onay bekleme kanalı (server.ts sağlar) */
+/** Zamanlanmış beklemenin nasıl sona erdiği */
+export type ScheduleOutcome = "fired" | "run_now" | "cancelled";
+
+/** Web panelinden onay + zamanlama denetimi bekleme kanalı (server.ts sağlar) */
 export interface WebApprovalChannel {
   wait(): Promise<ApprovalResult>;
   cancel(): void;
+  /** Zamanlanmış bekleme sırasında panelden "şimdi çalıştır/iptal" bekler */
+  waitSchedule(): Promise<Extract<ScheduleOutcome, "run_now" | "cancelled">>;
+  cancelSchedule(): void;
+}
+
+const MAX_TIMEOUT = 2 ** 31 - 1; // setTimeout üst sınırı (~24.8 gün)
+
+/**
+ * Kullanıcı girdisini çalıştırma zamanına (epoch ms) çevirir. Boş → undefined
+ * (hemen). Göreli biçim: "+30m", "+2h", "+1d". Mutlak biçim: Date.parse'ın
+ * anladığı her şey ("2026-07-10 14:00", ISO vb.). Anlaşılamazsa undefined.
+ */
+export function parseRunAt(input: string): number | undefined {
+  const s = input.trim();
+  if (!s) return undefined;
+
+  const rel = s.match(/^\+\s*(\d+)\s*(m|h|d)$/i);
+  if (rel) {
+    const n = Number(rel[1]);
+    const unit = rel[2].toLowerCase();
+    const ms = unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : 86_400_000;
+    return Date.now() + n * ms;
+  }
+
+  const abs = Date.parse(s);
+  return Number.isNaN(abs) ? undefined : abs;
 }
 
 async function askTerminal(agentName: string, signal: AbortSignal): Promise<ApprovalResult> {
@@ -24,7 +55,15 @@ async function askTerminal(agentName: string, signal: AbortSignal): Promise<Appr
       .toLowerCase();
 
     if (answer === "e" || answer === "evet" || answer === "y" || answer === "yes") {
-      return { approved: true };
+      const when = await rl.question(
+        "Ne zaman çalışsın? (boş=hemen, örn 2026-07-10 14:00 veya +30m/+2h/+1d): ",
+        { signal },
+      );
+      const runAt = parseRunAt(when);
+      if (when.trim() && runAt === undefined) {
+        console.warn("⚠ Zaman anlaşılamadı — hemen çalıştırılacak.");
+      }
+      return { approved: true, runAt };
     }
 
     const comment = await rl.question("Neyin değişmesini istiyorsun? ", { signal });
@@ -84,4 +123,73 @@ export async function askUserApproval(
   });
 
   return winner.result;
+}
+
+/** Uzun ertelemeleri setTimeout üst sınırını aşmadan zincirler */
+function fireAt(runAt: number, signal: AbortSignal, resolve: () => void): void {
+  const remaining = runAt - Date.now();
+  if (remaining <= 0) {
+    resolve();
+    return;
+  }
+  const t = setTimeout(() => fireAt(runAt, signal, resolve), Math.min(remaining, MAX_TIMEOUT));
+  signal.addEventListener("abort", () => clearTimeout(t), { once: true });
+}
+
+/** Terminalden zamanlama denetimi: c=şimdi çalıştır, i=iptal (abort'a kadar bloklar) */
+async function askTerminalSchedule(runAt: number, signal: AbortSignal): Promise<ScheduleOutcome> {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  try {
+    console.log(`\n⏰ ${new Date(runAt).toLocaleString()} için zamanlandı.`);
+    while (true) {
+      const ans = (
+        await rl.question("[c]=şimdi çalıştır, [i]=iptal (yoksa zamanı bekle): ", { signal })
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === "c" || ans === "calistir") return "run_now";
+      if (ans === "i" || ans === "iptal") return "cancelled";
+      // tanınmayan giriş → tekrar sor
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Onay sonrası zamanlı duraklama — kodda gerçek bir bekleme. Üç kanal yarışır:
+ * zamanlayıcı (zamanı gelince "fired"), terminal ve web paneli ("run_now"/
+ * "cancelled"). Hangisi önce sonuçlanırsa o geçerli; diğerleri iptal edilir.
+ * Süreç ayakta kaldığı sürece çalışır (serve modu). Not: kalıcı değildir —
+ * yeniden başlatma bekleyen zamanlamayı kaybeder.
+ */
+export async function waitForScheduledTime(
+  runAt: number,
+  web?: WebApprovalChannel,
+): Promise<{ outcome: ScheduleOutcome; source: "timer" | "terminal" | "web" }> {
+  const never = new Promise<never>(() => {});
+  const ac = new AbortController();
+
+  const candidates: Promise<{ outcome: ScheduleOutcome; source: "timer" | "terminal" | "web" }>[] = [
+    new Promise<void>((resolve) => fireAt(runAt, ac.signal, resolve)).then(() => ({
+      outcome: "fired" as const,
+      source: "timer" as const,
+    })),
+    askTerminalSchedule(runAt, ac.signal)
+      .then((outcome) => ({ outcome, source: "terminal" as const }))
+      .catch(() => never),
+  ];
+  if (web) {
+    candidates.push(
+      web
+        .waitSchedule()
+        .then((outcome) => ({ outcome, source: "web" as const }))
+        .catch(() => never),
+    );
+  }
+
+  const winner = await Promise.race(candidates);
+  ac.abort();
+  web?.cancelSchedule();
+  return winner;
 }

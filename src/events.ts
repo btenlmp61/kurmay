@@ -30,6 +30,9 @@ export type OrchestratorEvent =
       summary: string;
     }
   | { type: "cycle"; n: number; max: number; to: string }
+  | { type: "run_scheduled"; agent: string; runAt: number }
+  | { type: "run_resumed"; agent: string; source: "timer" | "terminal" | "web" }
+  | { type: "run_schedule_cancelled"; agent: string; source: "timer" | "terminal" | "web" }
   | { type: "workflow_finished" }
   | { type: "workflow_failed"; error: string };
 

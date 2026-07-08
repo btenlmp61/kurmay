@@ -50,7 +50,7 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 .sev { font-size:11px; padding:1px 8px; border-radius:999px; white-space:nowrap; }
 .sev.low { background:var(--amberBg); color:var(--amber); }
 .sev.medium, .sev.high { background:var(--redBg); color:var(--red); }
-#approval { border-color:var(--amber); }
+#approval, #schedule { border-color:var(--amber); }
 #approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:220px; overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
 #approval .row { display:flex; gap:8px; flex-wrap:wrap; }
 .lead { font-size:14px; margin:0 0 12px; }
@@ -75,6 +75,9 @@ button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; bord
 button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
 button:active { transform:scale(.98); }
 input[type=text] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); flex:1; min-width:200px; }
+select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); }
+#when { align-items:center; }
+#when .label { margin:0; }
 .hidden { display:none; }
 </style>
 </head>
@@ -111,6 +114,27 @@ input[type=text] { font:inherit; font-size:13px; padding:7px 10px; border-radius
     <button id="btnReject">Reddet</button>
     <input type="text" id="rejectComment" placeholder="Red gerekçesi (isteğe bağlı)">
   </div>
+  <div class="row" id="when" style="margin-top:8px">
+    <span class="label">Ne zaman çalışsın?</span>
+    <select id="whenPreset">
+      <option value="0">Hemen</option>
+      <option value="30m">+30 dakika</option>
+      <option value="1h">+1 saat</option>
+      <option value="3h">+3 saat</option>
+      <option value="1d">Yarın (+1 gün)</option>
+      <option value="custom">Belirli tarih/saat…</option>
+    </select>
+    <input type="datetime-local" id="whenCustom" class="hidden">
+  </div>
+</div>
+
+<div class="card hidden" id="schedule">
+  <div class="label">Zamanlandı</div>
+  <div style="font-weight:600;margin-bottom:6px" id="scheduleTitle"></div>
+  <div class="row">
+    <button class="primary" id="btnRunNow">Şimdi çalıştır</button>
+    <button id="btnCancelSchedule">İptal et</button>
+  </div>
 </div>
 
 <div class="grid">
@@ -137,6 +161,26 @@ function esc(s) {
 }
 function trunc(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
 function time(ts) { return new Date(ts).toLocaleTimeString("tr-TR", { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
+
+let countdownTimer = null;
+function startCountdown(agent, runAt) {
+  stopCountdown();
+  const tick = () => {
+    let ms = runAt - Date.now();
+    if (ms < 0) ms = 0;
+    const s = Math.floor(ms / 1000);
+    const dd = Math.floor(s / 86400), hh = Math.floor((s % 86400) / 3600);
+    const mm = Math.floor((s % 3600) / 60), ss = s % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    const kalan = (dd > 0 ? dd + "g " : "") + `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    $("scheduleTitle").textContent = `${agent} → ${new Date(runAt).toLocaleString()} · kalan ${kalan}`;
+  };
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+function stopCountdown() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
 
 // Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
 // Tanınmayan yapı (örn. reviewer kararı) için null döner.
@@ -205,6 +249,8 @@ function handle(e) {
       $("stream").innerHTML = "";
       $("verdictCard").classList.add("hidden");
       $("approval").classList.add("hidden");
+      $("schedule").classList.add("hidden");
+      stopCountdown();
       $("taskCard").classList.add("hidden");
       finished = false;
       setStatus("çalışıyor", "run");
@@ -247,6 +293,7 @@ function handle(e) {
       } else {
         $("approvalText").innerHTML = `<pre>${esc(trunc(e.output, 4000))}</pre>`;
       }
+      resetWhen();
       $("approval").classList.remove("hidden");
       setStatus("onay bekliyor", "warn");
       addLog(e.ts, `${esc(e.agent)} onay bekliyor`, "warn");
@@ -275,6 +322,25 @@ function handle(e) {
       $("cycle").textContent = `tur ${e.n}/${e.max}`;
       addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(e.to)}`, "warn");
       break;
+    case "run_scheduled":
+      $("approval").classList.add("hidden");
+      $("schedule").classList.remove("hidden");
+      startCountdown(e.agent, e.runAt);
+      setStatus("zamanlandı", "warn");
+      addLog(e.ts, `${esc(e.agent)} → ${new Date(e.runAt).toLocaleString()} için zamanlandı`, "warn");
+      break;
+    case "run_resumed":
+      $("schedule").classList.add("hidden");
+      stopCountdown();
+      setStatus("çalışıyor", "run");
+      addLog(e.ts, `zamanlama tamam (${esc(e.source)}) — devam ediliyor`, "ok");
+      break;
+    case "run_schedule_cancelled":
+      $("schedule").classList.add("hidden");
+      stopCountdown();
+      setStatus("iptal edildi", "err");
+      addLog(e.ts, `zamanlama iptal edildi (${esc(e.source)})`, "err");
+      break;
     case "workflow_finished":
       finished = true;
       setStatus("tamamlandı", "ok");
@@ -290,17 +356,70 @@ function handle(e) {
   }
 }
 
+// datetime-local input'un beklediği yerel biçim: YYYY-MM-DDTHH:MM
+function toLocalInput(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// "Belirli tarih/saat…" seçilince native picker'ı göster, alt sınırı ve
+// varsayılanı (şimdi+1 saat) ayarla
+$("whenPreset").addEventListener("change", () => {
+  const custom = $("whenPreset").value === "custom";
+  $("whenCustom").classList.toggle("hidden", !custom);
+  if (custom && !$("whenCustom").value) {
+    const now = new Date();
+    $("whenCustom").min = toLocalInput(now);
+    $("whenCustom").value = toLocalInput(new Date(now.getTime() + 3600000));
+  }
+});
+
+// Seçilen zamandan epoch ms üretir; "hemen" ya da geçersizse undefined döner
+function selectedRunAt() {
+  const preset = $("whenPreset").value;
+  if (preset === "0") return undefined;
+  if (preset === "custom") {
+    const v = $("whenCustom").value;
+    const t = v ? new Date(v).getTime() : NaN;
+    return Number.isFinite(t) && t > Date.now() ? t : undefined;
+  }
+  const offsets = { "30m": 1800000, "1h": 3600000, "3h": 10800000, "1d": 86400000 };
+  return Date.now() + offsets[preset];
+}
+
+function resetWhen() {
+  $("whenPreset").value = "0";
+  $("whenCustom").value = "";
+  $("whenCustom").classList.add("hidden");
+}
+
 async function sendApproval(approved) {
   const comment = $("rejectComment").value;
+  const runAt = approved ? selectedRunAt() : undefined;
   await fetch("/approval", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ approved, comment: approved ? undefined : comment }),
+    body: JSON.stringify({
+      approved,
+      comment: approved ? undefined : comment,
+      runAt,
+    }),
   });
   $("rejectComment").value = "";
+  resetWhen();
 }
 $("btnApprove").addEventListener("click", () => sendApproval(true));
 $("btnReject").addEventListener("click", () => sendApproval(false));
+
+async function sendSchedule(action) {
+  await fetch("/schedule", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+}
+$("btnRunNow").addEventListener("click", () => sendSchedule("run"));
+$("btnCancelSchedule").addEventListener("click", () => sendSchedule("cancel"));
 
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");
