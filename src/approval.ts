@@ -44,8 +44,9 @@ export async function askUserApproval(
   output: string,
   bus: EventBus,
   web?: WebApprovalChannel,
+  structured?: unknown,
 ): Promise<ApprovalResult> {
-  bus.emit({ type: "approval_required", agent: agentName, output });
+  bus.emit({ type: "approval_required", agent: agentName, output, structured });
 
   // Kaybeden taraf sessizce beklemede kalsın diye hatalar asla-çözülmeyen
   // bir promise'e çevrilir (kapalı stdin, abort vb. yarışı düşürmesin)

@@ -83,7 +83,7 @@ export async function runWorkflow(
     // 1) Kullanıcı onayı gereken düğüm: terminal veya web'den — hangisi önce cevap verirse.
     //    Reddedilirse yorumla birlikte aynı düğüm tekrarlanır.
     if (agent.config.requiresUserApproval) {
-      const approval = await askUserApproval(agent.name, outputView(result), bus, web);
+      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured);
       if (!approval.approved) {
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);

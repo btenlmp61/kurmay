@@ -14,7 +14,7 @@ export type OrchestratorEvent =
   | { type: "agent_text"; agent: string; text: string }
   | { type: "tool_used"; agent: string; tool: string; detail: string }
   | { type: "agent_finished"; agent: string; output: string; structured?: unknown }
-  | { type: "approval_required"; agent: string; output: string }
+  | { type: "approval_required"; agent: string; output: string; structured?: unknown }
   | {
       type: "approval_resolved";
       agent: string;

@@ -51,8 +51,26 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 .sev.low { background:var(--amberBg); color:var(--amber); }
 .sev.medium, .sev.high { background:var(--redBg); color:var(--red); }
 #approval { border-color:var(--amber); }
-#approval pre { white-space:pre-wrap; font-size:12px; max-height:220px; overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
+#approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:220px; overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
 #approval .row { display:flex; gap:8px; flex-wrap:wrap; }
+.lead { font-size:14px; margin:0 0 12px; }
+.diff-file { border:1px solid var(--border); border-radius:8px; margin-bottom:10px; overflow:hidden; }
+.diff-fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; background:var(--bg); font-size:13px; }
+.diff-fhead code { font-family:ui-monospace,Consolas,monospace; }
+.diff-fsum { color:var(--muted); font-size:12px; }
+.act { font-size:11px; padding:1px 8px; border-radius:999px; }
+.act.create, .act.created { background:var(--tealBg); color:var(--teal); }
+.act.modify, .act.modified { background:var(--amberBg); color:var(--amber); }
+.act.delete, .act.deleted { background:var(--redBg); color:var(--red); }
+.hunk { padding:8px 10px; border-top:1px solid var(--border); }
+.hunk .loc { font-size:11px; color:var(--muted); margin-bottom:4px; font-family:ui-monospace,Consolas,monospace; }
+.hunk pre { white-space:pre-wrap; font-size:12px; margin:0; padding:6px 8px; border-radius:6px; overflow-x:auto; }
+.hunk .before pre { background:var(--redBg); color:var(--red); }
+.hunk .after pre { background:var(--tealBg); color:var(--teal); margin-top:3px; }
+.hunk .why { font-size:12px; color:var(--muted); margin-top:5px; }
+.rawjson { margin-top:8px; }
+.rawjson summary { cursor:pointer; color:var(--muted); font-size:11px; }
+.rawjson pre { white-space:pre-wrap; font-size:11px; max-height:200px; overflow-y:auto; background:var(--bg); border-radius:6px; padding:8px; margin-top:6px; }
 button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
 button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
 button:active { transform:scale(.98); }
@@ -87,7 +105,7 @@ input[type=text] { font:inherit; font-size:13px; padding:7px 10px; border-radius
 <div class="card hidden" id="approval">
   <div class="label">Onay bekleniyor</div>
   <div style="font-weight:600;margin-bottom:6px" id="approvalTitle"></div>
-  <pre id="approvalText"></pre>
+  <div id="approvalText"></div>
   <div class="row">
     <button class="primary" id="btnApprove">Onayla</button>
     <button id="btnReject">Reddet</button>
@@ -119,6 +137,36 @@ function esc(s) {
 }
 function trunc(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
 function time(ts) { return new Date(ts).toLocaleTimeString("tr-TR", { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
+
+// Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
+// Tanınmayan yapı (örn. reviewer kararı) için null döner.
+function renderDiff(structured) {
+  if (!structured || typeof structured !== "object") return null;
+  const files = structured.file_plan || structured.changes;
+  if (!Array.isArray(files) || files.length === 0) return null;
+
+  const html = files.map((f) => {
+    const path = f.path || f.file || "?";
+    const hunks = f.changes || f.hunks || [];
+    if (!Array.isArray(hunks)) return "";
+    const act = f.action ? `<span class="act ${esc(f.action)}">${esc(f.action)}</span>` : "";
+    const sum = f.summary ? `<span class="diff-fsum">${esc(f.summary)}</span>` : "";
+    const body = hunks.map((h) => {
+      const loc = h.location ? `<div class="loc">@ ${esc(h.location)}</div>` : "";
+      const before = h.before ? `<div class="before"><pre>${esc(h.before)}</pre></div>` : "";
+      const after = h.after ? `<div class="after"><pre>${esc(h.after)}</pre></div>` : "";
+      const why = h.rationale ? `<div class="why">${esc(h.rationale)}</div>` : "";
+      return `<div class="hunk">${loc}${before}${after}${why}</div>`;
+    }).join("");
+    return `<div class="diff-file"><div class="diff-fhead">${act}<code>${esc(path)}</code>${sum}</div>${body}</div>`;
+  }).join("");
+
+  return html || null;
+}
+
+function rawJsonDetails(structured) {
+  return `<details class="rawjson"><summary>Ham JSON</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
+}
 
 function setStatus(text, kind) {
   const el = $("status");
@@ -182,19 +230,28 @@ function handle(e) {
       if (e.structured !== undefined) {
         const d = document.createElement("details");
         d.className = "structured";
-        d.innerHTML = `<summary>${esc(e.agent)} yapılandırılmış çıktısı</summary><pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
+        const diff = renderDiff(e.structured);
+        const inner = diff ? diff : `<pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
+        d.innerHTML = `<summary>${esc(e.agent)} yapılandırılmış çıktısı</summary>${inner}`;
         const s = $("stream");
         s.appendChild(d);
         s.scrollTop = s.scrollHeight;
       }
       break;
-    case "approval_required":
+    case "approval_required": {
       $("approvalTitle").textContent = `${e.agent} çıktısı onayını bekliyor`;
-      $("approvalText").textContent = trunc(e.output, 4000);
+      const diff = renderDiff(e.structured);
+      if (diff) {
+        const lead = e.structured.summary ? `<p class="lead">${esc(e.structured.summary)}</p>` : "";
+        $("approvalText").innerHTML = lead + diff + rawJsonDetails(e.structured);
+      } else {
+        $("approvalText").innerHTML = `<pre>${esc(trunc(e.output, 4000))}</pre>`;
+      }
       $("approval").classList.remove("hidden");
       setStatus("onay bekliyor", "warn");
       addLog(e.ts, `${esc(e.agent)} onay bekliyor`, "warn");
       break;
+    }
     case "approval_resolved":
       $("approval").classList.add("hidden");
       setStatus("çalışıyor", "run");
