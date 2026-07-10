@@ -28,7 +28,17 @@ export function reviewVerdictJsonSchema(): Record<string, unknown> {
   return schema;
 }
 
+/** Kullanıcı koşuyu iptal ettiğinde fırlatılır — akış temiz şekilde durdurulur */
+export class RunCancelledError extends Error {
+  constructor() {
+    super("Koşu kullanıcı tarafından iptal edildi");
+    this.name = "RunCancelledError";
+  }
+}
+
 export interface AgentNodeConfig {
+  /** Düğüm türü — ajan düğümü (varsayılan). Komut düğümleri "command" kullanır. */
+  type?: "agent";
   /** Ajanın system prompt'unu içeren md dosyası (config dosyasının dizinine göre) */
   file: string;
   /** Bu ajanın kullanabileceği Claude Code araçları */
@@ -49,6 +59,48 @@ export interface AgentNodeConfig {
     onApprove: string | null;
     onReject: string;
   };
+  /**
+   * Structured çıktıdaki bir alanın değerine göre koşullu dallanma (next/verdict
+   * yerine). Ajan rotayı structured output'ta ÖNERİR; geçişi orchestrator yapar.
+   * Örn. architect'in "route" alanı: "developer" → developer, "done" → akış biter.
+   * cases'te olmayan/eksik değer default'a düşer (default yoksa akış biter).
+   */
+  routes?: {
+    field: string;
+    cases: Record<string, string | null>;
+    default?: string | null;
+  };
+}
+
+/**
+ * Komut düğümü — LLM değil, deterministik bir build adımı. Yıldız topoloji için:
+ * developer'ın değiştirdiği dosyalardan hangi repoların dokunulduğu OTOMATİK
+ * çıkarılır (dosyanın targetDir altındaki en üst klasörü = repo). "parent"
+ * değiştiyse önce o build edilir, sonra değişen servisler ortak "command" ile.
+ * Modül listesi tutulmaz. Exit code'a göre dallanır: hepsi başarılıysa onSuccess,
+ * ilk hata onFailure'a (build log'u geri bildirim olur).
+ */
+export interface CommandNodeConfig {
+  type: "command";
+  /** Değişen servis repolarında çalıştırılacak varsayılan build komutu */
+  command: string;
+  /** Ortak parent (örn. common-events). Değişmişse diğerlerinden ÖNCE build edilir. */
+  parent?: {
+    /** targetDir'e göreli klasör adı (repo kökü) */
+    path: string;
+    /** Parent'a özel komut; verilmezse "command" kullanılır */
+    command?: string;
+  };
+  /** parent değiştiğinde, kodu değişmese bile TÜM servis repolarını da build et */
+  rebuildAllOnParentChange?: boolean;
+  onSuccess: string | null;
+  onFailure: string;
+}
+
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig;
+
+export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
+  return (node as CommandNodeConfig).type === "command";
 }
 
 export interface WorkflowConfig {
@@ -56,7 +108,7 @@ export interface WorkflowConfig {
   entry: string;
   /** Reject döngüsünün üst sınırı (sonsuz döngü koruması) */
   maxCycles: number;
-  agents: Record<string, AgentNodeConfig>;
+  agents: Record<string, WorkflowNode>;
 }
 
 /** MCP sunucu tanımı — Claude Code'un .mcp.json formatıyla birebir aynı.

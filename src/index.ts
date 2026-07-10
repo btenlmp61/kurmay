@@ -57,12 +57,17 @@ async function executeRun(
     agents: [...agents.keys()],
   });
 
+  // Koşu başına iptal denetçisi: panelden POST /cancel bunu abort eder
+  const abortController = new AbortController();
+  server?.setRunAborter(abortController);
+
   try {
-    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, server?.webApproval);
+    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval);
   } catch (err) {
     bus.emit({ type: "workflow_failed", error: err instanceof Error ? err.message : String(err) });
     throw err;
   } finally {
+    server?.setRunAborter(null);
     unsubscribe();
     console.log(`🗒  Koşu kaydı: ${runLog}`);
   }

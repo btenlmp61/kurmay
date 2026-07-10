@@ -8,6 +8,8 @@ import type { EventBus } from "./events.js";
 export interface UiServer {
   url: string;
   webApproval: WebApprovalChannel;
+  /** Çalışan koşunun AbortController'ını kaydeder (POST /cancel bunu abort eder) */
+  setRunAborter(ac: AbortController | null): void;
   close(): void;
 }
 
@@ -34,6 +36,7 @@ export function startUiServer(
   const sseClients = new Set<http.ServerResponse>();
   let pendingApproval: ((r: ApprovalResult) => void) | null = null;
   let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
+  let runAborter: AbortController | null = null;
 
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
@@ -125,6 +128,18 @@ export function startUiServer(
       return;
     }
 
+    if (req.method === "POST" && req.url === "/cancel") {
+      if (!runAborter || runAborter.signal.aborted) {
+        res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "çalışan görev yok" }));
+        return;
+      }
+      runAborter.abort();
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/task") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -180,6 +195,9 @@ export function startUiServer(
       resolve({
         url: `http://localhost:${port}`,
         webApproval,
+        setRunAborter: (ac) => {
+          runAborter = ac;
+        },
         close: () => {
           for (const client of sseClients) client.end();
           server.close();

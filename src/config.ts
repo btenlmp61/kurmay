@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { AppConfig, ProviderConfig } from "./types.js";
+import { isCommandNode, type AppConfig, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -42,6 +42,12 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   // Ajanların tools listesindeki mcp__ araçları tanımlı bir sunucuya işaret etmeli
   for (const [key, node] of Object.entries(cfg.workflow.agents)) {
+    if (isCommandNode(node)) {
+      if (typeof node.command !== "string" || !node.command.trim()) {
+        throw new Error(`config: "${key}" komut düğümü için "command" (build komutu) zorunlu`);
+      }
+      continue; // komut düğümünün tools listesi yok
+    }
     for (const tool of node.tools) {
       if (tool.startsWith("mcp__")) {
         const serverName = tool.slice(5).split("__")[0];

@@ -30,10 +30,17 @@ export type OrchestratorEvent =
       summary: string;
     }
   | { type: "cycle"; n: number; max: number; to: string }
+  | { type: "build_started"; order: string[] }
+  | { type: "build_module_started"; module: string; command: string }
+  | { type: "build_output"; module: string; text: string }
+  | { type: "build_module_finished"; module: string }
+  | { type: "build_failed"; module: string; code: number }
+  | { type: "build_finished"; order: string[] }
   | { type: "run_scheduled"; agent: string; runAt: number }
   | { type: "run_resumed"; agent: string; source: "timer" | "terminal" | "web" }
   | { type: "run_schedule_cancelled"; agent: string; source: "timer" | "terminal" | "web" }
   | { type: "workflow_finished" }
+  | { type: "workflow_cancelled" }
   | { type: "workflow_failed"; error: string };
 
 export type TimedEvent = OrchestratorEvent & { ts: string };

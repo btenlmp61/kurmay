@@ -15,7 +15,11 @@
         "file": ".claude/agents/architect.md",
         "tools": ["Read", "Glob", "Grep"],
         "requiresUserApproval": true,
-        "next": "developer"
+        "routes": {
+          "field": "route",
+          "cases": { "developer": "developer", "done": null },
+          "default": "developer"
+        }
       },
       "developer": {
         "file": ".claude/agents/developer.md",

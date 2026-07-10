@@ -18,8 +18,8 @@
   }
 }
 * { box-sizing: border-box; }
-body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, "Segoe UI", sans-serif; max-width:960px; margin-inline:auto; }
-.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:12px; }
+body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15px/1.55 system-ui, "Segoe UI", sans-serif; max-width:1160px; margin-inline:auto; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 22px; margin-bottom:16px; }
 .label { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
 .pill { display:inline-block; font-size:12px; padding:2px 10px; border-radius:999px; }
 .hdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -37,7 +37,7 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 .node.rejected { background:var(--redBg); border-color:var(--red); }
 .node.rejected .nm, .node.rejected .sub { color:var(--red); }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
-#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:340px; overflow-y:auto; }
+#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:380px; overflow-y:auto; }
 #stream .t { color:var(--muted); margin-right:8px; }
 #stream .muted { color:var(--muted); }
 #stream .ok { color:var(--teal); }
@@ -51,6 +51,12 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 .sev.low { background:var(--amberBg); color:var(--amber); }
 .sev.medium, .sev.high { background:var(--redBg); color:var(--red); }
 #approval, #schedule { border-color:var(--amber); }
+#buildModules { flex-wrap:wrap; }
+.bnode { padding:6px 12px; border-radius:8px; border:1px solid var(--border); font-size:12px; background:transparent; }
+.bnode.running { background:var(--blueBg); border-color:var(--blue); color:var(--blue); }
+.bnode.done { background:var(--tealBg); border-color:var(--teal); color:var(--teal); }
+.bnode.failed { background:var(--redBg); border-color:var(--red); color:var(--red); }
+#buildLog { max-height:220px; overflow:auto; white-space:pre-wrap; font-size:11px; margin-top:6px; }
 #approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:220px; overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
 #approval .row { display:flex; gap:8px; flex-wrap:wrap; }
 .lead { font-size:14px; margin:0 0 12px; }
@@ -73,6 +79,7 @@ body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:14p
 .rawjson pre { white-space:pre-wrap; font-size:11px; max-height:200px; overflow-y:auto; background:var(--bg); border-radius:6px; padding:8px; margin-top:6px; }
 button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
 button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
+button.danger { border-color:var(--red); color:var(--red); }
 button:active { transform:scale(.98); }
 input[type=text] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); flex:1; min-width:200px; }
 select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); }
@@ -89,6 +96,7 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
   <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
   <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
   <span class="dir" id="dir"></span>
+  <button id="btnCancel" class="hidden danger">Durdur</button>
 </div>
 
 <div class="card hidden" id="taskCard">
@@ -137,6 +145,12 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
   </div>
 </div>
 
+<div class="card hidden" id="buildCard">
+  <div class="label">Build (modül sırası)</div>
+  <div class="pipe" id="buildModules"></div>
+  <details class="rawjson" style="margin-top:10px"><summary>Build çıktısı</summary><pre id="buildLog"></pre></details>
+</div>
+
 <div class="grid">
   <div class="card">
     <div class="label">Olay akışı</div>
@@ -161,6 +175,8 @@ function esc(s) {
 }
 function trunc(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
 function time(ts) { return new Date(ts).toLocaleTimeString("tr-TR", { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
+// Tam tarih: gün.ay.yıl saat:dakika (Türkçe biçim)
+function fmt(ms) { return new Date(ms).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" }); }
 
 let countdownTimer = null;
 function startCountdown(agent, runAt) {
@@ -173,7 +189,7 @@ function startCountdown(agent, runAt) {
     const mm = Math.floor((s % 3600) / 60), ss = s % 60;
     const pad = (n) => String(n).padStart(2, "0");
     const kalan = (dd > 0 ? dd + "g " : "") + `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-    $("scheduleTitle").textContent = `${agent} → ${new Date(runAt).toLocaleString()} · kalan ${kalan}`;
+    $("scheduleTitle").textContent = `${agent} → ${fmt(runAt)} · kalan ${kalan}`;
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -227,6 +243,19 @@ function renderPipeline() {
   }).join('<div class="arrow">→</div>');
 }
 
+let buildOrder = [], buildStates = {};
+function renderBuild() {
+  $("buildModules").innerHTML = buildOrder.map((m) => {
+    const st = buildStates[m] || "";
+    return `<div class="bnode ${st}">${esc(m)}</div>`;
+  }).join('<div class="arrow">→</div>');
+}
+function resetBuild() {
+  buildOrder = []; buildStates = {};
+  $("buildCard").classList.add("hidden");
+  $("buildLog").textContent = "";
+}
+
 function addLog(ts, html, cls) {
   const div = document.createElement("div");
   if (cls) div.className = cls;
@@ -251,8 +280,10 @@ function handle(e) {
       $("approval").classList.add("hidden");
       $("schedule").classList.add("hidden");
       stopCountdown();
+      resetBuild();
       $("taskCard").classList.add("hidden");
       finished = false;
+      $("btnCancel").classList.remove("hidden");
       setStatus("çalışıyor", "run");
       renderPipeline();
       addLog(e.ts, "iş akışı başladı");
@@ -322,12 +353,45 @@ function handle(e) {
       $("cycle").textContent = `tur ${e.n}/${e.max}`;
       addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(e.to)}`, "warn");
       break;
+    case "build_started":
+      buildOrder = e.order; buildStates = {};
+      e.order.forEach((m) => (buildStates[m] = ""));
+      $("buildLog").textContent = "";
+      $("buildCard").classList.remove("hidden");
+      renderBuild();
+      setStatus("build", "run");
+      addLog(e.ts, e.order.length ? `build sırası: ${e.order.map(esc).join(" → ")}` : "build: değişen modül yok", "muted");
+      break;
+    case "build_module_started":
+      buildStates[e.module] = "running";
+      renderBuild();
+      addLog(e.ts, `🔨 ${esc(e.module)}: ${esc(e.command)}`, "muted");
+      break;
+    case "build_output": {
+      const pre = $("buildLog");
+      pre.textContent = (pre.textContent + e.text).slice(-8000);
+      pre.scrollTop = pre.scrollHeight;
+      break;
+    }
+    case "build_module_finished":
+      buildStates[e.module] = "done";
+      renderBuild();
+      break;
+    case "build_failed":
+      buildStates[e.module] = "failed";
+      renderBuild();
+      setStatus("build hatası", "err");
+      addLog(e.ts, `build başarısız: ${esc(e.module)} (çıkış ${e.code})`, "err");
+      break;
+    case "build_finished":
+      addLog(e.ts, `build tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
+      break;
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");
       startCountdown(e.agent, e.runAt);
       setStatus("zamanlandı", "warn");
-      addLog(e.ts, `${esc(e.agent)} → ${new Date(e.runAt).toLocaleString()} için zamanlandı`, "warn");
+      addLog(e.ts, `${esc(e.agent)} → ${fmt(e.runAt)} için zamanlandı`, "warn");
       break;
     case "run_resumed":
       $("schedule").classList.add("hidden");
@@ -343,12 +407,24 @@ function handle(e) {
       break;
     case "workflow_finished":
       finished = true;
+      $("btnCancel").classList.add("hidden");
       setStatus("tamamlandı", "ok");
       addLog(e.ts, "iş akışı tamamlandı 🎉", "ok");
       showTaskCard();
       break;
+    case "workflow_cancelled":
+      finished = true;
+      $("btnCancel").classList.add("hidden");
+      $("approval").classList.add("hidden");
+      $("schedule").classList.add("hidden");
+      stopCountdown();
+      setStatus("iptal edildi", "err");
+      addLog(e.ts, "iş akışı iptal edildi 🛑", "err");
+      showTaskCard();
+      break;
     case "workflow_failed":
       finished = true;
+      $("btnCancel").classList.add("hidden");
       setStatus("hata", "err");
       addLog(e.ts, esc(e.error), "err");
       showTaskCard();
@@ -420,6 +496,16 @@ async function sendSchedule(action) {
 }
 $("btnRunNow").addEventListener("click", () => sendSchedule("run"));
 $("btnCancelSchedule").addEventListener("click", () => sendSchedule("cancel"));
+
+async function sendCancel() {
+  $("btnCancel").disabled = true;
+  try {
+    await fetch("/cancel", { method: "POST" });
+  } finally {
+    $("btnCancel").disabled = false;
+  }
+}
+$("btnCancel").addEventListener("click", sendCancel);
 
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");

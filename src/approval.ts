@@ -1,6 +1,16 @@
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import type { EventBus } from "./events.js";
+import { RunCancelledError } from "./types.js";
+
+/** run sinyali abort edilirse RunCancelledError ile reddeden promise (yarışlara eklenir) */
+function cancelPromise(runSignal?: AbortSignal): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    if (!runSignal) return; // asla çözülmez
+    if (runSignal.aborted) reject(new RunCancelledError());
+    else runSignal.addEventListener("abort", () => reject(new RunCancelledError()), { once: true });
+  });
+}
 
 export interface ApprovalResult {
   approved: boolean;
@@ -23,6 +33,17 @@ export interface WebApprovalChannel {
 }
 
 const MAX_TIMEOUT = 2 ** 31 - 1; // setTimeout üst sınırı (~24.8 gün)
+
+/** Tarihi Türkçe gün.ay.yıl saat:dakika biçiminde gösterir */
+export function fmtDate(ms: number): string {
+  return new Date(ms).toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 /**
  * Kullanıcı girdisini çalıştırma zamanına (epoch ms) çevirir. Boş → undefined
@@ -84,6 +105,7 @@ export async function askUserApproval(
   bus: EventBus,
   web?: WebApprovalChannel,
   structured?: unknown,
+  runSignal?: AbortSignal,
 ): Promise<ApprovalResult> {
   bus.emit({ type: "approval_required", agent: agentName, output, structured });
 
@@ -105,10 +127,16 @@ export async function askUserApproval(
         .catch(() => never),
     );
   }
+  // Kullanıcı iptali bekleme sırasında da geçerli — RunCancelledError fırlatır
+  candidates.push(cancelPromise(runSignal));
 
-  const winner = await Promise.race(candidates);
-  ac.abort();
-  web?.cancel();
+  let winner;
+  try {
+    winner = await Promise.race(candidates);
+  } finally {
+    ac.abort();
+    web?.cancel();
+  }
 
   if (winner.source === "web") {
     console.log(`\n🌐 Onay web panelinden geldi: ${winner.result.approved ? "onaylandı" : "reddedildi"}`);
@@ -140,7 +168,7 @@ function fireAt(runAt: number, signal: AbortSignal, resolve: () => void): void {
 async function askTerminalSchedule(runAt: number, signal: AbortSignal): Promise<ScheduleOutcome> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
-    console.log(`\n⏰ ${new Date(runAt).toLocaleString()} için zamanlandı.`);
+    console.log(`\n⏰ ${fmtDate(runAt)} için zamanlandı.`);
     while (true) {
       const ans = (
         await rl.question("[c]=şimdi çalıştır, [i]=iptal (yoksa zamanı bekle): ", { signal })
@@ -166,6 +194,7 @@ async function askTerminalSchedule(runAt: number, signal: AbortSignal): Promise<
 export async function waitForScheduledTime(
   runAt: number,
   web?: WebApprovalChannel,
+  runSignal?: AbortSignal,
 ): Promise<{ outcome: ScheduleOutcome; source: "timer" | "terminal" | "web" }> {
   const never = new Promise<never>(() => {});
   const ac = new AbortController();
@@ -187,9 +216,13 @@ export async function waitForScheduledTime(
         .catch(() => never),
     );
   }
+  // Kullanıcı iptali zamanlı bekleme sırasında da geçerli
+  candidates.push(cancelPromise(runSignal));
 
-  const winner = await Promise.race(candidates);
-  ac.abort();
-  web?.cancelSchedule();
-  return winner;
+  try {
+    return await Promise.race(candidates);
+  } finally {
+    ac.abort();
+    web?.cancelSchedule();
+  }
 }

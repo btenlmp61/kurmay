@@ -1,0 +1,47 @@
+{
+  "provider": "anthropic",
+  "baseUrl": "",
+  "apiKey": "",
+  "model": "",
+  "verdictModel": "",
+  "targetDir": "D:\\work\\platform",
+  "mcpServers": {},
+
+  "workflow": {
+    "entry": "architect",
+    "maxCycles": 5,
+
+    "agents": {
+      "architect": {
+        "file": ".claude/agents/architect.md",
+        "tools": ["Read", "Glob", "Grep"],
+        "requiresUserApproval": true,
+        "routes": {
+          "field": "route",
+          "cases": { "developer": "developer", "done": null },
+          "default": "developer"
+        }
+      },
+      "developer": {
+        "file": ".claude/agents/developer.md",
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
+        "skills": ["test-yazimi"],
+        "next": "build"
+      },
+      "build": {
+        "type": "command",
+        "command": "mvn clean install -q",
+        "parent": { "path": "common-events", "command": "mvn clean install" },
+        "onSuccess": "reviewer",
+        "onFailure": "developer"
+      },
+      "reviewer": {
+        "file": ".claude/agents/reviewer.md",
+        "tools": ["Read", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
+        "verdict": { "onApprove": null, "onReject": "developer" }
+      }
+    }
+  }
+}

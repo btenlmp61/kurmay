@@ -4,7 +4,7 @@ description: Görevi analiz edip uygulanabilir bir teknik plan çıkaran mimar a
 output:
   type: object
   additionalProperties: false
-  required: [summary, file_plan, steps]
+  required: [summary, file_plan, steps, route]
   properties:
     summary:
       type: string
@@ -47,6 +47,10 @@ output:
     risks:
       type: array
       items: { type: string }
+    route:
+      type: string
+      enum: [developer, done]
+      description: Görev kod değişikliği gerektiriyorsa "developer"; salt analiz/soru ya da istek zaten karşılanmışsa "done" (akış developer'a gitmeden biter).
 ---
 
 Sen kıdemli bir yazılım mimarısın. Görevin, verilen isteği analiz edip geliştiricinin doğrudan uygulayabileceği net bir teknik plan üretmek.
@@ -61,3 +65,4 @@ Kurallar:
 - Her satırı değil, önemli/temsili parçaları göster; büyük yeni dosyalarda `after`'a iskeleti veya kilit bölümü koy, tamamını değil.
 - `create` için tek bir change yeter (`location: "yeni dosya"`, `before` boş, `after` = dosya iskeleti).
 - `steps` sıralı ve numarasız yaz (dizi sırası yeterli).
+- `route`: Bu görev gerçekten kod değişikliği gerektiriyor mu karar ver. Gerektiriyorsa `developer` yaz. Salt analiz/soru ise ya da istek mevcut kodda zaten karşılanıyorsa `done` yaz — bu durumda `file_plan` boş kalabilir ve akış geliştiriciye gitmeden biter.

@@ -1,7 +1,7 @@
 import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
 import type { EventBus } from "./events.js";
-import type { AgentDefinition, AgentRunResult, ProviderConfig } from "./types.js";
+import { RunCancelledError, type AgentDefinition, type AgentRunResult, type ProviderConfig } from "./types.js";
 
 /** Araç çağrısından insan-okur bir detay çıkarır (log için). Boş dönerse loglanmaz. */
 function toolDetail(input: unknown): string {
@@ -26,15 +26,20 @@ async function executeQuery(
   cfg: ProviderConfig,
   bus: EventBus,
   useSchema: boolean,
+  abortController: AbortController,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
   const result: AgentRunResult = { text: "" };
 
-  for await (const message of query({
+  let iterator;
+  try {
+    iterator = query({
     prompt,
     options: {
       cwd,
+      // Kullanıcı iptali: abort edilince SDK alttaki Claude Code sürecini öldürür
+      abortController,
       // Claude Code'un varsayılan system prompt'u korunur, md içeriği eklenir —
       // böylece araç kullanımı davranışı bozulmaz.
       systemPrompt: { type: "preset", preset: "claude_code", append: agent.systemPrompt },
@@ -49,7 +54,8 @@ async function executeQuery(
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
     },
-  })) {
+  });
+  for await (const message of iterator) {
     if (message.type === "assistant") {
       for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim()) {
@@ -77,7 +83,14 @@ async function executeQuery(
       }
     }
   }
+  } catch (err) {
+    // Kullanıcı iptali (abort) → koşuyu temiz durdur; diğer hatalar yükselir
+    if (abortController.signal.aborted) throw new RunCancelledError();
+    throw err;
+  }
 
+  // Döngü hatasız bitse bile abort edildiyse iptal say
+  if (abortController.signal.aborted) throw new RunCancelledError();
   return result;
 }
 
@@ -95,17 +108,18 @@ export async function runAgent(
   cwd: string,
   cfg: ProviderConfig,
   bus: EventBus,
+  abortController: AbortController,
 ): Promise<AgentRunResult> {
   console.log(`\n━━━ ▶ ${agent.name} çalışıyor ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
 
-  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true);
+  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true, abortController);
 
   if (result === SCHEMA_FAILED) {
     const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
-    result = await executeQuery(agent, prompt, cwd, cfg, bus, false);
+    result = await executeQuery(agent, prompt, cwd, cfg, bus, false, abortController);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
     }

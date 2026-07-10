@@ -1,14 +1,19 @@
-import { askUserApproval, waitForScheduledTime, type WebApprovalChannel } from "./approval.js";
+import { askUserApproval, fmtDate, waitForScheduledTime, type WebApprovalChannel } from "./approval.js";
+import { runBuild } from "./build.js";
 import type { EventBus } from "./events.js";
 import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
 import {
+  isCommandNode,
   ReviewVerdictSchema,
+  RunCancelledError,
   type AgentDefinition,
+  type AgentNodeConfig,
   type AgentRunResult,
   type ProviderConfig,
   type ReviewVerdict,
   type WorkflowConfig,
+  type WorkflowNode,
 } from "./types.js";
 
 interface AgentOutput {
@@ -22,6 +27,33 @@ interface RunContext {
   outputs: Map<string, AgentOutput>;
   /** Reject döngüsünden veya kullanıcı reddinden gelen düzeltme talebi */
   feedback?: string;
+  /** En son structured çıktıdaki değişen dosya yolları — build düğümü kullanır */
+  changedFiles: string[];
+}
+
+/**
+ * Rota çözümü (saf): structured çıktıdaki `field` değerine göre hedef düğümü
+ * seçer. Değer string değilse veya cases'te yoksa default'a (o da yoksa akışın
+ * sonuna) düşer. value = okunan rota değeri (belirsizse null).
+ */
+export function resolveRoute(
+  routes: NonNullable<AgentNodeConfig["routes"]>,
+  structured: unknown,
+): { target: string | null; value: string | null } {
+  const raw = (structured as Record<string, unknown> | undefined)?.[routes.field];
+  const value = typeof raw === "string" ? raw : null;
+  const target = value != null && value in routes.cases ? routes.cases[value] : routes.default ?? null;
+  return { target, value };
+}
+
+/** Bir ajanın structured çıktısından değişen dosya yollarını çıkarır (varsa) */
+function changedFilesOf(result: AgentRunResult): string[] | null {
+  const s = result.structured as { changes?: unknown } | undefined;
+  if (!s || !Array.isArray(s.changes)) return null;
+  const files = s.changes
+    .map((c) => (c && typeof c === "object" ? (c as { file?: unknown }).file : undefined))
+    .filter((f): f is string => typeof f === "string" && f.length > 0);
+  return files;
 }
 
 /** Onay/aktarım için görünüm: yapılandırılmış çıktı varsa okunur JSON, yoksa metin */
@@ -68,22 +100,69 @@ export async function runWorkflow(
   cwd: string,
   cfg: ProviderConfig,
   bus: EventBus,
+  abortController: AbortController,
   web?: WebApprovalChannel,
 ): Promise<void> {
-  const ctx: RunContext = { task, outputs: new Map() };
+  const ctx: RunContext = { task, outputs: new Map(), changedFiles: [] };
   let current: string | null = workflow.entry;
   let rejectCycles = 0;
 
+  try {
   while (current !== null) {
+    // Kullanıcı adımlar arasında iptal ettiyse burada temiz dur
+    if (abortController.signal.aborted) throw new RunCancelledError();
+    const node: WorkflowNode = workflow.agents[current];
+
+    // Komut düğümü (LLM değil): değişen modülleri deterministik sırada build eder.
+    // Başarılıysa onSuccess'e, ilk hata onFailure'a (build log'u geri bildirim olur).
+    if (isCommandNode(node)) {
+      const result = await runBuild(node, ctx.changedFiles, cwd, bus);
+      if (result.ok) {
+        ctx.feedback = undefined;
+        current = node.onSuccess;
+        continue;
+      }
+      rejectCycles++;
+      if (rejectCycles >= workflow.maxCycles) {
+        const error = `Build ${workflow.maxCycles} turda düzeltilemedi (son hata: ${result.failedModule})`;
+        console.log(`\n⚠️ ${error}`);
+        bus.emit({ type: "workflow_failed", error });
+        return;
+      }
+      ctx.feedback =
+        `Build başarısız — "${result.failedModule}" modülü derlenmedi. ` +
+        `Aşağıdaki build çıktısındaki hataları düzelt:\n\n${result.log ?? ""}`;
+      console.log(`\n🔁 Tur ${rejectCycles}/${workflow.maxCycles}: build hatası "${node.onFailure}" ajanına gönderiliyor`);
+      bus.emit({ type: "cycle", n: rejectCycles, max: workflow.maxCycles, to: node.onFailure });
+      current = node.onFailure;
+      continue;
+    }
+
     const agent: AgentDefinition = agents.get(current)!;
-    const result = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus);
+    const result = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController);
     ctx.outputs.set(agent.key, { name: agent.name, result });
     ctx.feedback = undefined;
+    // Structured çıktı değişen dosyalar taşıyorsa build düğümü için sakla
+    const changed = changedFilesOf(result);
+    if (changed) ctx.changedFiles = changed;
+
+    // Rota (varsa) onaydan ÖNCE çözülür: akışı bitirecekse (hedef null) onay
+    // sormanın anlamı yok — onaylanacak/uygulanacak bir sonraki adım yok.
+    // routeTarget: undefined = düğümde routes yok; string = sonraki düğüm; null = akış biter
+    let routeTarget: string | null | undefined;
+    if (agent.config.routes) {
+      const { target, value } = resolveRoute(agent.config.routes, result.structured);
+      routeTarget = target;
+      const note = `${agent.name} rotası: ${value ?? "(belirsiz)"} → ${target ?? "akış biter (developer çağrılmaz)"}`;
+      console.log(`\n🧭 ${note}`);
+      bus.emit({ type: "agent_text", agent: agent.key, text: `🧭 ${note}` });
+    }
 
     // 1) Kullanıcı onayı gereken düğüm: terminal veya web'den — hangisi önce cevap verirse.
     //    Reddedilirse yorumla birlikte aynı düğüm tekrarlanır.
-    if (agent.config.requiresUserApproval) {
-      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured);
+    //    Rota akışı bitirecekse (routeTarget === null) onay atlanır.
+    if (agent.config.requiresUserApproval && routeTarget !== null) {
+      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured, abortController.signal);
       if (!approval.approved) {
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);
@@ -95,8 +174,8 @@ export async function runWorkflow(
       // ya da iptal edilebilir (üç kanal yarışır).
       if (approval.runAt && approval.runAt > Date.now()) {
         bus.emit({ type: "run_scheduled", agent: agent.key, runAt: approval.runAt });
-        console.log(`\n⏰ ${agent.name} planı ${new Date(approval.runAt).toLocaleString()} için zamanlandı — bekleniyor…`);
-        const { outcome, source } = await waitForScheduledTime(approval.runAt, web);
+        console.log(`\n⏰ ${agent.name} planı ${fmtDate(approval.runAt)} için zamanlandı — bekleniyor…`);
+        const { outcome, source } = await waitForScheduledTime(approval.runAt, web, abortController.signal);
         if (outcome === "cancelled") {
           bus.emit({ type: "run_schedule_cancelled", agent: agent.key, source });
           console.log(`\n🛑 Zamanlama iptal edildi (${source}) — koşu sonlandırılıyor.`);
@@ -155,8 +234,24 @@ export async function runWorkflow(
       continue;
     }
 
-    // 3) Koşulsuz geçiş
+    // 3) Koşullu rota: hedef ajan çalıştıktan hemen sonra çözüldü (yukarıda),
+    //    onay ondan sonra yapıldı. Burada sadece o hedefe geçilir.
+    if (agent.config.routes) {
+      current = routeTarget ?? null;
+      continue;
+    }
+
+    // 4) Koşulsuz geçiş
     current = agent.config.next ?? null;
+  }
+  } catch (err) {
+    // Kullanıcı iptali: akışı temiz durdur, panel başlangıç durumuna döner
+    if (err instanceof RunCancelledError) {
+      console.log("\n🛑 Koşu kullanıcı tarafından iptal edildi.");
+      bus.emit({ type: "workflow_cancelled" });
+      return;
+    }
+    throw err;
   }
 
   bus.emit({ type: "workflow_finished" });

@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import { reviewVerdictJsonSchema, type AgentDefinition, type AgentNodeConfig, type WorkflowConfig } from "./types.js";
+import {
+  isCommandNode,
+  reviewVerdictJsonSchema,
+  type AgentDefinition,
+  type AgentNodeConfig,
+  type WorkflowConfig,
+} from "./types.js";
 
 interface LoadedRule {
   name: string;
@@ -93,14 +99,19 @@ function composeSystemPrompt(
 }
 
 function validateEdges(key: string, config: AgentNodeConfig, workflow: WorkflowConfig): void {
-  const targets = [config.next, config.verdict?.onApprove, config.verdict?.onReject];
+  const routeTargets = config.routes
+    ? [...Object.values(config.routes.cases), config.routes.default]
+    : [];
+  const targets = [config.next, config.verdict?.onApprove, config.verdict?.onReject, ...routeTargets];
   for (const target of targets) {
     if (target != null && !workflow.agents[target]) {
       throw new Error(`"${key}" ajanı var olmayan bir ajana işaret ediyor: "${target}"`);
     }
   }
-  if (config.verdict && config.next != null) {
-    throw new Error(`"${key}": verdict ve next aynı anda tanımlanamaz — dallanma verdict ile yapılır`);
+  // next / verdict / routes birbirini dışlar — dallanma tek bir mekanizmayla yapılır
+  const branchCount = [config.next != null, !!config.verdict, !!config.routes].filter(Boolean).length;
+  if (branchCount > 1) {
+    throw new Error(`"${key}": next, verdict ve routes aynı anda tanımlanamaz — biri seçilmeli`);
   }
 }
 
@@ -115,6 +126,16 @@ export function loadAgents(
   const agents = new Map<string, AgentDefinition>();
 
   for (const [key, config] of Object.entries(workflow.agents)) {
+    // Komut düğümü ajan değildir — persona/araç yüklenmez, yalnızca kenarları doğrulanır
+    if (isCommandNode(config)) {
+      for (const target of [config.onSuccess, config.onFailure]) {
+        if (target != null && !workflow.agents[target]) {
+          throw new Error(`"${key}" komut düğümü var olmayan bir düğüme işaret ediyor: "${target}"`);
+        }
+      }
+      continue;
+    }
+
     const mdPath = path.resolve(projectRoot, config.file);
     if (!fs.existsSync(mdPath)) {
       throw new Error(`"${key}" ajanının md dosyası bulunamadı: ${mdPath}`);
