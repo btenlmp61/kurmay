@@ -5,7 +5,12 @@
   "model": "",
   "verdictModel": "",
   "targetDir": "D:\\work\\testapp",
-  "mcpServers": {},
+  "mcpServers": {
+    "jetbrains-index-mcp-server": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "jetbrains-index-mcp-server"]
+    }
+  },
 
   "workflow": {
     "entry": "architect",
@@ -13,7 +18,8 @@
     "agents": {
       "architect": {
         "file": ".claude/agents/architect.md",
-        "tools": ["Read", "Glob", "Grep"],
+        "tools": ["Read", "Glob", "Grep", "mcp__jetbrains-index-mcp-server"],
+        "rules": ["arama"],
         "requiresUserApproval": true,
         "routes": {
           "field": "route",
@@ -23,15 +29,15 @@
       },
       "developer": {
         "file": ".claude/agents/developer.md",
-        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
-        "rules": ["genel"],
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "mcp__jetbrains-index-mcp-server"],
+        "rules": ["genel", "arama"],
         "skills": ["test-yazimi"],
         "next": "reviewer"
       },
       "reviewer": {
         "file": ".claude/agents/reviewer.md",
-        "tools": ["Read", "Glob", "Grep", "Bash"],
-        "rules": ["genel"],
+        "tools": ["Read", "Glob", "Grep", "Bash", "mcp__jetbrains-index-mcp-server"],
+        "rules": ["genel", "arama"],
         "verdict": { "onApprove": null, "onReject": "developer" }
       }
     }

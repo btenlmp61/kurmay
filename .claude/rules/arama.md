@@ -1,0 +1,3 @@
+- Sınıf, sembol, tanım (definition) ve kullanım (usages) aramalarında `mcp__jetbrains-index-mcp-server` araçlarını tercih et — semantik ve daha isabetli.
+- Düz metin, config/kod-dışı dosyalar (yaml, properties, md), çok-dilli arama ya da index yanıt vermezse `Grep`/`Glob` kullan.
+- Değişiklik sonrası "düştü mü" kontrolünde index bayat olabilir; dosyanın anlık halini görmek için `Grep` kullan.
