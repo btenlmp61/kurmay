@@ -6,6 +6,7 @@ import { loadAppConfig } from "./config.js";
 import { EventBus } from "./events.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
+import { SessionStore } from "./sessions.js";
 import type { AgentDefinition, AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
@@ -40,6 +41,7 @@ async function executeRun(
   cwd: string,
   bus: EventBus,
   runsDir: string,
+  sessionStore: { entrySessionId?: string },
   server?: UiServer,
 ): Promise<void> {
   bus.reset();
@@ -62,7 +64,7 @@ async function executeRun(
   server?.setRunAborter(abortController);
 
   try {
-    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval);
+    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore);
   } catch (err) {
     bus.emit({ type: "workflow_failed", error: err instanceof Error ? err.message : String(err) });
     throw err;
@@ -99,21 +101,25 @@ async function main() {
   const runsDir = path.join(configRoot, "runs");
   fs.mkdirSync(runsDir, { recursive: true });
 
+  // İsimli architect oturumlarının kalıcı kataloğu (runs/sessions.json)
+  const sessions = new SessionStore(runsDir);
+
   // Sunucu modunda panelden görev kabulü: aynı anda tek koşu
   let running = false;
-  let wakeWithTask: ((task: string) => void) | null = null;
+  let wakeWithTask: ((v: { task: string; resumeSessionId?: string }) => void) | null = null;
 
   let server: UiServer | undefined;
   if (!noUi) {
     server = await startUiServer(bus, portFlag ?? cfg.uiPort ?? 4141, {
+      getSessions: () => sessions.all(),
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
-        : (t) => {
+        : (t, resumeSessionId) => {
             if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
             running = true;
             const wake = wakeWithTask;
             wakeWithTask = null;
-            wake(t);
+            wake({ task: t, resumeSessionId });
             return { ok: true };
           },
     });
@@ -125,10 +131,12 @@ async function main() {
   console.log(`🗺  Akış: ${[...agents.keys()].join(" → ")} (entry: ${cfg.workflow.entry})`);
 
   if (task) {
-    // Tek görev modu: çalıştır ve çık
+    // Tek görev modu: çalıştır ve çık (yeni oturum)
+    const sessionStore = { entrySessionId: undefined as string | undefined };
     try {
-      await executeRun(task, cfg, agents, cwd, bus, runsDir, server);
+      await executeRun(task, cfg, agents, cwd, bus, runsDir, sessionStore, server);
     } finally {
+      if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
     }
     return;
@@ -137,16 +145,22 @@ async function main() {
   // Sunucu modu: panelden görev bekle, bitince yenisini bekle
   console.log("⏳ Görev bekleniyor — panelden girebilirsin.");
   while (true) {
-    const nextTask = await new Promise<string>((resolve) => {
-      wakeWithTask = resolve;
-    });
+    const { task: nextTask, resumeSessionId } = await new Promise<{ task: string; resumeSessionId?: string }>(
+      (resolve) => {
+        wakeWithTask = resolve;
+      },
+    );
+    // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
+    const sessionStore = { entrySessionId: resumeSessionId };
     try {
-      await executeRun(nextTask, cfg, agents, cwd, bus, runsDir, server);
+      await executeRun(nextTask, cfg, agents, cwd, bus, runsDir, sessionStore, server);
     } catch (err) {
       // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
       console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);
     } finally {
       running = false;
+      // architect bir oturum ürettiyse katalogla (yeni id ise ismiyle eklenir)
+      if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, nextTask);
     }
     console.log("\n⏳ Yeni görev bekleniyor — panelden girebilirsin.");
   }

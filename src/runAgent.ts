@@ -27,6 +27,7 @@ async function executeQuery(
   bus: EventBus,
   useSchema: boolean,
   abortController: AbortController,
+  resume?: string,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
@@ -40,6 +41,8 @@ async function executeQuery(
       cwd,
       // Kullanıcı iptali: abort edilince SDK alttaki Claude Code sürecini öldürür
       abortController,
+      // Verilirse önceki oturumu sürdürür (yeni session açmak yerine)
+      ...(resume ? { resume } : {}),
       // Claude Code'un varsayılan system prompt'u korunur, md içeriği eklenir —
       // böylece araç kullanımı davranışı bozulmaz.
       systemPrompt: { type: "preset", preset: "claude_code", append: agent.systemPrompt },
@@ -73,6 +76,7 @@ async function executeQuery(
     } else if (message.type === "result") {
       if (message.subtype === "success") {
         result.text = message.result;
+        result.sessionId = message.session_id;
         if (message.structured_output !== undefined) {
           result.structured = message.structured_output;
         }
@@ -109,17 +113,18 @@ export async function runAgent(
   cfg: ProviderConfig,
   bus: EventBus,
   abortController: AbortController,
+  resume?: string,
 ): Promise<AgentRunResult> {
-  console.log(`\n━━━ ▶ ${agent.name} çalışıyor ━━━`);
+  console.log(`\n━━━ ▶ ${agent.name} çalışıyor${resume ? " (oturum sürdürülüyor)" : ""} ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
 
-  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true, abortController);
+  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true, abortController, resume);
 
   if (result === SCHEMA_FAILED) {
     const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
-    result = await executeQuery(agent, prompt, cwd, cfg, bus, false, abortController);
+    result = await executeQuery(agent, prompt, cwd, cfg, bus, false, abortController, resume);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
     }

@@ -14,8 +14,11 @@ export interface UiServer {
 }
 
 export interface UiServerOptions {
-  /** Panelden görev gönderimi (POST /task). Kabul edilmezse error döndür. */
-  onTask?: (task: string) => { ok: boolean; error?: string };
+  /** Panelden görev gönderimi (POST /task). resumeSessionId verilirse o architect
+   *  oturumu sürdürülür, yoksa yeni oturum. Kabul edilmezse error döndür. */
+  onTask?: (task: string, resumeSessionId?: string) => { ok: boolean; error?: string };
+  /** İsimli architect oturumları listesi (GET /sessions) */
+  getSessions?: () => unknown[];
 }
 
 /**
@@ -128,6 +131,12 @@ export function startUiServer(
       return;
     }
 
+    if (req.method === "GET" && req.url === "/sessions") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(options.getSessions?.() ?? []));
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/cancel") {
       if (!runAborter || runAborter.signal.aborted) {
         res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
@@ -153,13 +162,17 @@ export function startUiServer(
           return;
         }
         try {
-          const parsed = JSON.parse(body) as { task?: unknown };
+          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown };
           const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
           if (!task) {
             json(400, { ok: false, error: "görev boş olamaz" });
             return;
           }
-          const result = options.onTask(task);
+          const resumeSessionId =
+            typeof parsed.resumeSessionId === "string" && parsed.resumeSessionId
+              ? parsed.resumeSessionId
+              : undefined;
+          const result = options.onTask(task, resumeSessionId);
           json(result.ok ? 202 : 409, result);
         } catch {
           json(400, { ok: false, error: "geçersiz JSON" });

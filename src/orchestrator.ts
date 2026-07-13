@@ -102,6 +102,9 @@ export async function runWorkflow(
   bus: EventBus,
   abortController: AbortController,
   web?: WebApprovalChannel,
+  // Entry ajanın SDK oturum kimliği burada tutulur: gelen değer varsa o oturum
+  // sürdürülür (resume), koşu boyunca en güncel kimlikle güncellenir (bellekte)
+  sessionStore: { entrySessionId?: string } = {},
 ): Promise<void> {
   const ctx: RunContext = { task, outputs: new Map(), changedFiles: [] };
   let current: string | null = workflow.entry;
@@ -139,7 +142,13 @@ export async function runWorkflow(
     }
 
     const agent: AgentDefinition = agents.get(current)!;
-    const result = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController);
+    // Yalnızca entry ajan (architect) oturum sürdürür; diğerleri her koşuda taze
+    const isEntry = agent.key === workflow.entry;
+    const result = await runAgent(
+      agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController,
+      isEntry ? sessionStore.entrySessionId : undefined,
+    );
+    if (isEntry && result.sessionId) sessionStore.entrySessionId = result.sessionId;
     ctx.outputs.set(agent.key, { name: agent.name, result });
     ctx.feedback = undefined;
     // Structured çıktı değişen dosyalar taşıyorsa build düğümü için sakla

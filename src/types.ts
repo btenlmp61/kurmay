@@ -159,4 +159,6 @@ export interface AgentDefinition {
 export interface AgentRunResult {
   text: string;
   structured?: unknown;
+  /** SDK oturum kimliği — resume (oturumu sürdürme) için saklanır */
+  sessionId?: string;
 }
