@@ -9,6 +9,8 @@ export type OrchestratorEvent =
       entry: string;
       maxCycles: number;
       agents: string[];
+      /** true ise entry ajan önceki oturumu sürdürüyor — panel akışı temizlenmez */
+      resumed?: boolean;
     }
   | { type: "agent_started"; agent: string }
   | { type: "agent_text"; agent: string; text: string }

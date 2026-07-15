@@ -8,37 +8,76 @@
   "mcpServers": {
     "jetbrains-index-mcp-server": {
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "jetbrains-index-mcp-server"]
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "jetbrains-index-mcp-server"
+      ]
     }
   },
-
   "workflow": {
     "entry": "architect",
     "maxCycles": 5,
     "agents": {
       "architect": {
         "file": ".claude/agents/architect.md",
-        "tools": ["Read", "Glob", "Grep", "mcp__jetbrains-index-mcp-server"],
-        "rules": ["arama"],
+        "tools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "arama"
+        ],
         "requiresUserApproval": true,
         "routes": {
           "field": "route",
-          "cases": { "developer": "developer", "done": null },
+          "cases": {
+            "developer": "developer",
+            "done": null
+          },
           "default": "developer"
         }
       },
       "developer": {
         "file": ".claude/agents/developer.md",
-        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "mcp__jetbrains-index-mcp-server"],
-        "rules": ["genel", "arama"],
-        "skills": ["test-yazimi"],
+        "tools": [
+          "Read",
+          "Write",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Bash",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "genel",
+          "arama"
+        ],
+        "skills": [
+          "test-yazimi"
+        ],
         "next": "reviewer"
       },
       "reviewer": {
         "file": ".claude/agents/reviewer.md",
-        "tools": ["Read", "Glob", "Grep", "Bash", "mcp__jetbrains-index-mcp-server"],
-        "rules": ["genel", "arama"],
-        "verdict": { "onApprove": null, "onReject": "developer" }
+        "tools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "Bash",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "genel",
+          "arama"
+        ],
+        "verdict": {
+          "onApprove": null,
+          "onReject": "developer"
+        }
       }
     }
   }

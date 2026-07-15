@@ -36,6 +36,23 @@ export class RunCancelledError extends Error {
   }
 }
 
+/**
+ * Ajana bağlı komut-hook'u. SDK'nin hook mekanizmasına bağlanır: belirtilen
+ * olayda (PreToolUse/PostToolUse vb.) komut çalıştırılır, hook girdisi stdin'e
+ * JSON verilir; komut `exit 2` ile aracı ENGELLER (stderr = gerekçe), `exit 0`
+ * ile izin verir (JSON stdout ileri kullanım için doğrudan aktarılır).
+ */
+export interface HookConfig {
+  /** Hook olayı: "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" ... */
+  event: string;
+  /** Araç adı eşleştirici (regex) — PreToolUse/PostToolUse için (ör. "Bash", "Write|Edit") */
+  matcher?: string;
+  /** Çalıştırılacak kabuk komutu (hook girdisi stdin'e JSON gelir) */
+  command: string;
+  /** Saniye cinsinden zaman aşımı (varsayılan 60) */
+  timeout?: number;
+}
+
 export interface AgentNodeConfig {
   /** Düğüm türü — ajan düğümü (varsayılan). Komut düğümleri "command" kullanır. */
   type?: "agent";
@@ -50,6 +67,8 @@ export interface AgentNodeConfig {
   skills?: string[];
   /** İsteğe bağlı model override'ı (config'deki genel "model" alanını ezer) */
   model?: string;
+  /** Bu ajana bağlı komut-hook'ları (araç kapıları, otomatik lint/format vb.) */
+  hooks?: HookConfig[];
   /** true ise bu ajanın çıktısı sonrasında kullanıcı onayı beklenir */
   requiresUserApproval?: boolean;
   /** Koşulsuz geçiş: bir sonraki ajanın adı (null/tanımsız = akış biter) */

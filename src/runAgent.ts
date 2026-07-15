@@ -1,5 +1,6 @@
 import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
+import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
 import { RunCancelledError, type AgentDefinition, type AgentRunResult, type ProviderConfig } from "./types.js";
 
@@ -31,6 +32,7 @@ async function executeQuery(
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
+  const hooks = buildHooks(agent.config.hooks, cwd);
   const result: AgentRunResult = { text: "" };
 
   let iterator;
@@ -54,6 +56,7 @@ async function executeQuery(
       ...(cfg.mcpServers && Object.keys(cfg.mcpServers).length > 0
         ? { mcpServers: cfg.mcpServers as Record<string, McpServerConfig> }
         : {}),
+      ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
     },

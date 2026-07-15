@@ -44,7 +44,9 @@ async function executeRun(
   sessionStore: { entrySessionId?: string },
   server?: UiServer,
 ): Promise<void> {
-  bus.reset();
+  // Resume'lu koşuda panel geçmişini temizleme — konuşma birikiyormuş gibi görünsün
+  const resumed = !!sessionStore.entrySessionId;
+  if (!resumed) bus.reset();
   const runLog = path.join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
 
@@ -57,6 +59,7 @@ async function executeRun(
     entry: cfg.workflow.entry,
     maxCycles: cfg.workflow.maxCycles,
     agents: [...agents.keys()],
+    resumed,
   });
 
   // Koşu başına iptal denetçisi: panelden POST /cancel bunu abort eder
@@ -79,7 +82,8 @@ async function main() {
   const { task, configPath, cwdFlag, portFlag, noUi } = parseArgs(process.argv.slice(2));
 
   const cfg = loadAppConfig(configPath);
-  const configRoot = path.dirname(path.resolve(configPath));
+  const resolvedConfigPath = path.resolve(configPath);
+  const configRoot = path.dirname(resolvedConfigPath);
   // md dosya yolları config dosyasının bulunduğu dizine göre çözülür
   const agents = loadAgents(cfg.workflow, configRoot);
 
@@ -112,6 +116,52 @@ async function main() {
   if (!noUi) {
     server = await startUiServer(bus, portFlag ?? cfg.uiPort ?? 4141, {
       getSessions: () => sessions.all(),
+      deleteSession: (id) => sessions.remove(id),
+      getConfigData: () => {
+        const raw = fs.readFileSync(resolvedConfigPath, "utf8");
+        const ls = (sub: string) => {
+          try {
+            return fs.readdirSync(path.join(configRoot, ".claude", sub), { withFileTypes: true });
+          } catch {
+            return [];
+          }
+        };
+        const rules = ls("rules")
+          .filter((e) => e.isFile() && e.name.endsWith(".md"))
+          .map((e) => e.name.replace(/\.md$/, ""));
+        const skills = ls("skills").filter((e) => e.isDirectory()).map((e) => e.name);
+        const agentMds = ls("agents")
+          .filter((e) => e.isFile() && e.name.endsWith(".md"))
+          .map((e) => e.name.replace(/\.md$/, ""));
+        return { raw, rules, skills, agents: agentMds };
+      },
+      createAgentMd: (name) => {
+        // path traversal'a karşı ad temizlenir; yalnızca .claude/agents altına yazılır
+        const safe = String(name).trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
+        if (!safe) return { ok: false, error: "geçersiz persona adı" };
+        const rel = `.claude/agents/${safe}.md`;
+        const abs = path.join(configRoot, rel);
+        if (fs.existsSync(abs)) return { ok: false, error: `zaten var: ${rel}` };
+        const tpl =
+          `---\nname: ${safe}\ndescription: ${safe} ajanı\n---\n\n` +
+          `Sen ${safe} rolündeki bir ajansın. Görevini yerine getir; çıktın net ve uygulanabilir olsun.\n`;
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, tpl);
+        return { ok: true, file: rel };
+      },
+      saveConfig: (text): string | null => {
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          JSON.parse(text); // geçerli JSON mu
+          fs.writeFileSync(resolvedConfigPath, text);
+          const c = loadAppConfig(resolvedConfigPath); // yapı + mcp + komut doğrulaması
+          loadAgents(c.workflow, configRoot); // kenar + md + kural/beceri doğrulaması
+          return null;
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return e instanceof Error ? e.message : String(e);
+        }
+      },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, resumeSessionId) => {

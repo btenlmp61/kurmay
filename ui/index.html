@@ -27,12 +27,16 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
 .sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
 .sidebar-head .label { margin:0; }
 .sidebar-head button { padding:2px 9px; font-size:13px; }
-.sess { padding:8px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent; margin-bottom:4px; }
+.sess { display:flex; align-items:center; gap:6px; padding:8px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent; margin-bottom:4px; }
 .sess:hover { background:var(--bg); }
 .sess.active { border-color:var(--blue); background:var(--blueBg); }
+.sess-main { flex:1; min-width:0; }
 .sess .nm { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sess .meta { font-size:11px; color:var(--muted); }
 .sess-new { font-weight:600; color:var(--teal); }
+.sess-del { border:none; background:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:6px; opacity:0; }
+.sess:hover .sess-del { opacity:1; }
+.sess-del:hover { color:var(--red); background:var(--redBg); }
 .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 22px; margin-bottom:16px; }
 .label { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
 .pill { display:inline-block; font-size:12px; padding:2px 10px; border-radius:999px; }
@@ -123,6 +127,7 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
   <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
   <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
   <span class="dir" id="dir"></span>
+  <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
   <button id="btnCancel" class="hidden danger">Durdur</button>
 </div>
 
@@ -306,7 +311,7 @@ function handle(e) {
       $("provider").textContent = e.provider;
       $("dir").textContent = e.targetDir;
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
-      $("stream").innerHTML = "";
+      if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
       $("verdictCard").classList.add("hidden");
       $("approval").classList.add("hidden");
       $("schedule").classList.add("hidden");
@@ -317,6 +322,7 @@ function handle(e) {
       $("btnCancel").classList.remove("hidden");
       setStatus("çalışıyor", "run");
       renderPipeline();
+      if (e.resumed) addLog(e.ts, "──────── aynı oturumda yeni görev ────────", "muted");
       addLog(e.ts, "iş akışı başladı");
       break;
     case "agent_started":
@@ -561,12 +567,21 @@ async function loadSessions() {
   sessionNames = {};
   list.forEach((s) => (sessionNames[s.id] = s.name));
   $("sessionList").innerHTML = list.map((s) =>
-    `<div class="sess" data-id="${esc(s.id)}"><div class="nm">${esc(s.name)}</div><div class="meta">${fmt(Date.parse(s.updatedAt))}</div></div>`
+    `<div class="sess" data-id="${esc(s.id)}"><div class="sess-main"><div class="nm">${esc(s.name)}</div><div class="meta">${fmt(Date.parse(s.updatedAt))}</div></div><button class="sess-del" data-del="${esc(s.id)}" title="Oturumu listeden sil">×</button></div>`
   ).join("");
   if (selectedSessionId && !sessionNames[selectedSessionId]) selectedSessionId = "";
   selectSession(selectedSessionId);
 }
+async function removeSession(id) {
+  const name = sessionNames[id] || id;
+  if (!confirm(`"${name}" oturumu silinsin mi?\n(Sadece listeden kaldırılır; konuşma diskte kalır.)`)) return;
+  try { await fetch("/session-delete", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ id }) }); } catch {}
+  if (selectedSessionId === id) selectedSessionId = "";
+  loadSessions();
+}
 $("sidebarBody").addEventListener("click", (ev) => {
+  const delBtn = ev.target.closest(".sess-del");
+  if (delBtn) { removeSession(delBtn.dataset.del); return; }
   const el = ev.target.closest(".sess");
   if (el) selectSession(el.dataset.id || "");
 });

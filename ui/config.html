@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>alpai config editörü</title>
+<style>
+:root {
+  --bg:#f7f6f3; --card:#ffffff; --border:#e3e1da; --text:#2c2c2a; --muted:#8a887f;
+  --blue:#185FA5; --blueBg:#E6F1FB; --teal:#0F6E56; --tealBg:#E1F5EE;
+  --red:#A32D2D; --redBg:#FCEBEB; --amber:#854F0B; --amberBg:#FAEEDA;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#1e1e1c; --card:#2a2a28; --border:#403f3c; --text:#e8e6e0; --muted:#93918a;
+    --blue:#85B7EB; --blueBg:#0C447C; --teal:#5DCAA5; --tealBg:#085041;
+    --red:#F09595; --redBg:#501313; --amber:#FAC775; --amberBg:#633806;
+  }
+}
+* { box-sizing:border-box; }
+body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,"Segoe UI",sans-serif; max-width:1400px; margin-inline:auto; }
+a { color:var(--blue); }
+.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+.hdr h1 { font-size:18px; margin:0; }
+.hdr .sp { flex:1; }
+button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
+button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
+button.danger { border-color:var(--red); color:var(--red); }
+button:disabled { opacity:.5; cursor:default; }
+.pill { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; }
+.layout { display:flex; gap:16px; align-items:flex-start; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+.graph { flex:1; min-width:0; overflow:auto; }
+.side { flex:0 0 340px; width:340px; position:sticky; top:20px; }
+.label { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+svg { display:block; }
+.gnode rect { rx:10; cursor:pointer; }
+.gnode text { font-size:13px; font-weight:600; fill:var(--text); pointer-events:none; }
+.gnode .sub { font-size:10px; font-weight:400; fill:var(--muted); }
+.hint { font-size:12px; color:var(--muted); }
+.fhint { font-size:11px; color:var(--muted); margin-top:3px; line-height:1.4; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:10px; }
+.legend .k { display:inline-flex; align-items:center; gap:5px; }
+.legend .sw { width:20px; height:0; border-top:2px solid; display:inline-block; }
+.intro { font-size:13px; color:var(--muted); margin-bottom:10px; line-height:1.5; }
+.minl { display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
+.gbar { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
+.gbar .grow { flex:1; min-width:220px; }
+input[type=checkbox] { width:auto; }
+.field { margin-bottom:12px; }
+.field > label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+input[type=text], select { font:inherit; font-size:13px; padding:6px 9px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); width:100%; }
+.row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.chip { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; border-radius:999px; background:var(--blueBg); color:var(--blue); }
+.chip button { padding:0 3px; border:none; background:none; color:inherit; font-size:14px; line-height:1; }
+.chips { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; }
+.tybadge { font-size:10px; padding:1px 7px; border-radius:999px; }
+.tybadge.agent { background:var(--blueBg); color:var(--blue); }
+.tybadge.command { background:var(--amberBg); color:var(--amber); }
+.tybadge.entry { background:var(--tealBg); color:var(--teal); }
+#msg { font-size:13px; }
+.mono { font-family:ui-monospace,Consolas,monospace; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>Config editörü</h1>
+  <span class="pill" id="prov" style="background:var(--bg);color:var(--muted)"></span>
+  <span class="pill" id="dir" style="background:var(--bg);color:var(--muted)"></span>
+  <span class="sp"></span>
+  <span id="msg"></span>
+  <button class="primary" id="btnSave" disabled>Kaydet</button>
+  <a href="/">← izleme paneli</a>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="gbar">
+    <div class="grow">
+      <label class="minl">Çalışma dizini (targetDir)</label>
+      <input type="text" id="tdir" placeholder="D:\work\proje">
+    </div>
+    <div>
+      <label class="minl">Başlangıç düğümü (entry)</label>
+      <select id="entrySel"></select>
+    </div>
+    <button id="btnAdd">+ Düğüm ekle</button>
+  </div>
+  <div id="addForm" class="hidden" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+    <div class="gbar">
+      <div><label class="minl">Anahtar (key)</label><input type="text" id="ndKey" placeholder="ör. tester" style="width:150px"></div>
+      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">agent</option><option value="command">command (build)</option></select></div>
+      <div id="ndAgentSrc"><label class="minl">Rol tanımı (.md · system prompt)</label><select id="ndMd"></select></div>
+      <div id="ndNewMd" class="hidden"><label class="minl">Yeni rol adı</label><input type="text" id="ndMdName" placeholder="ör. tester" style="width:150px"></div>
+      <button class="primary" id="ndAddBtn">Ekle</button>
+      <button id="ndCancel">Vazgeç</button>
+    </div>
+    <div id="ndErr" class="fhint" style="color:var(--red)"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="card graph">
+    <div class="label">İş akışı grafı</div>
+    <div class="intro">Ajanların hangi sırayla çalışacağı bu grafta tanımlı — geçişler koda gömülü değil, config'ten gelir.
+      Kutular <b>düğümler</b> (ajanlar + build), oklar <b>geçişler</b>. Bir düğüme tıkla → sağda özelliklerini düzenle, sonra <b>Kaydet</b>.</div>
+    <div id="graph"></div>
+    <div class="legend">
+      <span class="k"><span class="sw" style="border-color:var(--muted)"></span> next (koşulsuz)</span>
+      <span class="k"><span class="sw" style="border-color:var(--blue)"></span> route (koşullu)</span>
+      <span class="k"><span class="sw" style="border-color:var(--teal)"></span> onay / başarılı</span>
+      <span class="k"><span class="sw" style="border-color:var(--red)"></span> red / hata</span>
+      <span class="k"><span class="tybadge entry">entry</span> başlangıç düğümü</span>
+    </div>
+  </div>
+  <div class="card side" id="side">
+    <div class="label">Özellikler</div>
+    <div id="panel"><div class="hint">Düzenlemek için bir düğüm seç.</div></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s){ return String(s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+let cfg = null, meta = { rules:[], skills:[], agents:[] }, selected = null, dirty = false;
+const STD_TOOLS = ["Read","Write","Edit","Glob","Grep","Bash","WebSearch","WebFetch","ToolSearch"];
+function markDirty(){ dirty = true; $("btnSave").disabled = false; $("msg").textContent = ""; }
+function nodeExists(k){ return Object.prototype.hasOwnProperty.call(nodes(), k); }
+function refreshEntry(){
+  $("entrySel").innerHTML = keys().map((k)=>`<option ${k===cfg.workflow.entry?"selected":""}>${esc(k)}</option>`).join("");
+}
+
+function nodes(){ return cfg.workflow.agents; }
+function keys(){ return Object.keys(nodes()); }
+function isCmd(n){ return n && n.type === "command"; }
+
+// Bir düğümün çıkış kenarları (çizim + panel için)
+function outEdges(key){
+  const n = nodes()[key], e = [];
+  if (isCmd(n)) {
+    if (n.onSuccess) e.push({ to:n.onSuccess, kind:"ok", label:"başarılı" });
+    if (n.onFailure) e.push({ to:n.onFailure, kind:"fail", label:"hata" });
+  } else if (n.verdict) {
+    if (n.verdict.onApprove) e.push({ to:n.verdict.onApprove, kind:"ok", label:"onay" });
+    if (n.verdict.onReject) e.push({ to:n.verdict.onReject, kind:"fail", label:"red" });
+  } else if (n.routes) {
+    for (const [val,t] of Object.entries(n.routes.cases)) if (t) e.push({ to:t, kind:"route", label:val });
+    if (n.routes.default) e.push({ to:n.routes.default, kind:"route", label:"default" });
+  } else if (n.next) {
+    e.push({ to:n.next, kind:"next", label:"" });
+  }
+  return e;
+}
+
+// ── Graf çizimi (basit katmanlı yerleşim) ──────────────────────────
+const COL=320, ROW=104, BW=160, BH=56, PAD=28;
+const EDGE_COLOR = { next:"var(--muted)", ok:"var(--teal)", fail:"var(--red)", route:"var(--blue)" };
+
+function layout(){
+  const entry = cfg.workflow.entry;
+  const depth = {}; depth[entry] = 0;
+  const q = [entry];
+  while (q.length){
+    const cur = q.shift();
+    for (const {to} of outEdges(cur)) if (depth[to] === undefined){ depth[to] = depth[cur]+1; q.push(to); }
+  }
+  let d = 0;
+  for (const k of keys()) if (depth[k] === undefined) depth[k] = d++; // ulaşılamayanlar sola
+  // katman -> düğümler
+  const cols = {};
+  for (const k of keys()){ (cols[depth[k]] = cols[depth[k]] || []).push(k); }
+  const pos = {};
+  let maxRow = 0;
+  for (const [layer, ks] of Object.entries(cols)){
+    ks.forEach((k,i)=>{ pos[k] = { x: PAD + layer*COL, y: PAD + i*ROW }; });
+    maxRow = Math.max(maxRow, ks.length);
+  }
+  const maxLayer = Math.max(...Object.keys(cols).map(Number));
+  return { pos, w: PAD*2 + maxLayer*COL + BW, h: PAD*2 + Math.max(1,maxRow)*ROW };
+}
+
+function drawGraph(){
+  const { pos, w, h } = layout();
+  // Aynı iki düğüm arasındaki kenarları TEK kenarda birleştir (etiketleri virgülle),
+  // yoksa architect→developer gibi paralel kenarlar üst üste binip karışıyordu.
+  const groups = {};
+  for (const k of keys()) for (const e of outEdges(k)){
+    if (!pos[k] || !pos[e.to]) continue;
+    const id = k + " " + e.to;
+    (groups[id] = groups[id] || { from:k, to:e.to, kinds:new Set(), labels:[] });
+    groups[id].kinds.add(e.kind);
+    if (e.label) groups[id].labels.push(e.label);
+  }
+
+  const paths = Object.values(groups).map((g)=>{
+    const a = pos[g.from], b = pos[g.to];
+    const forward = b.x >= a.x;
+    // İleri: kaynağın sağından hedefin soluna. Geri (döngü): kaynağın solundan
+    // hedefin sağına, alttan kavisle — kutuların üstünden geçmesin.
+    const x1 = forward ? a.x+BW : a.x, y1 = a.y+BH/2;
+    const x2 = forward ? b.x : b.x+BW, y2 = b.y+BH/2;
+    const dip = forward ? 0 : 52;
+    const c1x = forward ? x1+50 : x1-50, c2x = forward ? x2-50 : x2+50;
+    const kind = g.kinds.size===1 ? [...g.kinds][0] : "next";
+    const c = EDGE_COLOR[kind];
+    const d = `M ${x1} ${y1} C ${c1x} ${y1+dip}, ${c2x} ${y2+dip}, ${x2} ${y2}`;
+    const label = g.labels.join(", ");
+    const mx = (x1+x2)/2, my = (y1+y2)/2 + dip*0.72;
+    const bw = label.length*6 + 8;
+    const lbl = label
+      ? `<rect x="${mx-bw/2}" y="${my-13}" width="${bw}" height="15" rx="4" fill="var(--card)" stroke="var(--border)" stroke-width="0.5"/>
+         <text x="${mx}" y="${my-2}" text-anchor="middle" font-size="10" fill="${c}">${esc(label)}</text>`
+      : "";
+    return `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.8" marker-end="url(#arw-${kind})"/>${lbl}`;
+  }).join("");
+
+  const boxes = keys().map((k)=>{
+    const p = pos[k], n = nodes()[k];
+    const ty = isCmd(n) ? "command" : "agent";
+    const isEntry = k === cfg.workflow.entry;
+    const fill = k===selected ? "var(--blueBg)" : "var(--card)";
+    const stroke = k===selected ? "var(--blue)" : "var(--border)";
+    const badge = isEntry ? "entry" : ty;
+    return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})">
+      <rect width="${BW}" height="${BH}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
+      <text x="12" y="24">${esc(k)}</text>
+      <text class="sub" x="12" y="42">${isCmd(n)?"command":(n.verdict?"verdict":(n.routes?"routes":"next"))}${isEntry?" · entry":""}</text>
+    </g>`;
+  }).join("");
+
+  const markers = ["next","ok","fail","route"].map((kd)=>
+    `<marker id="arw-${kd}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+       <path d="M0,0 L8,4 L0,8 Z" fill="${EDGE_COLOR[kd]}"/></marker>`).join("");
+
+  $("graph").innerHTML =
+    `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${markers}</defs>${paths}${boxes}</svg>`;
+  $("graph").querySelectorAll(".gnode").forEach((g)=>
+    g.addEventListener("click", ()=>{ selected = g.dataset.key; render(); }));
+}
+
+// ── Özellik paneli ─────────────────────────────────────────────────
+function targetSelect(cur, onChange, allowEnd){
+  const opts = (allowEnd ? [`<option value="">(bitir)</option>`] : [])
+    .concat(keys().map((k)=>`<option value="${esc(k)}" ${k===cur?"selected":""}>${esc(k)}</option>`)).join("");
+  const s = document.createElement("select");
+  s.innerHTML = opts;
+  s.value = cur || "";
+  s.addEventListener("change", ()=> onChange(s.value || null));
+  return s;
+}
+function field(labelText, el, hint){
+  const d = document.createElement("div"); d.className = "field";
+  const l = document.createElement("label"); l.textContent = labelText;
+  d.appendChild(l); d.appendChild(el);
+  if (hint){ const h = document.createElement("div"); h.className="fhint"; h.textContent = hint; d.appendChild(h); }
+  return d;
+}
+function chipEditor(list, options, onChange){
+  const wrap = document.createElement("div");
+  const chips = document.createElement("div"); chips.className = "chips";
+  list.forEach((v,i)=>{
+    const c = document.createElement("span"); c.className="chip";
+    c.innerHTML = `<span class="mono">${esc(v)}</span>`;
+    const x = document.createElement("button"); x.textContent="×";
+    x.addEventListener("click", ()=>{ list.splice(i,1); onChange(); });
+    c.appendChild(x); chips.appendChild(c);
+  });
+  wrap.appendChild(chips);
+  const avail = options.filter((o)=> !list.includes(o));
+  if (avail.length){
+    const sel = document.createElement("select");
+    sel.innerHTML = `<option value="">+ ekle…</option>` + avail.map((o)=>`<option>${esc(o)}</option>`).join("");
+    sel.addEventListener("change", ()=>{ if (sel.value){ list.push(sel.value); onChange(); } });
+    wrap.appendChild(sel);
+  }
+  return wrap;
+}
+
+function render(){
+  drawGraph();
+  const panel = $("panel");
+  panel.innerHTML = "";
+  if (!selected){ panel.innerHTML = `<div class="hint">Düzenlemek için bir düğüm seç.</div>`; return; }
+  const key = selected, n = nodes()[key];
+  const mark = markDirty;
+  const changed = () => { mark(); render(); };
+  const addDelete = () => {
+    const delWrap = document.createElement("div"); delWrap.style.marginTop="16px";
+    const del = document.createElement("button"); del.className="danger"; del.textContent="Bu düğümü sil";
+    if (key === cfg.workflow.entry){ del.disabled = true; del.title = "entry düğümü silinemez — önce başka bir başlangıç seç"; }
+    del.addEventListener("click", ()=>{
+      delete nodes()[key];
+      for (const k of keys()){ const nn = nodes()[k];       // bu düğüme işaret eden kenarları temizle
+        if (nn.next === key) nn.next = null;
+        if (nn.verdict){ if (nn.verdict.onApprove===key) nn.verdict.onApprove=null; if (nn.verdict.onReject===key) nn.verdict.onReject=null; }
+        if (nn.routes){ for (const c in nn.routes.cases) if (nn.routes.cases[c]===key) nn.routes.cases[c]=null; if (nn.routes.default===key) nn.routes.default=null; }
+        if (isCmd(nn)){ if (nn.onSuccess===key) nn.onSuccess=null; if (nn.onFailure===key) nn.onFailure=null; }
+      }
+      selected = null; markDirty(); refreshEntry(); render();
+    });
+    delWrap.appendChild(del); panel.appendChild(delWrap);
+  };
+
+  const head = document.createElement("div");
+  const ty = isCmd(n) ? "command" : "agent";
+  head.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${esc(key)}</div>
+    <span class="tybadge ${key===cfg.workflow.entry?"entry":ty}">${key===cfg.workflow.entry?"entry · ":""}${ty}</span>`;
+  panel.appendChild(head);
+  const desc = document.createElement("div"); desc.className="fhint"; desc.style.margin="6px 0 2px";
+  desc.textContent = isCmd(n)
+    ? "LLM değil — değişen repoları sırayla build eden deterministik komut adımı."
+    : (n.routes ? "Ajan; structured çıktısındaki rota alanına göre dallanır (ör. developer / done)."
+    : (n.verdict ? "İnceleme ajanı; kararına göre onApprove/onReject'e dallanır."
+    : "Ajan; işini bitince koşulsuz olarak next'e geçer."));
+  panel.appendChild(desc);
+  panel.appendChild(document.createElement("hr"));
+
+  if (isCmd(n)){
+    const cmd = document.createElement("input"); cmd.type="text"; cmd.value = n.command||"";
+    cmd.addEventListener("input", ()=>{ n.command = cmd.value; mark(); });
+    panel.appendChild(field("command (varsayılan build komutu)", cmd, "Değişen servis repolarında çalıştırılan komut (ör. mvn clean install)."));
+
+    // parent: ortak/parent repo (değişmişse diğerlerinden ÖNCE, kendi komutuyla build edilir)
+    const pWrap = document.createElement("div"); pWrap.className="field";
+    const pLbl = document.createElement("label"); pLbl.style.cssText="display:flex;align-items:center;gap:6px;font-size:13px";
+    const pChk = document.createElement("input"); pChk.type="checkbox"; pChk.checked = !!n.parent;
+    pChk.addEventListener("change", ()=>{ if (pChk.checked) n.parent = n.parent || { path:"", command:"" }; else delete n.parent; changed(); });
+    pLbl.appendChild(pChk); pLbl.append("parent repo (varsa)");
+    pWrap.appendChild(pLbl);
+    const pHint = document.createElement("div"); pHint.className="fhint";
+    pHint.textContent="Ortak modül (ör. common-events); değişmişse diğer repolardan ÖNCE, kendi komutuyla build edilir.";
+    pWrap.appendChild(pHint); panel.appendChild(pWrap);
+    if (n.parent){
+      const pp = document.createElement("input"); pp.type="text"; pp.value=n.parent.path||""; pp.placeholder="common-events";
+      pp.addEventListener("input", ()=>{ n.parent.path = pp.value; mark(); });
+      panel.appendChild(field("parent.path (repo klasörü)", pp, "targetDir altındaki parent repo klasörü."));
+      const pc = document.createElement("input"); pc.type="text"; pc.value=n.parent.command||""; pc.placeholder="(boşsa yukarıdaki komut)";
+      pc.addEventListener("input", ()=>{ if (pc.value.trim()) n.parent.command = pc.value; else delete n.parent.command; mark(); });
+      panel.appendChild(field("parent.command", pc, "Parent'a özel build komutu; boşsa varsayılan komut kullanılır."));
+    }
+
+    panel.appendChild(field("onSuccess", targetSelect(n.onSuccess, (v)=>{ n.onSuccess=v; changed(); }, true), "Build başarılıysa gidilecek düğüm ((bitir)=akış sonlanır)."));
+    panel.appendChild(field("onFailure", targetSelect(n.onFailure, (v)=>{ n.onFailure=v; changed(); }, false), "Build hatasında gidilecek düğüm — hata logu geri bildirim olur."));
+    addDelete();
+    return;
+  }
+
+  // agent: rol tanımı dosyası (salt-okunur)
+  const f = document.createElement("input"); f.type="text"; f.value = n.file||""; f.disabled = true;
+  panel.appendChild(field("rol tanımı — .md (salt-okunur)", f,
+    "Ajanın \"kim olduğu ve nasıl davranacağı\" (system prompt). .claude/agents içindeki md dosyası — buna persona da denir."));
+
+  // requiresUserApproval
+  const chk = document.createElement("input"); chk.type="checkbox"; chk.checked = !!n.requiresUserApproval;
+  chk.addEventListener("change", ()=>{ n.requiresUserApproval = chk.checked; mark(); });
+  const chkL = document.createElement("label"); chkL.style.cssText="display:flex;align-items:center;gap:6px;font-size:13px";
+  chkL.appendChild(chk); chkL.append("requiresUserApproval");
+  const chkF = document.createElement("div"); chkF.className="field"; chkF.appendChild(chkL);
+  const chkH = document.createElement("div"); chkH.className="fhint";
+  chkH.textContent = "Açıksa bu ajanın çıktısından sonra kullanıcı onayı beklenir (terminal veya panelden).";
+  chkF.appendChild(chkH);
+  panel.appendChild(chkF);
+
+  // model
+  const m = document.createElement("input"); m.type="text"; m.value = n.model||""; m.placeholder="(genel model)";
+  m.addEventListener("input", ()=>{ if (m.value.trim()) n.model = m.value.trim(); else delete n.model; mark(); });
+  panel.appendChild(field("model (override)", m, "Bu ajana özel model; boşsa config'teki genel model kullanılır."));
+
+  // tools
+  n.tools = n.tools || [];
+  const mcpTools = Object.keys(cfg.mcpServers||{}).map((s)=>"mcp__"+s);
+  panel.appendChild(field("tools", chipEditor(n.tools, STD_TOOLS.concat(mcpTools), changed),
+    "Ajanın kullanabileceği araçlar. mcp__ ile başlayanlar bir MCP sunucusunu gösterir."));
+
+  // rules
+  n.rules = n.rules || [];
+  panel.appendChild(field("rules", chipEditor(n.rules, meta.rules, changed),
+    "Her zaman system prompt'a gömülen kısa kurallar (.claude/rules)."));
+
+  // skills
+  if (meta.skills.length){
+    n.skills = n.skills || [];
+    panel.appendChild(field("skills", chipEditor(n.skills, meta.skills, changed),
+      "İlgili görülürse ajanın Read ile okuyacağı beceriler (.claude/skills)."));
+  }
+
+  // kenarlar: next / verdict / routes
+  const eh = document.createElement("div"); eh.className="label"; eh.style.marginTop="6px"; eh.textContent="Geçişler";
+  panel.appendChild(eh);
+  if (n.verdict){
+    panel.appendChild(field("verdict.onApprove", targetSelect(n.verdict.onApprove, (v)=>{ n.verdict.onApprove=v; changed(); }, true), "Reviewer onaylarsa gidilecek düğüm ((bitir)=akış biter)."));
+    panel.appendChild(field("verdict.onReject", targetSelect(n.verdict.onReject, (v)=>{ n.verdict.onReject=v; changed(); }, false), "Reviewer reddederse düzeltme için geri gönderilecek düğüm."));
+  } else if (n.routes){
+    const fl = document.createElement("input"); fl.type="text"; fl.value=n.routes.field; fl.disabled=true;
+    panel.appendChild(field("routes.field (çıktı alanı)", fl, "Ajanın structured çıktısındaki hangi alana göre dallanılacağı (ör. route)."));
+    for (const val of Object.keys(n.routes.cases))
+      panel.appendChild(field(`route "${val}" →`, targetSelect(n.routes.cases[val], (v)=>{ n.routes.cases[val]=v; changed(); }, true), `Alan değeri "${val}" ise gidilecek düğüm ((bitir)=akış biter).`));
+    panel.appendChild(field("routes.default →", targetSelect(n.routes.default, (v)=>{ n.routes.default=v; changed(); }, true), "Tanınmayan/eksik değerde gidilecek düğüm (güvenli varsayılan)."));
+  } else {
+    panel.appendChild(field("next", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true), "İş bitince koşulsuz gidilecek sonraki düğüm ((bitir)=akış biter)."));
+  }
+  addDelete();
+}
+
+async function save(){
+  $("btnSave").disabled = true; $("msg").textContent = "kaydediliyor…";
+  // boş rules/skills dizilerini temizle
+  for (const k of keys()){ const n = nodes()[k];
+    if (n.rules && n.rules.length===0) delete n.rules;
+    if (n.skills && n.skills.length===0) delete n.skills;
+  }
+  const res = await fetch("/config", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(cfg, null, 2) });
+  const data = await res.json().catch(()=>({}));
+  if (data.ok){ dirty=false; $("msg").innerHTML = `<span style="color:var(--teal)">✓ kaydedildi — değişiklik için serve'ü yeniden başlat</span>`; }
+  else { $("btnSave").disabled=false; $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(data.error||"kaydedilemedi")}</span>`; }
+}
+$("btnSave").addEventListener("click", save);
+
+// ── Çalışma dizini + entry + yeni düğüm ─────────────────────────────
+$("tdir").addEventListener("input", ()=>{ cfg.targetDir = $("tdir").value; markDirty(); $("dir").textContent = cfg.targetDir || "(cwd)"; });
+$("entrySel").addEventListener("change", ()=>{ cfg.workflow.entry = $("entrySel").value; markDirty(); render(); });
+
+function populateMd(){
+  $("ndMd").innerHTML = meta.agents.map((a)=>`<option value="${esc(a)}">${esc(a)}</option>`).join("")
+    + `<option value="__new__">＋ yeni rol tanımı…</option>`;
+}
+function syncAddForm(){
+  const isAgent = $("ndType").value === "agent";
+  $("ndAgentSrc").classList.toggle("hidden", !isAgent);
+  $("ndNewMd").classList.toggle("hidden", !(isAgent && $("ndMd").value === "__new__"));
+}
+$("btnAdd").addEventListener("click", ()=>{
+  const f = $("addForm"); f.classList.toggle("hidden");
+  if (!f.classList.contains("hidden")){
+    $("ndKey").value=""; $("ndErr").textContent=""; $("ndType").value="agent";
+    populateMd(); syncAddForm(); $("ndKey").focus();
+  }
+});
+$("ndCancel").addEventListener("click", ()=> $("addForm").classList.add("hidden"));
+$("ndType").addEventListener("change", syncAddForm);
+$("ndMd").addEventListener("change", syncAddForm);
+$("ndAddBtn").addEventListener("click", async ()=>{
+  $("ndErr").textContent = "";
+  const key = $("ndKey").value.trim();
+  if (!key) return void ($("ndErr").textContent = "anahtar boş olamaz");
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) return void ($("ndErr").textContent = "anahtar yalnızca harf/rakam/-/_ içerebilir");
+  if (nodeExists(key)) return void ($("ndErr").textContent = `"${key}" zaten var`);
+  let node;
+  if ($("ndType").value === "command"){
+    node = { type:"command", command:"mvn clean install -q", onSuccess:null, onFailure: cfg.workflow.entry };
+  } else {
+    let file;
+    if ($("ndMd").value === "__new__"){
+      const name = ($("ndMdName").value.trim() || key);
+      const r = await (await fetch("/agent-md", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ name }) })).json();
+      if (!r.ok) return void ($("ndErr").textContent = r.error || "persona oluşturulamadı");
+      file = r.file;
+      const base = file.replace(/^.*\//, "").replace(/\.md$/, "");
+      if (!meta.agents.includes(base)) meta.agents.push(base);
+    } else {
+      file = `.claude/agents/${$("ndMd").value}.md`;
+    }
+    node = { file, tools:["Read","Glob","Grep"], next:null };
+  }
+  nodes()[key] = node;
+  $("addForm").classList.add("hidden");
+  selected = key; markDirty(); refreshEntry(); render();
+});
+
+async function load(){
+  const d = await (await fetch("/config-data")).json();
+  cfg = JSON.parse(d.raw);
+  meta = { rules: d.rules||[], skills: d.skills||[], agents: d.agents||[] };
+  $("prov").textContent = cfg.provider + (cfg.model?(" · "+cfg.model):"");
+  $("dir").textContent = cfg.targetDir || "(cwd)";
+  $("tdir").value = cfg.targetDir || "";
+  refreshEntry();
+  render();
+}
+load();
+</script>
+</body>
+</html>

@@ -55,6 +55,15 @@ export class SessionStore {
     this.persist();
   }
 
+  /** Katalogdan bir oturumu siler (SDK konuşması korunur); silindiyse true */
+  remove(id: string): boolean {
+    const i = this.list.findIndex((s) => s.id === id);
+    if (i === -1) return false;
+    this.list.splice(i, 1);
+    this.persist();
+    return true;
+  }
+
   private persist(): void {
     fs.writeFileSync(this.file, JSON.stringify(this.list, null, 2));
   }

@@ -1,0 +1,45 @@
+{
+  "provider": "anthropic",
+  "baseUrl": "",
+  "apiKey": "",
+  "model": "",
+  "verdictModel": "",
+  "targetDir": "D:\\work\\testapp",
+  "mcpServers": {},
+
+  "workflow": {
+    "entry": "architect",
+    "maxCycles": 5,
+    "agents": {
+      "architect": {
+        "file": ".claude/agents/architect.md",
+        "tools": ["Read", "Glob", "Grep"],
+        "requiresUserApproval": true,
+        "routes": {
+          "field": "route",
+          "cases": { "developer": "developer", "done": null },
+          "default": "developer"
+        }
+      },
+      "developer": {
+        "file": ".claude/agents/developer.md",
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
+        "skills": ["test-yazimi"],
+        "hooks": [
+          { "event": "PreToolUse", "matcher": "Bash", "command": "node .claude/hooks/guard-bash.js" }
+        ],
+        "next": "reviewer"
+      },
+      "reviewer": {
+        "file": ".claude/agents/reviewer.md",
+        "tools": ["Read", "Glob", "Grep", "Bash"],
+        "rules": ["genel"],
+        "hooks": [
+          { "event": "PreToolUse", "matcher": "Bash", "command": "node .claude/hooks/guard-bash.js" }
+        ],
+        "verdict": { "onApprove": null, "onReject": "developer" }
+      }
+    }
+  }
+}

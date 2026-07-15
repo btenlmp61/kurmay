@@ -19,6 +19,14 @@ export interface UiServerOptions {
   onTask?: (task: string, resumeSessionId?: string) => { ok: boolean; error?: string };
   /** İsimli architect oturumları listesi (GET /sessions) */
   getSessions?: () => unknown[];
+  /** Bir oturumu katalogdan siler (POST /session-delete); silindiyse true */
+  deleteSession?: (id: string) => boolean;
+  /** Config editörü verisi: ham config.json + kullanılabilir kural/beceri/ajan-md adları */
+  getConfigData?: () => { raw: string; rules: string[]; skills: string[]; agents: string[] };
+  /** Config'i doğrulayıp kaydeder; hata varsa mesaj döner, başarılıysa null */
+  saveConfig?: (raw: string) => string | null;
+  /** Yeni ajan düğümü için şablon persona .md oluşturur */
+  createAgentMd?: (name: string) => { ok: boolean; file?: string; error?: string };
 }
 
 /**
@@ -35,7 +43,9 @@ export function startUiServer(
   port: number,
   options: UiServerOptions = {},
 ): Promise<UiServer> {
-  const uiPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui", "index.html");
+  const uiDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
+  const uiPath = path.join(uiDir, "index.html");
+  const configUiPath = path.join(uiDir, "config.html");
   const sseClients = new Set<http.ServerResponse>();
   let pendingApproval: ((r: ApprovalResult) => void) | null = null;
   let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
@@ -131,9 +141,71 @@ export function startUiServer(
       return;
     }
 
+    if (req.method === "GET" && req.url === "/config") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(fs.readFileSync(configUiPath));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/config-data") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(options.getConfigData?.() ?? { raw: "{}", rules: [], skills: [], agents: [] }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/agent-md") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let name = "";
+        try {
+          name = String((JSON.parse(body) as { name?: unknown }).name ?? "");
+        } catch {
+          /* boş ad → hata döner */
+        }
+        const r = options.createAgentMd ? options.createAgentMd(name) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/config") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const err = options.saveConfig ? options.saveConfig(body) : "kaydetme kapalı";
+        if (err) {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: err }));
+        } else {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true }));
+        }
+      });
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/sessions") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(options.getSessions?.() ?? []));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/session-delete") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let id = "";
+        try {
+          id = String((JSON.parse(body) as { id?: unknown }).id ?? "");
+        } catch {
+          /* boş id → false */
+        }
+        const ok = id && options.deleteSession ? options.deleteSession(id) : false;
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok }));
+      });
       return;
     }
 
