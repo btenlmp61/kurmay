@@ -32,6 +32,13 @@ export function loadAppConfig(configPath: string): AppConfig {
     }
   }
 
+  // Sınırlar sayı olmalı — hatalı değer env'e "NaN" olarak sızmasın
+  for (const [key, value] of Object.entries(cfg.limits ?? {})) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw new Error(`config: "limits.${key}" negatif olmayan bir sayı olmalı (verilen: ${JSON.stringify(value)})`);
+    }
+  }
+
   if (!cfg.workflow?.entry || !cfg.workflow.agents) {
     throw new Error('config: "workflow" bölümü eksik ("entry" ve "agents" alanları zorunlu)');
   }
@@ -65,25 +72,46 @@ export function loadAppConfig(configPath: string): AppConfig {
 
 /**
  * Agent SDK'nin başlattığı Claude Code sürecine geçirilecek ortam değişkenleri.
- * baseUrl tanımlıysa tüm istekler o adrese (örn. Ollama) yönlendirilir.
+ * İki kaynak: baseUrl tanımlıysa sağlayıcı yönlendirmesi (örn. Ollama), ve
+ * config'deki "limits" (maliyet/süre sınırları). Hiçbiri yoksa undefined döner
+ * ve mevcut ortam aynen kullanılır (Anthropic varsayılanı).
  */
 export function buildAgentEnv(cfg: ProviderConfig): Record<string, string> | undefined {
-  if (!cfg.baseUrl) return undefined; // Anthropic varsayılanı: mevcut ortam aynen kullanılır
+  const overrides: Record<string, string> = {};
+
+  if (cfg.baseUrl) {
+    overrides.ANTHROPIC_BASE_URL = cfg.baseUrl;
+    overrides.ANTHROPIC_AUTH_TOKEN = cfg.apiKey ?? "ollama";
+    if (cfg.model) {
+      overrides.ANTHROPIC_MODEL = cfg.model;
+      // Claude Code'un iç işleri için kullandığı küçük model de yerelden gelsin
+      overrides.ANTHROPIC_SMALL_FAST_MODEL = cfg.model;
+    }
+  }
+
+  // Sınırlar sağlayıcıdan bağımsız uygulanır — verilmeyen alan SDK varsayılanında kalır
+  const limits = cfg.limits;
+  if (limits) {
+    const map: Array<[number | undefined, string]> = [
+      [limits.structuredOutputRetries, "MAX_STRUCTURED_OUTPUT_RETRIES"],
+      [limits.apiTimeoutMs, "API_TIMEOUT_MS"],
+      [limits.maxOutputTokens, "CLAUDE_CODE_MAX_OUTPUT_TOKENS"],
+      [limits.maxMcpOutputTokens, "MAX_MCP_OUTPUT_TOKENS"],
+      [limits.maxThinkingTokens, "MAX_THINKING_TOKENS"],
+    ];
+    for (const [value, envName] of map) {
+      if (value !== undefined) overrides[envName] = String(value);
+    }
+  }
+
+  if (Object.keys(overrides).length === 0) return undefined;
 
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined) env[k] = v;
   }
-
-  env.ANTHROPIC_BASE_URL = cfg.baseUrl;
-  env.ANTHROPIC_AUTH_TOKEN = cfg.apiKey ?? "ollama";
-  delete env.ANTHROPIC_API_KEY; // AUTH_TOKEN ile çakışmasın
-
-  if (cfg.model) {
-    env.ANTHROPIC_MODEL = cfg.model;
-    // Claude Code'un iç işleri için kullandığı küçük model de yerelden gelsin
-    env.ANTHROPIC_SMALL_FAST_MODEL = cfg.model;
-  }
+  Object.assign(env, overrides);
+  if (cfg.baseUrl) delete env.ANTHROPIC_API_KEY; // AUTH_TOKEN ile çakışmasın
 
   return env;
 }

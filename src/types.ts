@@ -136,6 +136,30 @@ export type McpServerJson =
   | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
   | { type: "http" | "sse"; url: string; headers?: Record<string, string> };
 
+/**
+ * Maliyet ve süre sınırları — hepsi opsiyonel, verilenler Claude Code alt
+ * sürecine ortam değişkeni olarak geçer (buildAgentEnv). Özellikle yavaş yerel
+ * modeller için: output token token üretildiğinden büyük çıktı doğrudan süreye
+ * yazılır. Verilmeyen alan SDK varsayılanında kalır.
+ */
+export interface LimitsConfig {
+  /** Şemaya uymayan çıktı için yeniden deneme sayısı (SDK varsayılanı 5).
+   *  Her deneme TÜM structured output'un baştan üretilmesi demek — yavaş
+   *  modellerde asıl gecikme sıçraması burada. Denemeler bitse de akış ölmez:
+   *  runAgent ajanı bir kez şemasız yeniden çalıştırır. */
+  structuredOutputRetries?: number;
+  /** Tek API çağrısı zaman aşımı, ms (SDK varsayılanı 600000 = 10 dk).
+   *  Yavaş yerel modelde büyük çıktı bunu AŞABİLİR — API error'ın sebebi
+   *  buysa değeri düşürmek değil YÜKSELTMEK gerekir. */
+  apiTimeoutMs?: number;
+  /** Ajan çıktısının üst sınırı (token) */
+  maxOutputTokens?: number;
+  /** MCP araç sonuçlarının üst sınırı (token) — arama sonuçları context şişirir */
+  maxMcpOutputTokens?: number;
+  /** Düşünme (thinking) token bütçesi */
+  maxThinkingTokens?: number;
+}
+
 /** Sağlayıcı bağlantı bilgileri — hem Anthropic hem Ollama aynı alanları kullanır */
 export interface ProviderConfig {
   /** "anthropic": Claude API / Claude Code oturumu. "ollama": yerel Ollama sunucusu */
@@ -153,6 +177,8 @@ export interface ProviderConfig {
   /** MCP sunucuları. Bir ajanın bu sunucuların araçlarını kullanabilmesi için
    *  tools listesine "mcp__<sunucu>" (tümü) veya "mcp__<sunucu>__<araç>" eklenmeli */
   mcpServers?: Record<string, McpServerJson>;
+  /** Maliyet/süre sınırları (opsiyonel) — yavaş yerel modeller için */
+  limits?: LimitsConfig;
 }
 
 /** Tek config dosyasının tamamı: bağlantı bilgileri + iş akışı grafı */
@@ -174,10 +200,40 @@ export interface AgentDefinition {
   config: AgentNodeConfig;
 }
 
+/**
+ * Bir ajan koşusunun GERÇEK ölçümü (SDK'nin result mesajından; tahmin değil).
+ * Yavaş yerel modelde neyin pahalı olduğu ancak buradan görülür.
+ *
+ * DİKKAT — iki alan yanıltıcı okunabilir:
+ * - `turns`: şema retry'ını İZOLE ETMEZ. Araç çağıran normal bir ajan zaten çok
+ *   turludur; retry'lar da bu sayıya karışır. Ham sinyal olarak kullan.
+ * - `perModel[].inputTokens`: koşu boyunca TOPLAM (turların toplamı), anlık
+ *   context doluluğu DEĞİL. contextWindow'a bölüp "%doluluk" çıkarma — çok
+ *   turlu koşuda %100'ü rahatça aşar ve yanlış olur.
+ */
+export interface AgentMetrics {
+  /** Toplam süre (ms) */
+  durationMs: number;
+  /** Yalnızca API'de geçen süre (ms); aradaki fark araç/yerel iş demektir */
+  apiDurationMs: number;
+  /** Model turu sayısı (yukarıdaki uyarıya bak) */
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  /** Yerel modelde 0 gelir — anlamlı olan Anthropic koşularında */
+  costUsd: number;
+  /** Model bazında kırılım. Birden fazla model görünüyorsa arka planda ikinci
+   *  bir model (ör. ANTHROPIC_SMALL_FAST_MODEL) çalışıyor demektir. */
+  perModel: Array<{ model: string; inputTokens: number; outputTokens: number }>;
+}
+
 /** Bir ajan koşusunun sonucu: serbest metin + varsa şemaya uyan JSON */
 export interface AgentRunResult {
   text: string;
   structured?: unknown;
   /** SDK oturum kimliği — resume (oturumu sürdürme) için saklanır */
   sessionId?: string;
+  /** Süre/tur/token ölçümü; SDK vermezse tanımsız kalır */
+  metrics?: AgentMetrics;
 }

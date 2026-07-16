@@ -5,6 +5,10 @@
   "model": "",
   "verdictModel": "",
   "targetDir": "D:\\work\\testapp",
+  "limits": {
+    "structuredOutputRetries": 2,
+    "apiTimeoutMs": 1800000
+  },
   "mcpServers": {
     "jetbrains-index-mcp-server": {
       "command": "cmd",

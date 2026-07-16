@@ -1,4 +1,4 @@
-import type { ReviewVerdict } from "./types.js";
+import type { AgentMetrics, ReviewVerdict } from "./types.js";
 
 export type OrchestratorEvent =
   | {
@@ -15,7 +15,14 @@ export type OrchestratorEvent =
   | { type: "agent_started"; agent: string }
   | { type: "agent_text"; agent: string; text: string }
   | { type: "tool_used"; agent: string; tool: string; detail: string }
-  | { type: "agent_finished"; agent: string; output: string; structured?: unknown }
+  | {
+      type: "agent_finished";
+      agent: string;
+      output: string;
+      structured?: unknown;
+      /** Süre/tur/token ölçümü — panelde ajan satırının altında gösterilir */
+      metrics?: AgentMetrics;
+    }
   | { type: "approval_required"; agent: string; output: string; structured?: unknown }
   | {
       type: "approval_resolved";

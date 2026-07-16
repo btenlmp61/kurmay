@@ -80,6 +80,23 @@ async function executeQuery(
       if (message.subtype === "success") {
         result.text = message.result;
         result.sessionId = message.session_id;
+        // SDK bu alanı her zaman gönderir; yine de eski sürümde patlamasın diye korumalı
+        const modelUsage: Record<string, { inputTokens: number; outputTokens: number }> =
+          message.modelUsage ?? {};
+        result.metrics = {
+          durationMs: message.duration_ms,
+          apiDurationMs: message.duration_api_ms,
+          turns: message.num_turns,
+          inputTokens: message.usage.input_tokens,
+          outputTokens: message.usage.output_tokens,
+          cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+          costUsd: message.total_cost_usd,
+          perModel: Object.entries(modelUsage).map(([model, u]) => ({
+            model,
+            inputTokens: u.inputTokens,
+            outputTokens: u.outputTokens,
+          })),
+        };
         if (message.structured_output !== undefined) {
           result.structured = message.structured_output;
         }
@@ -137,6 +154,25 @@ export async function runAgent(
     console.warn(`⚠ ${agent.name}: yapılandırılmış çıktı alınamadı, metin kullanılacak`);
   }
 
-  bus.emit({ type: "agent_finished", agent: agent.key, output: result.text, structured: result.structured });
+  if (result.metrics) {
+    const m = result.metrics;
+    const sn = (ms: number) => (ms / 1000).toFixed(1);
+    console.log(
+      `  📊 ${sn(m.durationMs)}sn (API ${sn(m.apiDurationMs)}sn) · ${m.turns} tur · ` +
+        `${m.inputTokens} girdi / ${m.outputTokens} çıktı token`,
+    );
+    // Birden fazla model = arka planda ikinci bir model çalışmış (ör. SMALL_FAST)
+    if (m.perModel.length > 1) {
+      console.log(`  📊 ${m.perModel.map((p) => `${p.model}: ${p.inputTokens}/${p.outputTokens}`).join(" · ")}`);
+    }
+  }
+
+  bus.emit({
+    type: "agent_finished",
+    agent: agent.key,
+    output: result.text,
+    structured: result.structured,
+    metrics: result.metrics,
+  });
   return result;
 }

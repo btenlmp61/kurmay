@@ -18,7 +18,7 @@
   }
 }
 * { box-sizing: border-box; }
-body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15px/1.55 system-ui, "Segoe UI", sans-serif; max-width:1360px; margin-inline:auto; }
+body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15px/1.55 system-ui, "Segoe UI", sans-serif; max-width:1700px; margin-inline:auto; }
 .layout { display:flex; gap:16px; align-items:flex-start; }
 .main { flex:1; min-width:0; }
 .sidebar { flex:0 0 240px; width:240px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; position:sticky; top:24px; max-height:calc(100vh - 48px); overflow:auto; }
@@ -55,7 +55,9 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
 .node.rejected { background:var(--redBg); border-color:var(--red); }
 .node.rejected .nm, .node.rejected .sub { color:var(--red); }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
-#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:380px; overflow-y:auto; }
+/* Kutu yükseklikleri ekranla ölçeklenir: küçük ekranda eski sabit değer korunur,
+   büyük monitörde kendiliğinden açılır (alt sınır = eski değer, üst sınır = tavan) */
+#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:clamp(380px, 46vh, 720px); overflow-y:auto; }
 #stream .t { color:var(--muted); margin-right:8px; }
 #stream .muted { color:var(--muted); }
 #stream .ok { color:var(--teal); }
@@ -63,7 +65,7 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
 #stream .warn { color:var(--amber); }
 #stream details.structured { margin:4px 0 8px; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
 #stream details.structured summary { cursor:pointer; color:var(--muted); font-size:11px; }
-#stream details.structured pre { white-space:pre-wrap; margin:6px 0 2px; max-height:260px; overflow-y:auto; }
+#stream details.structured pre { white-space:pre-wrap; margin:6px 0 2px; max-height:clamp(260px, 34vh, 520px); overflow-y:auto; }
 .issue { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; font-size:13px; }
 .sev { font-size:11px; padding:1px 8px; border-radius:999px; white-space:nowrap; }
 .sev.low { background:var(--amberBg); color:var(--amber); }
@@ -74,8 +76,8 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
 .bnode.running { background:var(--blueBg); border-color:var(--blue); color:var(--blue); }
 .bnode.done { background:var(--tealBg); border-color:var(--teal); color:var(--teal); }
 .bnode.failed { background:var(--redBg); border-color:var(--red); color:var(--red); }
-#buildLog { max-height:220px; overflow:auto; white-space:pre-wrap; font-size:11px; margin-top:6px; }
-#approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:220px; overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
+#buildLog { max-height:clamp(220px, 30vh, 460px); overflow:auto; white-space:pre-wrap; font-size:11px; margin-top:6px; }
+#approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:clamp(220px, 34vh, 520px); overflow-y:auto; background:var(--bg); border-radius:8px; padding:10px; }
 #approval .row { display:flex; gap:8px; flex-wrap:wrap; }
 .lead { font-size:14px; margin:0 0 12px; }
 .diff-file { border:1px solid var(--border); border-radius:8px; margin-bottom:10px; overflow:hidden; }
@@ -88,13 +90,22 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
 .act.delete, .act.deleted { background:var(--redBg); color:var(--red); }
 .hunk { padding:8px 10px; border-top:1px solid var(--border); }
 .hunk .loc { font-size:11px; color:var(--muted); margin-bottom:4px; font-family:ui-monospace,Consolas,monospace; }
-.hunk pre { white-space:pre-wrap; font-size:12px; margin:0; padding:6px 8px; border-radius:6px; overflow-x:auto; }
+.hunk pre { white-space:pre-wrap; font-size:12px; margin:0; padding:6px 8px; border-radius:6px; overflow-x:auto; height:100%; }
+/* before/after yan yana; tek taraf varsa (create/delete) tüm genişliği alır.
+   Dar ekranda alt alta düşer — iki sütun okunmaz hale gelmesin. */
+.hunk .sides { display:flex; gap:6px; align-items:stretch; }
+.hunk .sides > div { flex:1; min-width:0; }
+@media (max-width:900px) { .hunk .sides { flex-direction:column; } }
 .hunk .before pre { background:var(--redBg); color:var(--red); }
-.hunk .after pre { background:var(--tealBg); color:var(--teal); margin-top:3px; }
+.hunk .after pre { background:var(--tealBg); color:var(--teal); }
+/* Değişen kelimeler: currentColor sayesinde tek kural iki tarafta da doğru
+   rengi alır (before kırmızı, after yeşil) ve koyu/açık temada çalışır.
+   color-mix desteklenmezse arka plan düşer, kalın yazı yine de kalır. */
+.hunk .chg { background:color-mix(in srgb, currentColor 22%, transparent); font-weight:700; border-radius:3px; }
 .hunk .why { font-size:12px; color:var(--muted); margin-top:5px; }
 .rawjson { margin-top:8px; }
 .rawjson summary { cursor:pointer; color:var(--muted); font-size:11px; }
-.rawjson pre { white-space:pre-wrap; font-size:11px; max-height:200px; overflow-y:auto; background:var(--bg); border-radius:6px; padding:8px; margin-top:6px; }
+.rawjson pre { white-space:pre-wrap; font-size:11px; max-height:clamp(200px, 28vh, 420px); overflow-y:auto; background:var(--bg); border-radius:6px; padding:8px; margin-top:6px; }
 button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
 button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
 button.danger { border-color:var(--red); color:var(--red); }
@@ -109,10 +120,10 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
 <body>
 
 <div class="layout">
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar collapsed" id="sidebar">
   <div class="sidebar-head">
     <span class="label">Oturumlar</span>
-    <button id="btnSidebar" title="Aç / kapat">⟨</button>
+    <button id="btnSidebar" title="Aç / kapat">☰</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
     <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni oturum</div>
@@ -234,6 +245,42 @@ function stopCountdown() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 }
 
+// Bir hunk'ta before/after arasında GERÇEKTEN değişen kelimeleri işaretlemek için
+// kelime bazlı LCS. Kütüphanesiz: before artık kısa bir çapa olduğundan O(n*m) DP
+// fazlasıyla yeterli; yine de büyük girdide (ör. after'a konan dosya iskeleti)
+// tabloyu hiç kurmayıp düz metne düşeriz.
+const CHG_MAX_TOKENS = 400;
+const tokenize = (s) => s.match(/\s+|\S+/g) || [];
+// Boşluğu işaretlemek görsel gürültü yaratır — sadece gerçek kelimeler vurgulanır
+const chg = (t) => (/^\s+$/.test(t) ? esc(t) : `<span class="chg">${esc(t)}</span>`);
+
+function markChanged(before, after) {
+  const duz = [esc(before), esc(after)];
+  // Tek taraflı (create/delete): zaten tamamı yeni ya da tamamı silinmiş — vurgu anlamsız
+  if (!before || !after) return duz;
+  const a = tokenize(before), b = tokenize(after);
+  if (a.length > CHG_MAX_TOKENS || b.length > CHG_MAX_TOKENS) return duz;
+
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const outA = [], outB = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { outA.push(esc(a[i])); outB.push(esc(b[j])); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) outA.push(chg(a[i++]));
+    else outB.push(chg(b[j++]));
+  }
+  while (i < n) outA.push(chg(a[i++]));
+  while (j < m) outB.push(chg(b[j++]));
+  return [outA.join(""), outB.join("")];
+}
+
 // Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
 // Tanınmayan yapı (örn. reviewer kararı) için null döner.
 function renderDiff(structured) {
@@ -249,15 +296,36 @@ function renderDiff(structured) {
     const sum = f.summary ? `<span class="diff-fsum">${esc(f.summary)}</span>` : "";
     const body = hunks.map((h) => {
       const loc = h.location ? `<div class="loc">@ ${esc(h.location)}</div>` : "";
-      const before = h.before ? `<div class="before"><pre>${esc(h.before)}</pre></div>` : "";
-      const after = h.after ? `<div class="after"><pre>${esc(h.after)}</pre></div>` : "";
+      const [bHtml, aHtml] = markChanged(h.before || "", h.after || "");
+      const before = h.before ? `<div class="before"><pre>${bHtml}</pre></div>` : "";
+      const after = h.after ? `<div class="after"><pre>${aHtml}</pre></div>` : "";
+      // Yan yana: tek taraf varsa (create/delete) o taraf tüm genişliği alır
+      const sides = before || after ? `<div class="sides">${before}${after}</div>` : "";
       const why = h.rationale ? `<div class="why">${esc(h.rationale)}</div>` : "";
-      return `<div class="hunk">${loc}${before}${after}${why}</div>`;
+      return `<div class="hunk">${loc}${sides}${why}</div>`;
     }).join("");
     return `<div class="diff-file"><div class="diff-fhead">${act}<code>${esc(path)}</code>${sum}</div>${body}</div>`;
   }).join("");
 
   return html || null;
+}
+
+// Ölçüm biçimlendirme. DİKKAT: burada bilerek YAPILMAYAN iki şey var —
+// (1) turns'ü "retry oldu" diye yorumlamıyoruz: araç çağıran ajan zaten çok turlu;
+// (2) inputTokens/contextWindow'dan "%doluluk" çıkarmıyoruz: inputTokens koşu
+//     boyunca toplamdır, anlık context değil — çok turlu koşuda %100'ü aşar.
+const tok = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+
+function fmtMetrics(m) {
+  const sn = (ms) => (ms / 1000).toFixed(1) + "sn";
+  const parts = [
+    `${sn(m.durationMs)} (API ${sn(m.apiDurationMs)})`,
+    `${m.turns} tur`,
+    `${tok(m.inputTokens)} girdi / ${tok(m.outputTokens)} çıktı`,
+  ];
+  if (m.cacheReadTokens) parts.push(`${tok(m.cacheReadTokens)} önbellek`);
+  if (m.costUsd > 0) parts.push("$" + m.costUsd.toFixed(4));
+  return parts.join(" · ");
 }
 
 function rawJsonDetails(structured) {
@@ -341,6 +409,15 @@ function handle(e) {
       states[e.agent] = "done";
       renderPipeline();
       addLog(e.ts, `<b>${esc(e.agent)}</b> bitti`, "ok");
+      if (e.metrics) {
+        addLog(e.ts, `📊 ${fmtMetrics(e.metrics)}`, "muted");
+        // Birden fazla model = arka planda ikinci bir model calismis
+        if (e.metrics.perModel && e.metrics.perModel.length > 1) {
+          const kirilim = e.metrics.perModel
+            .map((p) => `${esc(p.model)}: ${tok(p.inputTokens)}/${tok(p.outputTokens)}`).join(" · ");
+          addLog(e.ts, `📊 ${kirilim}`, "muted");
+        }
+      }
       if (e.structured !== undefined) {
         const d = document.createElement("details");
         d.className = "structured";

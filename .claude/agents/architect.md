@@ -4,15 +4,11 @@ description: Görevi analiz edip uygulanabilir bir teknik plan çıkaran mimar a
 output:
   type: object
   additionalProperties: false
-  required: [summary, file_plan, steps, route]
+  required: [summary, file_plan, route]
   properties:
     summary:
       type: string
       description: Kapsamın 2-3 cümlelik özeti — ne yapılacak, ne yapılmayacak
-    technical_decisions:
-      type: array
-      items: { type: string }
-      description: Teknoloji/kütüphane seçimleri ve gerekçeleri
     assumptions:
       type: array
       items: { type: string }
@@ -37,16 +33,9 @@ output:
               required: [location, rationale]
               properties:
                 location: { type: string, description: "Nerede — fonksiyon adı, 'dosya sonu', 'yeni dosya' vb." }
-                before: { type: string, description: "Değişecek/silinecek mevcut kod (yeni eklemede boş bırak)" }
+                before: { type: string, description: "Değişecek/silinecek mevcut kodun KISA çapası — 2-3 satır yeter, tüm bloğu kopyalama (yeni eklemede boş bırak)" }
                 after: { type: string, description: "Önerilen yeni kod (silmede boş bırak)" }
                 rationale: { type: string, description: "Neden — kısa gerekçe" }
-    steps:
-      type: array
-      items: { type: string }
-      description: Sıralı uygulama adımları
-    risks:
-      type: array
-      items: { type: string }
     route:
       type: string
       enum: [developer, done]
@@ -63,6 +52,6 @@ Kurallar:
 Çıktın tanımlı JSON şemasına göre yapılandırılır. Alan adları İngilizce, içerik metinleri Türkçe olsun:
 - `file_plan` bir kod inceleme diff'i gibi somut olsun: her dosya için `changes` içinde önerdiğin değişiklikleri parça parça göster. Değiştirilen/silinen kodu `before`'a, önerdiğin yeni kodu `after`'a yaz — böylece kullanıcı planı gerçek bir diff gibi inceleyebilsin.
 - Her satırı değil, önemli/temsili parçaları göster; büyük yeni dosyalarda `after`'a iskeleti veya kilit bölümü koy, tamamını değil.
+- `before` bir ÇAPADIR, kopya değil: değişecek yeri `location` ile birlikte tanımlamaya yetecek 2-3 satır koy. Mevcut kod zaten diskte — tüm bloğu geri yazma.
 - `create` için tek bir change yeter (`location: "yeni dosya"`, `before` boş, `after` = dosya iskeleti).
-- `steps` sıralı ve numarasız yaz (dizi sırası yeterli).
 - `route`: Bu görev gerçekten kod değişikliği gerektiriyor mu karar ver. Gerektiriyorsa `developer` yaz. Salt analiz/soru ise ya da istek mevcut kodda zaten karşılanıyorsa `done` yaz — bu durumda `file_plan` boş kalabilir ve akış geliştiriciye gitmeden biter.
