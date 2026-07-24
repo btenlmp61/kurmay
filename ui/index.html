@@ -103,6 +103,13 @@ body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:15p
    color-mix desteklenmezse arka plan düşer, kalın yazı yine de kalır. */
 .hunk .chg { background:color-mix(in srgb, currentColor 22%, transparent); font-weight:700; border-radius:3px; }
 .hunk .why { font-size:12px; color:var(--muted); margin-top:5px; }
+/* Hunk yorumu: onay kartındaki diff'te her parçanın altına açılan not kutusu.
+   Yorumlu parça sol kenardan işaretlenir (border-top zaten kullanımda). */
+.hunk.has-cmt { box-shadow: inset 2px 0 var(--amber); }
+.hunk .hcmt { margin-top:6px; }
+.hunk .hcmt-toggle { font-size:11px; padding:2px 8px; border-radius:6px; color:var(--muted); }
+.hunk.has-cmt .hcmt-toggle { color:var(--amber); border-color:var(--amber); }
+.hunk .hcmt-box { width:100%; flex:none; min-width:0; margin-top:5px; font-size:12px; }
 .rawjson { margin-top:8px; }
 .rawjson summary { cursor:pointer; color:var(--muted); font-size:11px; }
 .rawjson pre { white-space:pre-wrap; font-size:11px; max-height:clamp(200px, 28vh, 420px); overflow-y:auto; background:var(--bg); border-radius:6px; padding:8px; margin-top:6px; }
@@ -110,7 +117,9 @@ button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; bord
 button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
 button.danger { border-color:var(--red); color:var(--red); }
 button:active { transform:scale(.98); }
-input[type=text] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); flex:1; min-width:200px; }
+input[type=text], textarea { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); flex:1; min-width:200px; }
+/* Tek satır yüksekliğinde başlar, yazdıkça alta doğru büyür (autoGrow) */
+textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120px, 22vh, 320px); align-self:flex-start; }
 select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text); }
 #when { align-items:center; }
 #when .label { margin:0; }
@@ -145,7 +154,7 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
 <div class="card hidden" id="taskCard">
   <div class="label">Yeni görev</div>
   <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
-    <input type="text" id="taskInput" placeholder="Örn: todo listesine filtreleme özelliği ekle">
+    <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
     <button class="primary" id="btnStart">Başlat</button>
   </div>
   <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -164,7 +173,7 @@ select, input[type=datetime-local] { font:inherit; font-size:13px; padding:7px 1
   <div class="row">
     <button class="primary" id="btnApprove">Onayla</button>
     <button id="btnReject">Reddet</button>
-    <input type="text" id="rejectComment" placeholder="Red gerekçesi (isteğe bağlı)">
+    <textarea id="rejectComment" rows="1" placeholder="Red gerekçesi (isteğe bağlı)"></textarea>
   </div>
   <div class="row" id="when" style="margin-top:8px">
     <span class="label">Ne zaman çalışsın?</span>
@@ -283,7 +292,8 @@ function markChanged(before, after) {
 
 // Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
 // Tanınmayan yapı (örn. reviewer kararı) için null döner.
-function renderDiff(structured) {
+// commentable=true (sadece onay kartı) her hunk'ın altına yorum kutusu ekler.
+function renderDiff(structured, commentable) {
   if (!structured || typeof structured !== "object") return null;
   const files = structured.file_plan || structured.changes;
   if (!Array.isArray(files) || files.length === 0) return null;
@@ -302,7 +312,14 @@ function renderDiff(structured) {
       // Yan yana: tek taraf varsa (create/delete) o taraf tüm genişliği alır
       const sides = before || after ? `<div class="sides">${before}${after}</div>` : "";
       const why = h.rationale ? `<div class="why">${esc(h.rationale)}</div>` : "";
-      return `<div class="hunk">${loc}${sides}${why}</div>`;
+      // Yorum çapası: dosya yolu + location. Kodu tekrar göndermiyoruz —
+      // ajan zaten kendi planındaki parçayı bu iki bilgiyle buluyor.
+      const cmt = commentable
+        ? `<div class="hcmt"><button type="button" class="hcmt-toggle">💬 yorum</button>` +
+          `<textarea class="hcmt-box hidden" rows="1" placeholder="Bu parçaya yorumun…" ` +
+          `data-path="${esc(path)}" data-loc="${esc(h.location || "")}"></textarea></div>`
+        : "";
+      return `<div class="hunk">${loc}${sides}${why}${cmt}</div>`;
     }).join("");
     return `<div class="diff-file"><div class="diff-fhead">${act}<code>${esc(path)}</code>${sum}</div>${body}</div>`;
   }).join("");
@@ -431,13 +448,14 @@ function handle(e) {
       break;
     case "approval_required": {
       $("approvalTitle").textContent = `${e.agent} çıktısı onayını bekliyor`;
-      const diff = renderDiff(e.structured);
+      const diff = renderDiff(e.structured, true);
       if (diff) {
         const lead = e.structured.summary ? `<p class="lead">${esc(e.structured.summary)}</p>` : "";
         $("approvalText").innerHTML = lead + diff + rawJsonDetails(e.structured);
       } else {
         $("approvalText").innerHTML = `<pre>${esc(trunc(e.output, 4000))}</pre>`;
       }
+      updateRejectLabel();
       resetWhen();
       $("approval").classList.remove("hidden");
       setStatus("onay bekliyor", "warn");
@@ -583,8 +601,52 @@ function resetWhen() {
   $("whenCustom").classList.add("hidden");
 }
 
+// Diff'teki hunk yorumlarını topla: [{path, loc, text}]
+function hunkComments() {
+  return [...$("approvalText").querySelectorAll(".hcmt-box")]
+    .map((el) => ({ path: el.dataset.path, loc: el.dataset.loc, text: el.value.trim() }))
+    .filter((c) => c.text);
+}
+
+// Red gerekçesi = genel kutu + hunk yorumları (ikisi de isteğe bağlı).
+// Ajana giden metin ctx.feedback olarak aynen prompt'a girer, kısa tutuyoruz.
+function buildRejectComment() {
+  const genel = $("rejectComment").value.trim();
+  const cmts = hunkComments();
+  const parts = [];
+  if (genel) parts.push(`Genel: ${genel}`);
+  for (const c of cmts) {
+    const bas = c.loc ? `${c.path} @ ${c.loc}` : c.path;
+    parts.push(`${bas}:\n- ${c.text.replace(/\n/g, "\n- ")}`);
+  }
+  return parts.join("\n\n");
+}
+
+function updateRejectLabel() {
+  const n = hunkComments().length;
+  $("btnReject").textContent = n ? `Reddet (${n} yorum)` : "Reddet";
+}
+
+// Yorum kutuları diff yeniden çizildiğinde kaybolduğu için olay delegasyonu
+$("approvalText").addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".hcmt-toggle");
+  if (!btn) return;
+  const box = btn.parentElement.querySelector(".hcmt-box");
+  // Doluysa kapatmıyoruz: gizli ama sayılan yorum kafa karıştırır
+  if (box.value.trim()) { box.focus(); return; }
+  const acildi = box.classList.toggle("hidden") === false;
+  if (acildi) { autoGrow(box); box.focus(); }
+});
+$("approvalText").addEventListener("input", (ev) => {
+  const box = ev.target.closest(".hcmt-box");
+  if (!box) return;
+  autoGrow(box);
+  box.closest(".hunk").classList.toggle("has-cmt", Boolean(box.value.trim()));
+  updateRejectLabel();
+});
+
 async function sendApproval(approved) {
-  const comment = $("rejectComment").value;
+  const comment = approved ? "" : buildRejectComment();
   const runAt = approved ? selectedRunAt() : undefined;
   await fetch("/approval", {
     method: "POST",
@@ -596,6 +658,14 @@ async function sendApproval(approved) {
     }),
   });
   $("rejectComment").value = "";
+  autoGrow($("rejectComment"));
+  // Yorumlar gönderildi: kutuları boşalt (yeni plan geldiğinde diff zaten yeniden çizilir)
+  for (const box of $("approvalText").querySelectorAll(".hcmt-box")) {
+    box.value = "";
+    box.classList.add("hidden");
+    box.closest(".hunk").classList.remove("has-cmt");
+  }
+  updateRejectLabel();
   resetWhen();
 }
 $("btnApprove").addEventListener("click", () => sendApproval(true));
@@ -672,6 +742,7 @@ function showTaskCard() {
   $("taskCard").classList.remove("hidden");
   $("taskError").textContent = "";
   updateTaskCtx();
+  autoGrow($("taskInput"));
   $("taskInput").focus();
   // Koşu bittiyse yeni oturum katalogda görünene dek kısa bir gecikmeyle tazele
   setTimeout(loadSessions, 400);
@@ -688,13 +759,31 @@ async function startTask() {
   const data = await res.json().catch(() => ({}));
   if (data.ok) {
     $("taskInput").value = "";
+    autoGrow($("taskInput"));
     $("taskError").textContent = "";
   } else {
     $("taskError").textContent = data.error || "görev başlatılamadı";
   }
 }
 $("btnStart").addEventListener("click", startTask);
-$("taskInput").addEventListener("keydown", (ev) => { if (ev.key === "Enter") startTask(); });
+// Enter gönderir, Shift+Enter yeni satır açar
+$("taskInput").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); startTask(); }
+});
+
+// Metin alanını içeriğe göre alta doğru büyüt (CSS max-height'a kadar)
+function autoGrow(el) {
+  if (el.offsetParent === null) return; // kart gizliyken ölçüm 0 gelir
+  el.style.height = "auto"; // rows=1 taban yüksekliği
+  if (!el.value) return;    // boşken placeholder scrollHeight'ı şişirir
+  // border-box olduğu için scrollHeight'a kenarlık payını ekle
+  el.style.height = el.scrollHeight + (el.offsetHeight - el.clientHeight) + "px";
+}
+for (const id of ["taskInput", "rejectComment"]) {
+  const el = $(id);
+  el.addEventListener("input", () => autoGrow(el));
+  autoGrow(el);
+}
 
 let sawAnyEvent = false;
 const es = new EventSource("/events");
