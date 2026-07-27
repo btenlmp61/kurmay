@@ -7,10 +7,20 @@ Md dosyalarıyla tanımlı ajanları (architect → developer ⇄ reviewer) dete
 ```sh
 npm start -- "görev"     # tek görev modu: çalıştırır ve çıkar
 npm run serve            # sunucu modu: panel açılır, görevler panelden girilir, servis açık kalır
+npm run serve -- --port 4242   # ikinci servis: farklı port (araya `--` ŞART, aşağıya bak)
 npm run typecheck        # tsc --noEmit
 ```
 
 Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`. Örnek configler: `config.microservices.example.json` (build düğümlü, çok-repo), `config.hooks.example.json` (hook'lu).
+
+### Aynı anda birden fazla servis (farklı port)
+
+Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel ayakta doğrulandı. Tuzak npm'de:
+
+- **`--` unutulursa port geçmez**: `npm run serve --port 4242` → npm `--port`'u kendi config'i sanıp yutar (`npm warn Unknown cli config "--port"`), script'e yalnızca `4242` gider ve index.ts bunu **görev metni** sayar (bayrak olmayan argüman `taskParts`'a gider) → panel 4141'de açılır, üstüne "4242" göreviyle tek-görev modunda koşar. Doğrusu: `npm run serve -- --port 4242`.
+- **`runs/sessions.json` ortaktır**: her süreç açılışta dosyayı belleğe alıp `persist()` ile tamamını yeniden yazar → son yazan diğerinin oturumunu katalogdan düşürür (konuşma SDK'de kalır). Ayrıştırmak için farklı dizinlerde config kullan; `runsDir` = config'in bulunduğu dizin + `/runs`.
+- **Aynı `targetDir`'e iki akış paralel yazarsa** birbirini ezer — paralel koşularda `--cwd` ile ayrı hedef ver.
+- `.claude/launch.json` preview girdisi 4141'e sabittir; paneli preview'dan açmak hep o portu kullanır.
 
 ## Mimari
 
@@ -75,7 +85,7 @@ Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`. �
 
 ## Kritik bilinenler (tekrar keşfetme)
 
-- **Yerel model (Qwen) = decode maliyeti**: input paralel işlenir, output token-token üretilir → şemayı büyütmek doğrudan wall-clock'a yazılır. Kodu structured output'a TEKRAR yazdırma; `targetDir` (`D:\work\testapp`) **git deposu DEĞİL** → "diff'i git'ten alırız" yolu kapalı. Panelde `renderDiff` hunks boşsa dosya listesine düşer (bilinçli).
+- **Yerel model (Qwen) = decode maliyeti**: input paralel işlenir, output token-token üretilir → şemayı büyütmek doğrudan wall-clock'a yazılır. Kodu structured output'a TEKRAR yazdırma. Panelde `renderDiff` hunks boşsa dosya listesine düşer (bilinçli). (`targetDir` = `D:\work\testapp` **2026-07-27'de `git init` edildi** — staging düğümü için; henüz ilk commit YOK, bu yüzden "diff'i git'ten alırız" yolu pratikte hâlâ boş baz üzerine çalışır.)
 - **Ölçüm var artık — ama iki alanı YANLIŞ OKUMA**: `agent_finished.metrics` (SDK result mesajından; terminalde ve panelde ajan satırının altında). (1) **`turns` şema retry'ını izole ETMEZ** — araç çağıran ajan zaten çok turludur, retry'lar da aynı sayıya karışır; "7 tur = 7 retry" DEĞİL. (2) **`perModel[].inputTokens` koşu boyunca TOPLAMDIR**, anlık context değil — `contextWindow`'a bölüp "%doluluk" çıkarma, çok turlu koşuda %100'ü aşar. `perModel`'de birden fazla model görünürse arka planda ikinci model (SMALL_FAST) çalışıyor demektir — ilk turdaki o soru ancak böyle cevaplanır.
 - **SDK env sınırları** (kurulu pakette `grep`'le doğrulandı, tahmin değil): `MAX_STRUCTURED_OUTPUT_RETRIES` **varsayılan 5** — her deneme TÜM structured output'un baştan üretilmesi, yavaş modeldeki "bazen çok geç" sıçraması bu; `API_TIMEOUT_MS` **varsayılan 600000 (10 dk)** — yani timeout VAR (bizim kodda yok, SDK'de var); yavaş modelde büyük çıktı bunu aşabilir → API error'ın sebebi buysa değer YÜKSELTİLİR. Ayrıca `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, `MAX_MCP_OUTPUT_TOKENS`, `MAX_THINKING_TOKENS`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. Hepsi config'te `limits` altından geçer (`buildAgentEnv`).
 - **`DISABLE_NON_ESSENTIAL_MODEL_CALLS` diye bir env YOK** — SDK'de sıfır sonuç. Benzeyen `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` model çağrısı değil **telemetri** kapatır. Arka plan model çağrılarını kısan bir bayrak bulunamadı.

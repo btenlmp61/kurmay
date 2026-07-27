@@ -79,9 +79,15 @@
           "arama"
         ],
         "verdict": {
-          "onApprove": null,
+          "onApprove": "stage",
           "onReject": "developer"
         }
+      },
+      "stage": {
+        "type": "command",
+        "command": "git add -A",
+        "onSuccess": null,
+        "onFailure": "developer"
       }
     }
   }
