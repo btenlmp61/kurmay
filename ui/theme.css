@@ -1,0 +1,170 @@
+/* alpai — Material Design 3 tema (paylaşılan): renk rolleri, tipografi, şekil,
+   elevation ve temel bileşenler (buton/alan/pill/kart). Kütüphanesiz — düz CSS
+   custom property + seçici. Her iki panel (index.html, config.html) bunu
+   <link> ile kullanır; sayfaya özgü kurallar (diff/hunk, graf SVG, sidebar…)
+   kendi <style> bloklarında kalır. */
+
+:root {
+  /* — M3 renk rolleri (light) — mevcut ton (mavi/teal/kırmızı/amber) korunur,
+     sadece container/on-container ilişkileri ve surface katmanları eklenir. */
+  --md-primary:#185FA5; --md-on-primary:#ffffff;
+  --md-primary-container:#E6F1FB; --md-on-primary-container:#0B3A63;
+  --md-secondary:#0F6E56; --md-on-secondary:#ffffff;
+  --md-secondary-container:#E1F5EE; --md-on-secondary-container:#063D2F;
+  --md-tertiary:#854F0B; --md-on-tertiary:#ffffff;
+  --md-tertiary-container:#FAEEDA; --md-on-tertiary-container:#4A2B02;
+  --md-error:#A32D2D; --md-on-error:#ffffff;
+  --md-error-container:#FCEBEB; --md-on-error-container:#5C1414;
+
+  --md-surface:#f7f6f3;
+  --md-surface-container-low:#fbfaf8;
+  --md-surface-container:#ffffff;
+  --md-surface-container-high:#f1efe9;
+  --md-surface-container-highest:#e9e7df;
+  --md-on-surface:#2c2c2a; --md-on-surface-variant:#8a887f;
+  --md-outline:#c9c7bd; --md-outline-variant:#e3e1da;
+  --md-shadow:#000000;
+
+  /* — Geriye dönük takma adlar: iki dosyanın JS'i (string/inline style
+     içinde) bu değişken adlarını doğrudan kullanıyor. Değerleri M3 rollerine
+     bağlıyoruz ki JS/inline HTML'e hiç dokunmadan tema değişsin. */
+  --bg:var(--md-surface); --card:var(--md-surface-container); --border:var(--md-outline-variant);
+  --text:var(--md-on-surface); --muted:var(--md-on-surface-variant);
+  --blue:var(--md-primary); --blueBg:var(--md-primary-container);
+  --teal:var(--md-secondary); --tealBg:var(--md-secondary-container);
+  --red:var(--md-error); --redBg:var(--md-error-container);
+  --amber:var(--md-tertiary); --amberBg:var(--md-tertiary-container);
+
+  /* — Şekil ölçeği — */
+  --md-shape-xs:4px; --md-shape-sm:8px; --md-shape-md:12px; --md-shape-lg:16px;
+  --md-shape-xl:28px; --md-shape-full:999px;
+
+  /* — Elevation (M3 gölge katmanları) — */
+  --md-elev-0:none;
+  --md-elev-1:0 1px 2px rgba(0,0,0,.24), 0 1px 3px 1px rgba(0,0,0,.10);
+  --md-elev-2:0 1px 2px rgba(0,0,0,.24), 0 2px 6px 2px rgba(0,0,0,.12);
+  --md-elev-3:0 1px 3px rgba(0,0,0,.26), 0 4px 8px 3px rgba(0,0,0,.14);
+
+  /* — Tipografi ölçeği (system-ui — Google Fonts/CDN yok, bağımlılıksız) — */
+  --md-type-title-lg:600 clamp(18px,1.6vw + 10px,22px)/28px system-ui,"Segoe UI",sans-serif;
+  --md-type-title-md:600 15px/22px system-ui,"Segoe UI",sans-serif;
+  --md-type-body-lg:400 15px/24px system-ui,"Segoe UI",sans-serif;
+  --md-type-body-md:400 13px/20px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-lg:500 13px/20px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-md:500 12px/16px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-sm:500 11px/16px system-ui,"Segoe UI",sans-serif;
+
+  --md-motion:180ms cubic-bezier(.2,0,0,1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-primary:#9FC9F5; --md-on-primary:#08315A;
+    --md-primary-container:#0C447C; --md-on-primary-container:#CFE4FA;
+    --md-secondary:#79D9BB; --md-on-secondary:#053A2C;
+    --md-secondary-container:#085041; --md-on-secondary-container:#B6EEDA;
+    --md-tertiary:#FAC775; --md-on-tertiary:#492D00;
+    --md-tertiary-container:#633806; --md-on-tertiary-container:#FFE2AF;
+    --md-error:#F4A6A6; --md-on-error:#601010;
+    --md-error-container:#501313; --md-on-error-container:#FBD2D2;
+
+    --md-surface:#171715;
+    --md-surface-container-low:#1e1e1c;
+    --md-surface-container:#252523;
+    --md-surface-container-high:#2c2c2a;
+    --md-surface-container-highest:#343432;
+    --md-on-surface:#e8e6e0; --md-on-surface-variant:#a3a199;
+    --md-outline:#5c5b56; --md-outline-variant:#403f3c;
+    --md-shadow:#000000;
+
+    --blue:var(--md-primary); --blueBg:var(--md-primary-container);
+    --teal:var(--md-secondary); --tealBg:var(--md-secondary-container);
+    --red:var(--md-error); --redBg:var(--md-error-container);
+    --amber:var(--md-tertiary); --amberBg:var(--md-tertiary-container);
+  }
+}
+
+/* — Temel sıfırlama + tipografi — */
+* { box-sizing:border-box; }
+body { margin:0; font:var(--md-type-body-lg); background:var(--bg); color:var(--text); }
+h1,h2 { font:var(--md-type-title-lg); margin:0; }
+
+/* — Kart: M3 elevated card. Açık temada gölge, koyu temada surface-container-high
+   tonuyla ayrım (koyu zeminde gölge zar zor görünür — M3 önerisi budur). — */
+.card {
+  background:var(--md-surface-container);
+  border-radius:var(--md-shape-lg);
+  border:1px solid transparent;
+  box-shadow:var(--md-elev-1);
+  padding:16px 22px;
+  margin-bottom:16px;
+}
+@media (prefers-color-scheme: dark) {
+  .card { background:var(--md-surface-container-high); box-shadow:none; border-color:var(--md-outline-variant); }
+}
+
+.label { font:var(--md-type-label-sm); letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+
+/* — Pill / chip / badge: M3 assist-chip görünümü (tam yuvarlak, tonal renk) — */
+.pill, .chip, .tybadge, .act, .sev {
+  display:inline-block; font:var(--md-type-label-sm);
+  padding:2px 10px; border-radius:var(--md-shape-full);
+}
+
+/* — Buton: M3 filled / outlined / text varyantları, tam yuvarlak şekil,
+   state-layer (hover/focus) + ripple konteyneri. — */
+button {
+  position:relative; overflow:hidden;
+  font:var(--md-type-label-lg);
+  padding:8px 20px; min-height:40px;
+  border-radius:var(--md-shape-full);
+  border:1px solid var(--md-outline);
+  background:transparent; color:var(--text);
+  cursor:pointer;
+  transition:background-color var(--md-motion), box-shadow var(--md-motion), border-color var(--md-motion);
+}
+button::after {
+  content:""; position:absolute; inset:0; border-radius:inherit;
+  background:currentColor; opacity:0; pointer-events:none;
+  transition:opacity var(--md-motion);
+}
+button:hover::after { opacity:.08; }
+button:focus-visible::after { opacity:.12; }
+button:active { transform:scale(.98); }
+button.primary {
+  background:var(--md-primary); border-color:var(--md-primary); color:var(--md-on-primary);
+  box-shadow:var(--md-elev-1);
+}
+button.primary:hover { box-shadow:var(--md-elev-2); }
+button.danger { border-color:var(--md-error); color:var(--md-error); }
+button:disabled { opacity:.5; cursor:default; box-shadow:none; }
+button:disabled::after { display:none; }
+
+/* Ripple: pointerdown konumundan büyüyüp sönen katman (event delegation ile eklenir) */
+.md-ripple {
+  position:absolute; border-radius:50%; background:currentColor; opacity:.22;
+  transform:scale(0); pointer-events:none; animation:md-ripple 480ms ease-out forwards;
+}
+@keyframes md-ripple { to { transform:scale(2.6); opacity:0; } }
+
+/* — Metin alanları: M3 outlined text field (sabit üst etiket — akan/floating
+   etiket bilinçli olarak atlandı: yoğun bir panelde çakışma hesaplamasının
+   maliyeti kazancına değmiyor). — */
+input[type=text], input[type=datetime-local], textarea, select {
+  font:var(--md-type-body-md);
+  padding:8px 12px; min-height:40px;
+  border-radius:var(--md-shape-sm);
+  border:1px solid var(--md-outline);
+  background:var(--md-surface-container-low);
+  color:var(--text);
+  transition:border-color var(--md-motion), box-shadow var(--md-motion);
+}
+input[type=text]:focus, input[type=datetime-local]:focus, textarea:focus, select:focus {
+  outline:none; border-color:var(--md-primary);
+  box-shadow:0 0 0 1px var(--md-primary);
+}
+
+/* Dokunmatik/kaba işaretçide daha büyük hedef alanı (M3 dokunma hedefi ≥48px) */
+@media (pointer: coarse) {
+  button, input[type=text], input[type=datetime-local], textarea, select { min-height:48px; }
+}
