@@ -1,0 +1,186 @@
+/* alpai — Material Design 3 tema (paylaşılan): renk rolleri, tipografi, şekil,
+   elevation ve temel bileşenler (buton/alan/pill/kart). Kütüphanesiz — düz CSS
+   custom property + seçici. Her iki panel (index.html, config.html) bunu
+   <link> ile kullanır; sayfaya özgü kurallar (diff/hunk, graf SVG, sidebar…)
+   kendi <style> bloklarında kalır. */
+
+:root {
+  /* — M3 renk rolleri (light). Kaynak ton mavi (#185FA5, marka rengi — DEĞİŞMEDİ)
+     ama container/on-container çiftleri artık gerçek M3 ton-eşleme ile hesaplı:
+     container ≈ tone 90 (çok açık), on-container ≈ tone 10-20 (koyu, kontrastlı) —
+     önceki sürümde on-container primary'ye çok yakındı, kontrast/M3 hissi zayıftı. */
+  --md-primary:#185FA5; --md-on-primary:#ffffff;
+  --md-primary-container:#D3E4FF; --md-on-primary-container:#001D36;
+  --md-secondary:#0F6E56; --md-on-secondary:#ffffff;
+  --md-secondary-container:#B7F1DD; --md-on-secondary-container:#002014;
+  --md-tertiary:#854F0B; --md-on-tertiary:#ffffff;
+  --md-tertiary-container:#FFDDAF; --md-on-tertiary-container:#2A1700;
+  --md-error:#A32D2D; --md-on-error:#ffffff;
+  --md-error-container:#FFDAD4; --md-on-error-container:#410001;
+
+  /* — Nötr yüzeyler: M3'ün asıl imzası burada — gri değil, primary tonuna
+     (mavi, ~208°) hafif kaymış "cool" nötrler. Önceki sürüm sıcak bej/gri
+     kullanıyordu (f7f6f3) ve mavi primary ile çatışıp jenerik bir "dashboard"
+     hissi veriyordu; asıl "Material'a benzemiyor" şikâyetinin kaynağı buydu. */
+  --md-surface:#F6F8FC;
+  --md-surface-container-lowest:#FFFFFF;
+  --md-surface-container-low:#F0F3F9;
+  --md-surface-container:#EAEDF4;
+  --md-surface-container-high:#E4E8F0;
+  --md-surface-container-highest:#DEE2EB;
+  --md-on-surface:#1A1C1F; --md-on-surface-variant:#43474B;
+  --md-outline:#73777D; --md-outline-variant:#C3C7CE;
+  --md-shadow:#000000;
+
+  /* — Geriye dönük takma adlar: iki dosyanın JS'i (string/inline style
+     içinde) bu değişken adlarını doğrudan kullanıyor. Değerleri M3 rollerine
+     bağlıyoruz ki JS/inline HTML'e hiç dokunmadan tema değişsin. */
+  --bg:var(--md-surface); --card:var(--md-surface-container); --border:var(--md-outline-variant);
+  --text:var(--md-on-surface); --muted:var(--md-on-surface-variant);
+  --blue:var(--md-primary); --blueBg:var(--md-primary-container);
+  --teal:var(--md-secondary); --tealBg:var(--md-secondary-container);
+  --red:var(--md-error); --redBg:var(--md-error-container);
+  --amber:var(--md-tertiary); --amberBg:var(--md-tertiary-container);
+
+  /* — Şekil ölçeği — bir önceki sürümden daha belirgin: M3'ün "yuvarlaklık
+     kimliği" hissedilsin diye kart/buton yarıçapları büyütüldü. — */
+  --md-shape-xs:4px; --md-shape-sm:8px; --md-shape-md:12px; --md-shape-lg:20px;
+  --md-shape-xl:28px; --md-shape-full:999px;
+
+  /* — Elevation (M3 gölge katmanları) — önceki sürümden belirgin şekilde
+     daha güçlü: soluk kartlar "kağıt üstünde kağıt" hissi vermiyordu. — */
+  --md-elev-1:0 1px 2px rgba(20,30,50,.18), 0 1px 4px 1px rgba(20,30,50,.10);
+  --md-elev-2:0 1px 2px rgba(20,30,50,.20), 0 3px 8px 2px rgba(20,30,50,.14);
+  --md-elev-3:0 2px 3px rgba(20,30,50,.24), 0 6px 12px 4px rgba(20,30,50,.16);
+
+  /* — Tipografi ölçeği (system-ui — Google Fonts/CDN yok, bağımlılıksız).
+     Önceki sürüm her yerde 11-15px kullanıyordu ("sıkışık" şikâyeti büyük
+     ölçüde buydu); başlıklar belirgin büyütüldü, gövde metni 16px'e çekildi. — */
+  --md-type-display-sm:600 clamp(28px,2.2vw + 18px,34px)/40px system-ui,"Segoe UI",sans-serif;
+  --md-type-headline-sm:700 clamp(20px,1.4vw + 14px,24px)/30px system-ui,"Segoe UI",sans-serif;
+  --md-type-title-lg:600 20px/26px system-ui,"Segoe UI",sans-serif;
+  --md-type-title-md:600 16px/22px system-ui,"Segoe UI",sans-serif;
+  --md-type-body-lg:400 16px/25px system-ui,"Segoe UI",sans-serif;
+  --md-type-body-md:400 14px/21px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-lg:600 14px/20px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-md:600 12.5px/17px system-ui,"Segoe UI",sans-serif;
+  --md-type-label-sm:600 11.5px/16px system-ui,"Segoe UI",sans-serif;
+
+  --md-motion:180ms cubic-bezier(.2,0,0,1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-primary:#A0C9FF; --md-on-primary:#00325A;
+    --md-primary-container:#004881; --md-on-primary-container:#D3E4FF;
+    --md-secondary:#93D5BD; --md-on-secondary:#003829;
+    --md-secondary-container:#00513C; --md-on-secondary-container:#B0F1DA;
+    --md-tertiary:#FFB945; --md-on-tertiary:#452B00;
+    --md-tertiary-container:#623F00; --md-on-tertiary-container:#FFDDAF;
+    --md-error:#FFB4A9; --md-on-error:#680003;
+    --md-error-container:#93000A; --md-on-error-container:#FFDAD4;
+
+    --md-surface:#111318;
+    --md-surface-container-lowest:#0C0E13;
+    --md-surface-container-low:#191C20;
+    --md-surface-container:#1D2024;
+    --md-surface-container-high:#282A2F;
+    --md-surface-container-highest:#33353A;
+    --md-on-surface:#E2E2E6; --md-on-surface-variant:#C4C6CF;
+    --md-outline:#8D9099; --md-outline-variant:#43474B;
+    --md-shadow:#000000;
+
+    --blue:var(--md-primary); --blueBg:var(--md-primary-container);
+    --teal:var(--md-secondary); --tealBg:var(--md-secondary-container);
+    --red:var(--md-error); --redBg:var(--md-error-container);
+    --amber:var(--md-tertiary); --amberBg:var(--md-tertiary-container);
+  }
+}
+
+/* — Temel sıfırlama + tipografi — */
+* { box-sizing:border-box; }
+body { margin:0; font:var(--md-type-body-lg); background:var(--bg); color:var(--text); }
+h1,h2 { font:var(--md-type-headline-sm); margin:0; }
+
+/* — Kart: M3 elevated card. Nötr yüzeyler artık ayrı tonlarda olduğundan
+   kart, sayfa zemininden gölgeye ihtiyaç duymadan da ayrışıyor; gölge
+   üstüne "gerçek" bir kabartma hissi ekliyor. — */
+.card {
+  background:var(--md-surface-container);
+  border-radius:var(--md-shape-lg);
+  border:1px solid transparent;
+  box-shadow:var(--md-elev-1);
+  padding:20px 24px;
+  margin-bottom:20px;
+}
+@media (prefers-color-scheme: dark) {
+  .card { border-color:var(--md-outline-variant); box-shadow:none; }
+}
+
+.label { font:var(--md-type-label-sm); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+
+/* — Pill / chip / badge: M3 assist-chip görünümü (tam yuvarlak, tonal renk,
+   önceki sürümden daha okunaklı boyut). — */
+.pill, .chip, .tybadge, .act, .sev {
+  display:inline-block; font:var(--md-type-label-sm);
+  padding:4px 12px; border-radius:var(--md-shape-full);
+}
+
+/* — Buton: M3 filled / outlined / text varyantları, tam yuvarlak şekil,
+   state-layer (hover/focus) + ripple konteyneri. Önceki sürümden daha
+   büyük dokunma alanı ve daha belirgin kalın etiket tipografisi. — */
+button {
+  position:relative; overflow:hidden;
+  font:var(--md-type-label-lg);
+  padding:10px 24px; min-height:44px;
+  border-radius:var(--md-shape-full);
+  border:1px solid var(--md-outline);
+  background:transparent; color:var(--text);
+  cursor:pointer;
+  transition:background-color var(--md-motion), box-shadow var(--md-motion), border-color var(--md-motion), transform var(--md-motion);
+}
+button::after {
+  content:""; position:absolute; inset:0; border-radius:inherit;
+  background:currentColor; opacity:0; pointer-events:none;
+  transition:opacity var(--md-motion);
+}
+button:hover::after { opacity:.08; }
+button:focus-visible::after { opacity:.12; }
+button:active { transform:scale(.97); }
+button.primary {
+  background:var(--md-primary); border-color:var(--md-primary); color:var(--md-on-primary);
+  box-shadow:var(--md-elev-1);
+}
+button.primary:hover { box-shadow:var(--md-elev-2); }
+button.danger { border-color:var(--md-error); color:var(--md-error); }
+button:disabled { opacity:.45; cursor:default; box-shadow:none; }
+button:disabled::after { display:none; }
+
+/* Ripple: pointerdown konumundan büyüyüp sönen katman (event delegation ile eklenir) */
+.md-ripple {
+  position:absolute; border-radius:50%; background:currentColor; opacity:.22;
+  transform:scale(0); pointer-events:none; animation:md-ripple 480ms ease-out forwards;
+}
+@keyframes md-ripple { to { transform:scale(2.6); opacity:0; } }
+
+/* — Metin alanları: M3 outlined text field (sabit üst etiket — akan/floating
+   etiket bilinçli olarak atlandı: yoğun bir panelde çakışma hesaplamasının
+   maliyeti kazancına değmiyor). — */
+input[type=text], input[type=datetime-local], textarea, select {
+  font:var(--md-type-body-md);
+  padding:10px 14px; min-height:44px;
+  border-radius:var(--md-shape-sm);
+  border:1px solid var(--md-outline);
+  background:var(--md-surface-container-lowest);
+  color:var(--text);
+  transition:border-color var(--md-motion), box-shadow var(--md-motion);
+}
+input[type=text]:focus, input[type=datetime-local]:focus, textarea:focus, select:focus {
+  outline:none; border-color:var(--md-primary);
+  box-shadow:0 0 0 1px var(--md-primary);
+}
+
+/* Dokunmatik/kaba işaretçide daha büyük hedef alanı (M3 dokunma hedefi ≥48px) */
+@media (pointer: coarse) {
+  button, input[type=text], input[type=datetime-local], textarea, select { min-height:48px; }
+}

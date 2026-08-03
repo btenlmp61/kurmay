@@ -4,37 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>alpai config editörü</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-:root {
-  --bg:#f7f6f3; --card:#ffffff; --border:#e3e1da; --text:#2c2c2a; --muted:#8a887f;
-  --blue:#185FA5; --blueBg:#E6F1FB; --teal:#0F6E56; --tealBg:#E1F5EE;
-  --red:#A32D2D; --redBg:#FCEBEB; --amber:#854F0B; --amberBg:#FAEEDA;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg:#1e1e1c; --card:#2a2a28; --border:#403f3c; --text:#e8e6e0; --muted:#93918a;
-    --blue:#85B7EB; --blueBg:#0C447C; --teal:#5DCAA5; --tealBg:#085041;
-    --red:#F09595; --redBg:#501313; --amber:#FAC775; --amberBg:#633806;
-  }
-}
-* { box-sizing:border-box; }
-body { margin:0; padding:20px; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,"Segoe UI",sans-serif; max-width:1400px; margin-inline:auto; }
+body { padding:24px; max-width:1400px; margin-inline:auto; }
 a { color:var(--blue); }
-.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
-.hdr h1 { font-size:18px; margin:0; }
+/* Üst şerit — index.html'deki app bar ile aynı desen: koyu yüzey tonu +
+   belirgin gölge + büyük başlık, sayfanın diğer kartlarından ayrışsın. */
+.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); border-radius:var(--md-shape-lg); padding:16px 22px; }
+.hdr h1 { font:var(--md-type-headline-sm); }
 .hdr .sp { flex:1; }
-button { font:inherit; font-size:13px; padding:7px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
-button.primary { background:var(--teal); border-color:var(--teal); color:#fff; }
-button.danger { border-color:var(--red); color:var(--red); }
-button:disabled { opacity:.5; cursor:default; }
-.pill { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; }
-.layout { display:flex; gap:16px; align-items:flex-start; }
-.card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+.layout { display:flex; gap:20px; align-items:flex-start; }
+.card { padding:18px 20px; }
 .graph { flex:1; min-width:0; overflow:auto; }
-.side { flex:0 0 340px; width:340px; position:sticky; top:20px; }
-.label { font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+.side { flex:0 0 340px; width:340px; position:sticky; top:24px; }
 svg { display:block; }
-.gnode rect { rx:10; cursor:pointer; }
+.gnode rect { cursor:pointer; transition:fill var(--md-motion), stroke var(--md-motion); }
 .gnode text { font-size:13px; font-weight:600; fill:var(--text); pointer-events:none; }
 .gnode .sub { font-size:10px; font-weight:400; fill:var(--muted); }
 .hint { font-size:12px; color:var(--muted); }
@@ -46,20 +30,25 @@ svg { display:block; }
 .minl { display:block; font-size:11px; color:var(--muted); margin-bottom:3px; }
 .gbar { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
 .gbar .grow { flex:1; min-width:220px; }
-input[type=checkbox] { width:auto; }
+input[type=checkbox] { width:auto; min-height:auto; }
 .field { margin-bottom:12px; }
 .field > label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
-input[type=text], select { font:inherit; font-size:13px; padding:6px 9px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); width:100%; }
+input[type=text], select { width:100%; }
 .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-.chip { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; border-radius:999px; background:var(--blueBg); color:var(--blue); }
-.chip button { padding:0 3px; border:none; background:none; color:inherit; font-size:14px; line-height:1; }
+.chip { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; background:var(--blueBg); color:var(--blue); }
+.chip button { padding:0 3px; border:none; background:none; color:inherit; font-size:14px; line-height:1; min-height:auto; }
 .chips { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; }
-.tybadge { font-size:10px; padding:1px 7px; border-radius:999px; }
 .tybadge.agent { background:var(--blueBg); color:var(--blue); }
 .tybadge.command { background:var(--amberBg); color:var(--amber); }
 .tybadge.entry { background:var(--tealBg); color:var(--teal); }
 #msg { font-size:13px; }
 .mono { font-family:ui-monospace,Consolas,monospace; }
+/* Dar ekran: graf + özellik paneli yan yana sığmaz, alt alta akar */
+@media (max-width:900px) {
+  body { padding:12px; }
+  .layout { flex-direction:column; }
+  .side { position:static; width:100%; flex:none; }
+}
 </style>
 </head>
 <body>
@@ -122,6 +111,24 @@ input[type=text], select { font:inherit; font-size:13px; padding:6px 9px; border
 <script>
 const $ = (id) => document.getElementById(id);
 function esc(s){ return String(s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// M3 ripple: panel formu her düğüm seçiminde yeniden çizildiği için tek
+// seferlik document delegasyonu kullanılır (index.html'deki ile aynı desen).
+document.addEventListener("pointerdown", (ev) => {
+  const el = ev.target.closest("button");
+  if (!el || el.disabled) return;
+  el.style.position ||= "relative";
+  if (getComputedStyle(el).overflow !== "hidden") el.style.overflow = "hidden";
+  const r = el.getBoundingClientRect();
+  const span = document.createElement("span");
+  span.className = "md-ripple";
+  const size = Math.max(r.width, r.height) * 2;
+  span.style.width = span.style.height = size + "px";
+  span.style.left = (ev.clientX - r.left - size / 2) + "px";
+  span.style.top = (ev.clientY - r.top - size / 2) + "px";
+  el.appendChild(span);
+  span.addEventListener("animationend", () => span.remove());
+});
 
 let cfg = null, meta = { rules:[], skills:[], agents:[] }, selected = null, dirty = false;
 const STD_TOOLS = ["Read","Write","Edit","Glob","Grep","Bash","WebSearch","WebFetch","ToolSearch"];
@@ -223,7 +230,7 @@ function drawGraph(){
     const stroke = k===selected ? "var(--blue)" : "var(--border)";
     const badge = isEntry ? "entry" : ty;
     return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})">
-      <rect width="${BW}" height="${BH}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
+      <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
       <text x="12" y="24">${esc(k)}</text>
       <text class="sub" x="12" y="42">${isCmd(n)?"command":(n.verdict?"verdict":(n.routes?"routes":"next"))}${isEntry?" · entry":""}</text>
     </g>`;
