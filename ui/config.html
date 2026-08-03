@@ -6,15 +6,17 @@
 <title>alpai config editörü</title>
 <link rel="stylesheet" href="/theme.css">
 <style>
-body { padding:20px; max-width:1400px; margin-inline:auto; }
+body { padding:24px; max-width:1400px; margin-inline:auto; }
 a { color:var(--blue); }
-.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
-.hdr h1 { font:var(--md-type-title-lg); }
+/* Üst şerit — index.html'deki app bar ile aynı desen: koyu yüzey tonu +
+   belirgin gölge + büyük başlık, sayfanın diğer kartlarından ayrışsın. */
+.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); border-radius:var(--md-shape-lg); padding:16px 22px; }
+.hdr h1 { font:var(--md-type-headline-sm); }
 .hdr .sp { flex:1; }
-.layout { display:flex; gap:16px; align-items:flex-start; }
-.card { padding:14px 16px; }
+.layout { display:flex; gap:20px; align-items:flex-start; }
+.card { padding:18px 20px; }
 .graph { flex:1; min-width:0; overflow:auto; }
-.side { flex:0 0 340px; width:340px; position:sticky; top:20px; }
+.side { flex:0 0 340px; width:340px; position:sticky; top:24px; }
 svg { display:block; }
 .gnode rect { cursor:pointer; transition:fill var(--md-motion), stroke var(--md-motion); }
 .gnode text { font-size:13px; font-weight:600; fill:var(--text); pointer-events:none; }

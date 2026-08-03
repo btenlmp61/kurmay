@@ -6,51 +6,64 @@
 <title>alpai izleme paneli</title>
 <link rel="stylesheet" href="/theme.css">
 <style>
-body { padding:24px; max-width:1700px; margin-inline:auto; }
-.layout { display:flex; gap:16px; align-items:flex-start; }
+body { padding:28px; max-width:1700px; margin-inline:auto; }
+.layout { display:flex; gap:20px; align-items:flex-start; }
 .main { flex:1; min-width:0; }
-.sidebar { flex:0 0 240px; width:240px; background:var(--md-surface-container-low); border:1px solid var(--border); border-radius:var(--md-shape-lg); padding:12px; position:sticky; top:24px; max-height:calc(100vh - 48px); overflow:auto; }
+.sidebar { flex:0 0 260px; width:260px; background:var(--md-surface-container-low); border:1px solid var(--border); border-radius:var(--md-shape-lg); padding:14px; position:sticky; top:28px; max-height:calc(100vh - 56px); overflow:auto; }
 .sidebar.collapsed { flex-basis:auto; width:auto; }
 .sidebar.collapsed .sidebar-body { display:none; }
-.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
 .sidebar-head .label { margin:0; }
 .sidebar-head button { padding:2px 9px; font-size:13px; min-height:auto; }
-.sess { display:flex; align-items:center; gap:6px; padding:8px 10px; border-radius:var(--md-shape-sm); cursor:pointer; border:1px solid transparent; margin-bottom:4px; position:relative; overflow:hidden; transition:background-color var(--md-motion); }
-.sess:hover { background:var(--bg); }
-.sess.active { border-color:var(--blue); background:var(--blueBg); }
+.sess { display:flex; align-items:center; gap:6px; padding:10px 12px; border-radius:var(--md-shape-full); cursor:pointer; border:1px solid transparent; margin-bottom:4px; position:relative; overflow:hidden; transition:background-color var(--md-motion); }
+.sess:hover { background:var(--md-surface-container-high); }
+.sess.active { background:var(--blueBg); color:var(--md-on-primary-container); }
+.sess.active .meta { color:var(--md-on-primary-container); opacity:.75; }
 .sess-main { flex:1; min-width:0; }
-.sess .nm { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sess .meta { font-size:11px; color:var(--muted); }
-.sess-new { font-weight:600; color:var(--teal); }
+.sess .nm { font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sess .meta { font-size:11.5px; color:var(--muted); }
+.sess-new { font-weight:600; color:var(--md-primary); }
+.sess-new.active { background:var(--blueBg); color:var(--md-on-primary-container); }
 .sess-del { border:none; background:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:6px; opacity:0; min-height:auto; }
 .sess:hover .sess-del { opacity:1; }
 .sess-del:hover { color:var(--red); background:var(--redBg); }
-.hdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.hdr .task { font:var(--md-type-title-md); }
-.hdr .dir { margin-left:auto; font-size:12px; color:var(--muted); }
-.pipe { display:flex; align-items:stretch; gap:8px; }
+/* Üst şerit — M3 "top app bar": diğer kartlardan daha koyu bir yüzey tonu ve
+   daha belirgin gölge ile ayrışır, sayfanın geri kalanıyla aynı düz kart
+   olmaktan çıkar. Başlık de headline ölçeğinde — önceki sürümde 15px'lik
+   gövde metni büyüklüğündeydi ve "önemsiz" görünüyordu. */
+.card.hdr { background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); }
+.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.hdr .task { font:var(--md-type-headline-sm); }
+.hdr .dir { margin-left:auto; font-size:12.5px; color:var(--muted); }
+.pipe { display:flex; align-items:stretch; gap:10px; }
 .pipe .arrow { align-self:center; color:var(--muted); }
-.node { flex:1; text-align:center; padding:10px 6px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:transparent; transition:background-color var(--md-motion), border-color var(--md-motion); }
-.node .nm { font-weight:600; font-size:13px; }
-.node .sub { font-size:11px; color:var(--muted); }
+.node { flex:1; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
+.node .nm { font-weight:700; font-size:14px; }
+.node .sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
 .node.running { background:var(--blueBg); border-color:var(--blue); }
-.node.running .nm, .node.running .sub { color:var(--blue); }
+.node.running .nm, .node.running .sub { color:var(--md-on-primary-container); }
 .node.done { background:var(--tealBg); border-color:var(--teal); }
-.node.done .nm, .node.done .sub { color:var(--teal); }
+.node.done .nm, .node.done .sub { color:var(--md-on-secondary-container); }
 .node.rejected { background:var(--redBg); border-color:var(--red); }
-.node.rejected .nm, .node.rejected .sub { color:var(--red); }
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; }
+.node.rejected .nm, .node.rejected .sub { color:var(--md-on-error-container); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+/* Ana görev başlatma butonu — M3 extended FAB: her zaman görünür elevation,
+   daha büyük dokunma alanı, belirgin birincil renk. */
+#btnStart { box-shadow:var(--md-elev-3); flex:none; }
+#btnStart:hover { box-shadow:var(--md-elev-3); }
 /* Dar ekran: sidebar sabit sütun olmaktan çıkıp üstte akar, agent hattı
    dikey adım listesine döner (yatayda 3+ kutu+ok telefon genişliğine sığmaz). */
 @media (max-width:860px) {
-  body { padding:14px; }
+  body { padding:16px; }
   .layout { flex-direction:column; }
   .sidebar, .sidebar.collapsed { width:100%; flex-basis:auto; position:static; max-height:none; }
   .hdr .dir { margin-left:0; width:100%; order:1; }
   .pipe { flex-direction:column; }
   .pipe .arrow { transform:rotate(90deg); padding:2px 0; }
-  /* Görev/red kutusu yanındaki buton dar ekranda metni sıkıştırıp taşırıyordu — alta düşsün */
-  #taskCard .row textarea, #approval .row textarea { flex-basis:100%; min-width:0; }
+  /* Görev/red kutusu yanındaki buton dar ekranda metni sıkıştırıp taşırıyordu — alta düşsün.
+     Placeholder metni dar genişlikte 2 satıra sarabiliyor — kutu tek satırlık autoGrow
+     tabanına sabitliyse alt satır kırpılır; min-height'ı 2 satıra yükselt. */
+  #taskCard .row textarea, #approval .row textarea { flex-basis:100%; min-width:0; min-height:64px; }
 }
 /* Kutu yükseklikleri ekranla ölçeklenir: küçük ekranda eski sabit değer korunur,
    büyük monitörde kendiliğinden açılır (alt sınır = eski değer, üst sınır = tavan) */
