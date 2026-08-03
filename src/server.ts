@@ -33,6 +33,7 @@ export interface UiServerOptions {
  * İzleme paneli sunucusu — Node'un yerleşik http modülüyle, ek bağımlılıksız.
  *
  *   GET  /          panel sayfası (ui/index.html)
+ *   GET  /theme.css paylaşılan Material 3 tema (ui/theme.css)
  *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
@@ -46,6 +47,7 @@ export function startUiServer(
   const uiDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
+  const themeCssPath = path.join(uiDir, "theme.css");
   const sseClients = new Set<http.ServerResponse>();
   let pendingApproval: ((r: ApprovalResult) => void) | null = null;
   let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
@@ -55,6 +57,12 @@ export function startUiServer(
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(fs.readFileSync(uiPath));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/theme.css") {
+      res.writeHead(200, { "content-type": "text/css; charset=utf-8" });
+      res.end(fs.readFileSync(themeCssPath));
       return;
     }
 
