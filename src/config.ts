@@ -39,6 +39,19 @@ export function loadAppConfig(configPath: string): AppConfig {
     }
   }
 
+  // Yeniden deneme ayarları: "enabled" mantıksal, diğerleri negatif olmayan sayı
+  for (const [key, value] of Object.entries(cfg.retry ?? {})) {
+    if (key === "enabled") {
+      if (typeof value !== "boolean") {
+        throw new Error(`config: "retry.enabled" true/false olmalı (verilen: ${JSON.stringify(value)})`);
+      }
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw new Error(`config: "retry.${key}" negatif olmayan bir sayı olmalı (verilen: ${JSON.stringify(value)})`);
+    }
+  }
+
   if (!cfg.workflow?.entry || !cfg.workflow.agents) {
     throw new Error('config: "workflow" bölümü eksik ("entry" ve "agents" alanları zorunlu)');
   }

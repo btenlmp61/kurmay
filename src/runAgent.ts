@@ -20,6 +20,34 @@ function toolDetail(input: unknown): string {
 /** Şema denemeleri tükendiğinde dönen işaret — akışı öldürmez, şemasız tekrara düşülür */
 const SCHEMA_FAILED = Symbol("schema_failed");
 
+/**
+ * Denemeler arası taşınan oturum kimliği. SDK oturum kimliğini daha ilk
+ * (system/init) mesajında verdiği için, bağlantı koşunun ortasında kopsa bile
+ * elimizde kalır ve yeniden deneme resume ile yapılabilir.
+ */
+interface SessionHolder {
+  id?: string;
+}
+
+/** Beklerken iptal edilebilen uyku: süre dolarsa döner, Durdur'a basılırsa RunCancelledError atar */
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new RunCancelledError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new RunCancelledError());
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function executeQuery(
   agent: AgentDefinition,
   prompt: string,
@@ -28,8 +56,9 @@ async function executeQuery(
   bus: EventBus,
   useSchema: boolean,
   abortController: AbortController,
-  resume?: string,
+  session: SessionHolder,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
+  const resume = session.id;
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
   const hooks = buildHooks(agent.config.hooks, cwd);
@@ -62,7 +91,11 @@ async function executeQuery(
     },
   });
   for await (const message of iterator) {
-    if (message.type === "assistant") {
+    // Oturum kimliği daha ilk mesajda gelir — bağlantı ortada kopsa bile
+    // elimizde kalsın ki yeniden deneme baştan değil resume ile yapılabilsin
+    if (message.type === "system" && message.subtype === "init") {
+      session.id = message.session_id;
+    } else if (message.type === "assistant") {
       for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim()) {
           console.log(block.text);
@@ -80,6 +113,7 @@ async function executeQuery(
       if (message.subtype === "success") {
         result.text = message.result;
         result.sessionId = message.session_id;
+        session.id = message.session_id;
         // SDK bu alanı her zaman gönderir; yine de eski sürümde patlamasın diye korumalı
         const modelUsage: Record<string, { inputTokens: number; outputTokens: number }> =
           message.modelUsage ?? {};
@@ -119,6 +153,64 @@ async function executeQuery(
 }
 
 /**
+ * executeQuery'yi sağlayıcı bağlantı kopmalarına karşı sarar. Kullanıcı iptali
+ * DIŞINDAKİ her hatada artan gecikmeyle yeniden dener; oturum kimliği
+ * yakalanmışsa aynı oturum resume ile sürdürülür, ajan baştan başlamaz.
+ *
+ * Varsayılan sınırsızdır: "bağlantı gelene kadar bekle, ben durdurana kadar
+ * akış durmasın". Bunun bedeli, gerçek bir yapılandırma hatasının (yanlış model
+ * adı, auth) da sonsuza kadar denenmesidir — bu yüzden her deneme hata mesajıyla
+ * birlikte olay akışına yazılır, panelde görünür.
+ */
+async function executeWithRetry(
+  agent: AgentDefinition,
+  prompt: string,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  useSchema: boolean,
+  abortController: AbortController,
+  session: SessionHolder,
+): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
+  const retry = cfg.retry ?? {};
+  const enabled = retry.enabled !== false;
+  const maxAttempts = retry.maxAttempts ?? 0; // 0 = sınırsız
+  const maxDelay = retry.maxDelayMs ?? 60_000;
+  let delay = retry.initialDelayMs ?? 5_000;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session);
+    } catch (err) {
+      // Kullanıcının Durdur'u tek çıkış kapısı — onu asla yutma
+      if (err instanceof RunCancelledError) throw err;
+      attempt++;
+      if (!enabled || (maxAttempts > 0 && attempt >= maxAttempts)) throw err;
+
+      const error = err instanceof Error ? err.message : String(err);
+      const note =
+        `${agent.name}: sağlayıcı bağlantısı koptu (${error}) — ` +
+        `${Math.round(delay / 1000)}sn sonra ${attempt}. yeniden deneme` +
+        (session.id ? " (oturum sürdürülecek)" : " (oturum baştan)");
+      console.warn(`\n🔌 ${note}`);
+      bus.emit({
+        type: "agent_retrying",
+        agent: agent.key,
+        attempt,
+        maxAttempts,
+        error,
+        delayMs: delay,
+        resumed: !!session.id,
+      });
+
+      await abortableSleep(delay, abortController.signal);
+      delay = Math.min(delay * 2, maxDelay);
+    }
+  }
+}
+
+/**
  * Bir ajanı Claude Agent SDK ile çalıştırır. Ajan, md dosyasındaki personayı
  * system prompt eki olarak alır ve yalnızca config'de izin verilen araçları
  * kullanabilir. outputSchema tanımlıysa SDK'nin yerleşik structured output'u
@@ -138,13 +230,17 @@ export async function runAgent(
   console.log(`\n━━━ ▶ ${agent.name} çalışıyor${resume ? " (oturum sürdürülüyor)" : ""} ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
 
-  let result = await executeQuery(agent, prompt, cwd, cfg, bus, true, abortController, resume);
+  const session: SessionHolder = { id: resume };
+  let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session);
 
   if (result === SCHEMA_FAILED) {
     const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
-    result = await executeQuery(agent, prompt, cwd, cfg, bus, false, abortController, resume);
+    // Şemasız deneme TAZE oturumla yapılır: şema turlarıyla dolmuş oturumu
+    // sürdürmek yerine aynı prompt baştan koşar (mevcut davranış korunuyor)
+    const fresh: SessionHolder = { id: resume };
+    result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
     }

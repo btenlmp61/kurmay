@@ -9,6 +9,12 @@
     "structuredOutputRetries": 2,
     "apiTimeoutMs": 1800000
   },
+  "retry": {
+    "enabled": true,
+    "maxAttempts": 0,
+    "initialDelayMs": 5000,
+    "maxDelayMs": 60000
+  },
   "mcpServers": {
     "jetbrains-index-mcp-server": {
       "command": "cmd",

@@ -160,6 +160,24 @@ export interface LimitsConfig {
   maxThinkingTokens?: number;
 }
 
+/**
+ * Sağlayıcı bağlantısı koptuğunda yeniden deneme davranışı. On-premise LLM
+ * sunucularında bağlantı sık kopabildiği için varsayılan SINIRSIZ denemedir:
+ * akış ölmez, bağlantı geri gelene kadar bekler. Tek çıkış kapısı kullanıcının
+ * Durdur'u (iptal). Oturum kimliği yakalanmışsa deneme resume ile yapılır —
+ * ajan baştan başlamaz, kaldığı yerden devam eder.
+ */
+export interface RetryConfig {
+  /** false verilirse yeniden deneme kapanır ve hata akışı düşürür (varsayılan: açık) */
+  enabled?: boolean;
+  /** Deneme üst sınırı; 0 = sınırsız (varsayılan 0) */
+  maxAttempts?: number;
+  /** İlk bekleme süresi, ms (varsayılan 5000). Her denemede ikiye katlanır */
+  initialDelayMs?: number;
+  /** Bekleme süresinin tavanı, ms (varsayılan 60000) */
+  maxDelayMs?: number;
+}
+
 /** Sağlayıcı bağlantı bilgileri — hem Anthropic hem Ollama aynı alanları kullanır */
 export interface ProviderConfig {
   /** "anthropic": Claude API / Claude Code oturumu. "ollama": yerel Ollama sunucusu */
@@ -179,6 +197,8 @@ export interface ProviderConfig {
   mcpServers?: Record<string, McpServerJson>;
   /** Maliyet/süre sınırları (opsiyonel) — yavaş yerel modeller için */
   limits?: LimitsConfig;
+  /** Bağlantı koptuğunda yeniden deneme (opsiyonel) — verilmezse sınırsız denenir */
+  retry?: RetryConfig;
 }
 
 /** Tek config dosyasının tamamı: bağlantı bilgileri + iş akışı grafı */

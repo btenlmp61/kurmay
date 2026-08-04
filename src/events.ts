@@ -14,6 +14,18 @@ export type OrchestratorEvent =
     }
   | { type: "agent_started"; agent: string }
   | { type: "agent_text"; agent: string; text: string }
+  | {
+      /** Sağlayıcı bağlantısı koptu — beklenip yeniden denenecek */
+      type: "agent_retrying";
+      agent: string;
+      attempt: number;
+      /** 0 = sınırsız */
+      maxAttempts: number;
+      error: string;
+      delayMs: number;
+      /** true ise deneme resume ile yapılacak (ajan baştan başlamaz) */
+      resumed: boolean;
+    }
   | { type: "tool_used"; agent: string; tool: string; detail: string }
   | {
       type: "agent_finished";

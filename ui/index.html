@@ -441,6 +441,18 @@ function handle(e) {
     case "agent_text":
       addLog(e.ts, esc(trunc(e.text, 240)), "muted");
       break;
+    case "agent_retrying": {
+      // Bağlantı koptu — akış ölmedi, bekleyip yeniden deneyecek
+      const kac = e.maxAttempts > 0 ? `${e.attempt}/${e.maxAttempts}` : `${e.attempt}`;
+      const nasil = e.resumed ? "oturum sürdürülecek" : "oturum baştan";
+      addLog(
+        e.ts,
+        `🔌 <b>${esc(e.agent)}</b> bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ` +
+          `${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`,
+        "warn",
+      );
+      break;
+    }
     case "tool_used":
       if (!e.detail) break;
       addLog(e.ts, `⚙ ${esc(e.tool)}: ${esc(e.detail)}`, "muted");
