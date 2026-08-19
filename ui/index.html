@@ -226,6 +226,9 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <script>
 const $ = (id) => document.getElementById(id);
 let agents = [], states = {}, finished = false;
+// Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
+let runningSince = {};
+let pipelineTicker = null;
 
 // M3 ripple: butonlar/oturum satırları gibi tıklanabilir öğeler için işaretçi
 // konumundan büyüyüp sönen katman. innerHTML ile yeniden çizilen öğeler için
@@ -380,11 +383,43 @@ function setStatus(text, kind) {
   el.style.background = bg; el.style.color = fg;
 }
 
+// Saniyeyi "12sn" / "1dk 05sn" biçiminde okunur hale getirir
+function fmtElapsed(sec) {
+  if (sec < 60) return `${sec}sn`;
+  const dk = Math.floor(sec / 60), kalan = sec % 60;
+  return `${dk}dk ${String(kalan).padStart(2, "0")}sn`;
+}
+
 function renderPipeline() {
   $("pipeline").innerHTML = agents.map((a) => {
     const st = states[a] || "pending";
-    return `<div class="node ${st}"><div class="nm">${esc(a)}</div><div class="sub">${stateLabels[st]}</div></div>`;
+    let sub = stateLabels[st];
+    if (st === "running" && runningSince[a]) {
+      sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
+    }
+    return `<div class="node ${st}"><div class="nm">${esc(a)}</div><div class="sub">${sub}</div></div>`;
   }).join('<div class="arrow">→</div>');
+}
+
+// Çalışan ajan varken saniyede bir pipeline'ı yeniden çizer; kimse çalışmıyorsa durur
+function ensurePipelineTicker() {
+  if (pipelineTicker) return;
+  pipelineTicker = setInterval(() => {
+    if (Object.keys(runningSince).length === 0) {
+      clearInterval(pipelineTicker);
+      pipelineTicker = null;
+      return;
+    }
+    renderPipeline();
+  }, 1000);
+}
+
+function stopPipelineTicker() {
+  if (pipelineTicker) {
+    clearInterval(pipelineTicker);
+    pipelineTicker = null;
+  }
+  runningSince = {};
 }
 
 let buildOrder = [], buildStates = {};
@@ -424,6 +459,7 @@ function handle(e) {
       $("approval").classList.add("hidden");
       $("schedule").classList.add("hidden");
       stopCountdown();
+      stopPipelineTicker();
       resetBuild();
       $("taskCard").classList.add("hidden");
       finished = false;
@@ -435,6 +471,8 @@ function handle(e) {
       break;
     case "agent_started":
       states[e.agent] = "running";
+      runningSince[e.agent] = Date.now();
+      ensurePipelineTicker();
       renderPipeline();
       addLog(e.ts, `<b>${esc(e.agent)}</b> başladı`);
       break;
@@ -459,6 +497,7 @@ function handle(e) {
       break;
     case "agent_finished":
       states[e.agent] = "done";
+      delete runningSince[e.agent];
       renderPipeline();
       addLog(e.ts, `<b>${esc(e.agent)}</b> bitti`, "ok");
       if (e.metrics) {
@@ -574,6 +613,7 @@ function handle(e) {
       break;
     case "workflow_finished":
       finished = true;
+      stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       setStatus("tamamlandı", "ok");
       addLog(e.ts, "iş akışı tamamlandı 🎉", "ok");
@@ -581,6 +621,7 @@ function handle(e) {
       break;
     case "workflow_cancelled":
       finished = true;
+      stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       $("approval").classList.add("hidden");
       $("schedule").classList.add("hidden");
@@ -591,6 +632,7 @@ function handle(e) {
       break;
     case "workflow_failed":
       finished = true;
+      stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       setStatus("hata", "err");
       addLog(e.ts, esc(e.error), "err");
