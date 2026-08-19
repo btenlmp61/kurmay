@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>alpai izleme paneli</title>
 <link rel="stylesheet" href="/theme.css">
+<script>
+// Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
+// bir an için yanlış gelip (flash) sonra düzelir.
+(function () {
+  try {
+    var t = localStorage.getItem("alpai-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+})();
+</script>
 <style>
 body { padding:28px; max-width:1700px; margin-inline:auto; }
 .layout { display:flex; gap:20px; align-items:flex-start; }
@@ -151,6 +161,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
   <span class="dir" id="dir"></span>
   <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
+  <button id="btnTheme" class="icon" title="Tema değiştir"></button>
   <button id="btnCancel" class="hidden danger">Durdur</button>
 </div>
 
@@ -225,6 +236,27 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// Açık/koyu tema geçişi: <html data-theme> üstünde tutulur, localStorage'a
+// yazılır. Değer yoksa OS tercihi (theme.css'teki prefers-color-scheme) geçerli.
+function currentTheme() {
+  const explicit = document.documentElement.dataset.theme;
+  if (explicit === "light" || explicit === "dark") return explicit;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function renderThemeBtn() {
+  const dark = currentTheme() === "dark";
+  $("btnTheme").textContent = dark ? "☀️" : "🌙";
+  $("btnTheme").title = dark ? "Açık moda geç" : "Koyu moda geç";
+}
+$("btnTheme").addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("alpai-theme", next); } catch (e) {}
+  renderThemeBtn();
+});
+renderThemeBtn();
+
 let agents = [], states = {}, finished = false;
 // Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
 let runningSince = {};

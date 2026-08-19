@@ -69,8 +69,13 @@
   --md-motion:180ms cubic-bezier(.2,0,0,1);
 }
 
+/* Koyu değerler üç yerde tekrar eder: OS tercihiyle otomatik (media, aşağıda),
+   ve manuel geçiş butonuyla zorlanan [data-theme="dark"] — ikisi de aynı
+   değerleri taşır ki JS sadece <html data-theme> yazsın, CSS değeri tek yerde
+   (burada, iki blokta) tutulsun. [data-theme="light"] varsa media bloğu
+   :not() ile devre dışı kalır — manuel açık seçim OS koyu tercihini ezer. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --md-primary:#A0C9FF; --md-on-primary:#00325A;
     --md-primary-container:#004881; --md-on-primary-container:#D3E4FF;
     --md-secondary:#93D5BD; --md-on-secondary:#003829;
@@ -97,6 +102,32 @@
   }
 }
 
+:root[data-theme="dark"] {
+  --md-primary:#A0C9FF; --md-on-primary:#00325A;
+  --md-primary-container:#004881; --md-on-primary-container:#D3E4FF;
+  --md-secondary:#93D5BD; --md-on-secondary:#003829;
+  --md-secondary-container:#00513C; --md-on-secondary-container:#B0F1DA;
+  --md-tertiary:#FFB945; --md-on-tertiary:#452B00;
+  --md-tertiary-container:#623F00; --md-on-tertiary-container:#FFDDAF;
+  --md-error:#FFB4A9; --md-on-error:#680003;
+  --md-error-container:#93000A; --md-on-error-container:#FFDAD4;
+
+  --md-surface:#111318;
+  --md-surface-container-lowest:#0C0E13;
+  --md-surface-container-low:#191C20;
+  --md-surface-container:#1D2024;
+  --md-surface-container-high:#282A2F;
+  --md-surface-container-highest:#33353A;
+  --md-on-surface:#E2E2E6; --md-on-surface-variant:#C4C6CF;
+  --md-outline:#8D9099; --md-outline-variant:#43474B;
+  --md-shadow:#000000;
+
+  --blue:var(--md-primary); --blueBg:var(--md-primary-container);
+  --teal:var(--md-secondary); --tealBg:var(--md-secondary-container);
+  --red:var(--md-error); --redBg:var(--md-error-container);
+  --amber:var(--md-tertiary); --amberBg:var(--md-tertiary-container);
+}
+
 /* — Temel sıfırlama + tipografi — */
 * { box-sizing:border-box; }
 body { margin:0; font:var(--md-type-body-lg); background:var(--bg); color:var(--text); }
@@ -114,8 +145,9 @@ h1,h2 { font:var(--md-type-headline-sm); margin:0; }
   margin-bottom:20px;
 }
 @media (prefers-color-scheme: dark) {
-  .card { border-color:var(--md-outline-variant); box-shadow:none; }
+  html:not([data-theme="light"]) .card { border-color:var(--md-outline-variant); box-shadow:none; }
 }
+[data-theme="dark"] .card { border-color:var(--md-outline-variant); box-shadow:none; }
 
 .label { font:var(--md-type-label-sm); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
 
@@ -179,6 +211,9 @@ input[type=text]:focus, input[type=datetime-local]:focus, textarea:focus, select
   outline:none; border-color:var(--md-primary);
   box-shadow:0 0 0 1px var(--md-primary);
 }
+
+/* Kompakt ikon buton — tema geçişi gibi tek karakterlik butonlar için */
+button.icon { padding:6px 10px; min-height:36px; font-size:16px; line-height:1; }
 
 /* Dokunmatik/kaba işaretçide daha büyük hedef alanı (M3 dokunma hedefi ≥48px) */
 @media (pointer: coarse) {
