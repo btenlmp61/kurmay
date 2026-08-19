@@ -13,6 +13,10 @@ npm run typecheck        # tsc --noEmit
 
 Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`. Örnek configler: `config.microservices.example.json` (build düğümlü, çok-repo), `config.hooks.example.json` (hook'lu).
 
+### Hedef dizin (targetDir)
+
+Öncelik sırası: `--cwd` bayrağı > config'deki `targetDir` > çalışılan dizin. Panelin üst çubuğunda görünen dizine tıklayınca düzenlenebilir hale gelir — `GET/POST /target-dir` (src/server.ts, src/index.ts). Kaydedince: (1) dizin var mı/klasör mü diye doğrulanır, (2) çalışan sürecin hedefi (`cwd`, artık `let`) güncellenir — **sıradaki görev** yeni dizine yazar, o an çalışan koşuyu etkilemez, (3) `config.json`'a yazılır (alan yoksa eklenir, varsa üzerine yazılır) — böylece bir daha config.json'ı elle açmaya gerek kalmaz. Tek görev modunda (CLI'dan görev verilmişse) değişiklik sadece dosyaya yazılır, o koşuyu etkilemez.
+
 ### Aynı anda birden fazla servis (farklı port)
 
 Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel ayakta doğrulandı. Tuzak npm'de:
@@ -39,8 +43,8 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 | `src/approval.ts` | Onay yarışı (terminal/web); ayrıca **zamanlama** (`runAt`, waitForScheduledTime) ve **iptal sinyali** (RunCancelledError) |
 | `src/verdict.ts` | YEDEK: reviewer kararı structured gelmezse metinden çıkarır |
 | `src/events.ts` | EventBus: tüm adımlar tipli olay; terminal/panel/JSONL dinler. Yeni olaylar: build_*, run_scheduled/resumed, workflow_cancelled, workflow_started.resumed |
-| `src/server.ts` | Node http (bağımlılıksız). Uçlar: GET `/`,`/events`(SSE),`/config`,`/config-data`,`/sessions`; POST `/task`,`/approval`,`/schedule`,`/cancel`,`/session-delete`,`/agent-md`,`/config` |
-| `ui/index.html` | İzleme paneli: sol **oturum sidebar'ı** (isimli, seç→resume, × sil; **varsayılan kapalı**), ajan hattı, olay akışı, onay+diff kartı (**before/after yan yana**, değişen kelimeler `markChanged` ile vurgulu, **hunk başına yorum** → red gerekçesine toplanır), **zamanlama kartı+geri sayım**, **build kartı**, **Durdur**, ⚙ Config bağlantısı. Görev ve red gerekçesi alanları **auto-grow textarea** (Enter gönderir, Shift+Enter satır açar). Kütüphanesiz, koyu-mod |
+| `src/server.ts` | Node http (bağımlılıksız). Uçlar: GET `/`,`/events`(SSE),`/config`,`/config-data`,`/sessions`,`/target-dir`; POST `/task`,`/approval`,`/schedule`,`/cancel`,`/session-delete`,`/agent-md`,`/config`,`/target-dir` |
+| `ui/index.html` | İzleme paneli: sol **oturum sidebar'ı** (isimli, seç→resume, × sil; **varsayılan kapalı**), ajan hattı (**çalışan ajanda canlı süre sayacı**), olay akışı, onay+diff kartı (**before/after yan yana**, değişen kelimeler `markChanged` ile vurgulu, **hunk başına yorum** → red gerekçesine toplanır), **zamanlama kartı+geri sayım**, **build kartı**, **Durdur**, üstte **hedef dizin** (tıkla→düzenle, `/target-dir`), ⚙ Config bağlantısı. Görev ve red gerekçesi alanları **auto-grow textarea** (Enter gönderir, Shift+Enter satır açar). Kütüphanesiz, koyu-mod |
 | `ui/config.html` | **Config editörü** (`/config`): SVG iş-akışı grafı + düğüm özellik/kenar düzenleme + düğüm ekle/sil + doğrulamalı kaydetme |
 | `src/config.ts` / `src/agents.ts` | Config yükleme+doğrulama; graf düğümlerini/kuralları/becerileri yükler, kenarları doğrular |
 | `.claude/launch.json` | Preview: `alpai-serve` (port 4141) |

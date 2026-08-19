@@ -27,6 +27,10 @@ export interface UiServerOptions {
   saveConfig?: (raw: string) => string | null;
   /** Yeni ajan düğümü için şablon persona .md oluşturur */
   createAgentMd?: (name: string) => { ok: boolean; file?: string; error?: string };
+  /** Şu an kullanılan hedef proje dizini (GET /target-dir) */
+  getTargetDir?: () => string;
+  /** Hedef dizini değiştirir: doğrular, çalışan sürece uygular, config.json'a yazar */
+  setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
 }
 
 /**
@@ -38,6 +42,8 @@ export interface UiServerOptions {
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
  *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
+ *   GET  /target-dir  şu an kullanılan hedef proje dizinini döner
+ *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  */
 export function startUiServer(
   bus: EventBus,
@@ -190,6 +196,36 @@ export function startUiServer(
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: true }));
         }
+      });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/target-dir") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ dir: options.getTargetDir?.() ?? "" }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/target-dir") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let dir = "";
+        try {
+          dir = String((JSON.parse(body) as { dir?: unknown }).dir ?? "").trim();
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          return;
+        }
+        if (!dir) {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "dizin boş olamaz" }));
+          return;
+        }
+        const r = options.setTargetDir ? options.setTargetDir(dir) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
       });
       return;
     }
