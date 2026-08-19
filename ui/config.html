@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>alpai config editörü</title>
 <link rel="stylesheet" href="/theme.css">
+<script>
+// Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
+// bir an için yanlış gelip (flash) sonra düzelir.
+(function () {
+  try {
+    var t = localStorage.getItem("alpai-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+})();
+</script>
 <style>
 body { padding:24px; max-width:1400px; margin-inline:auto; }
 a { color:var(--blue); }
@@ -60,6 +70,7 @@ input[type=text], select { width:100%; }
   <span class="sp"></span>
   <span id="msg"></span>
   <button class="primary" id="btnSave" disabled>Kaydet</button>
+  <button id="btnTheme" class="icon" title="Tema değiştir"></button>
   <a href="/">← izleme paneli</a>
 </div>
 
@@ -110,6 +121,27 @@ input[type=text], select { width:100%; }
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// Açık/koyu tema geçişi: <html data-theme> üstünde tutulur, localStorage'a
+// yazılır. Değer yoksa OS tercihi (theme.css'teki prefers-color-scheme) geçerli.
+function currentTheme() {
+  const explicit = document.documentElement.dataset.theme;
+  if (explicit === "light" || explicit === "dark") return explicit;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function renderThemeBtn() {
+  const dark = currentTheme() === "dark";
+  $("btnTheme").textContent = dark ? "☀️" : "🌙";
+  $("btnTheme").title = dark ? "Açık moda geç" : "Koyu moda geç";
+}
+$("btnTheme").addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("alpai-theme", next); } catch (e) {}
+  renderThemeBtn();
+});
+renderThemeBtn();
+
 function esc(s){ return String(s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
 // M3 ripple: panel formu her düğüm seçiminde yeniden çizildiği için tek
