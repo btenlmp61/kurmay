@@ -34,7 +34,10 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .card.hdr { background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); }
 .hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .hdr .task { font:var(--md-type-headline-sm); }
-.hdr .dir { margin-left:auto; font-size:12.5px; color:var(--muted); }
+.hdr .dir-wrap { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.hdr .dir { font-size:12.5px; color:var(--muted); cursor:pointer; border-bottom:1px dashed transparent; }
+.hdr .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
+.hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
 .pipe { display:flex; align-items:stretch; gap:10px; }
 .pipe .arrow { align-self:center; color:var(--muted); }
 .node { flex:1; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
@@ -57,7 +60,8 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
   body { padding:16px; }
   .layout { flex-direction:column; }
   .sidebar, .sidebar.collapsed { width:100%; flex-basis:auto; position:static; max-height:none; }
-  .hdr .dir { margin-left:0; width:100%; order:1; }
+  .hdr .dir-wrap { margin-left:0; width:100%; order:1; }
+  .hdr #dirInput { flex:1; width:auto; }
   .pipe { flex-direction:column; }
   .pipe .arrow { transform:rotate(90deg); padding:2px 0; }
   /* Görev/red kutusu yanındaki buton dar ekranda metni sıkıştırıp taşırıyordu — alta düşsün.
@@ -149,7 +153,10 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
   <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
   <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
-  <span class="dir" id="dir"></span>
+  <span class="dir-wrap">
+    <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
+    <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
+  </span>
   <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
   <button id="btnCancel" class="hidden danger">Durdur</button>
 </div>
@@ -452,7 +459,8 @@ function handle(e) {
       agents.forEach((a) => (states[a] = "pending"));
       $("task").textContent = e.task;
       $("provider").textContent = e.provider;
-      $("dir").textContent = e.targetDir;
+      currentDir = e.targetDir;
+      showDirDisplay(currentDir);
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
       if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
       $("verdictCard").classList.add("hidden");
@@ -814,6 +822,59 @@ $("btnSidebar").addEventListener("click", () => {
   $("btnSidebar").textContent = collapsed ? "☰" : "⟨";
 });
 loadSessions();
+
+// Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
+// tıkla → metin kutusu, Enter kaydeder (sunucuda doğrulanır + config.json'a yazılır)
+let currentDir = "";
+function showDirDisplay(text) {
+  $("dir").textContent = text;
+  $("dir").classList.remove("hidden");
+  $("dirInput").classList.add("hidden");
+}
+function showDirEditor() {
+  $("dirInput").value = currentDir;
+  $("dir").classList.add("hidden");
+  $("dirInput").classList.remove("hidden");
+  $("dirInput").focus();
+  $("dirInput").select();
+}
+async function saveDir() {
+  const val = $("dirInput").value.trim();
+  if (!val || val === currentDir) { showDirDisplay(currentDir); return; }
+  try {
+    const res = await fetch("/target-dir", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dir: val }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      currentDir = data.dir || val;
+      showDirDisplay(currentDir);
+      addLog(new Date().toISOString(), `📁 hedef dizin değiştirildi: ${esc(currentDir)}`, "ok");
+    } else {
+      alert(data.error || "hedef dizin kaydedilemedi");
+      showDirEditor();
+    }
+  } catch {
+    alert("hedef dizin kaydedilemedi");
+    showDirEditor();
+  }
+}
+$("dir").addEventListener("click", showDirEditor);
+$("dirInput").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { ev.preventDefault(); saveDir(); }
+  else if (ev.key === "Escape") { showDirDisplay(currentDir); }
+});
+$("dirInput").addEventListener("blur", () => showDirDisplay(currentDir));
+async function loadTargetDir() {
+  try {
+    const data = await (await fetch("/target-dir")).json();
+    currentDir = data.dir || "";
+    showDirDisplay(currentDir);
+  } catch {}
+}
+loadTargetDir();
 
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");

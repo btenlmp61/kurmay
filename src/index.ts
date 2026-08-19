@@ -87,8 +87,10 @@ async function main() {
   // md dosya yolları config dosyasının bulunduğu dizine göre çözülür
   const agents = loadAgents(cfg.workflow, configRoot);
 
-  // Hedef dizin önceliği: --cwd bayrağı > config'deki targetDir > bulunulan dizin
-  const cwd = path.resolve(cwdFlag ?? cfg.targetDir ?? process.cwd());
+  // Hedef dizin önceliği: --cwd bayrağı > config'deki targetDir > bulunulan dizin.
+  // "let": panelden değiştirilebilir (bkz. setTargetDir) — bir sonraki görev yeni
+  // değeri kullanır, config.json'a da yazılır (sürekli dosyayı elle açmamak için).
+  let cwd = path.resolve(cwdFlag ?? cfg.targetDir ?? process.cwd());
   if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
     throw new Error(`Hedef proje dizini bulunamadı: ${cwd}`);
   }
@@ -160,6 +162,25 @@ async function main() {
         } catch (e) {
           fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
           return e instanceof Error ? e.message : String(e);
+        }
+      },
+      getTargetDir: () => cwd,
+      setTargetDir: (dir) => {
+        const resolvedDir = path.resolve(dir);
+        if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
+          return { ok: false, error: `dizin bulunamadı: ${resolvedDir}` };
+        }
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as Record<string, unknown>;
+          parsed.targetDir = resolvedDir; // yoksa eklenir, varsa güncellenir
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath); // yapı doğrulaması
+          cwd = resolvedDir; // sıradaki görev bu dizini kullanır
+          return { ok: true, dir: resolvedDir };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
       onTask: task
