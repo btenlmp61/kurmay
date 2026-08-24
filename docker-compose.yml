@@ -1,0 +1,21 @@
+services:
+  alpai:
+    build: .
+    container_name: alpai-orchestrator
+    ports:
+      - "${PORT:-4141}:4141"
+    environment:
+      # Anthropic'e doğrudan bağlanmak için (Claude Code oturumu yerine)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # config.json'da baseUrl doluysa (ör. Ollama) kullanılan alanlar
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
+    volumes:
+      # Orkestratör kaynağı + config.json + .claude/ — konteyner içinden canlı okunur,
+      # persona/kural/config düzenlemeleri için yeniden build gerekmez
+      - .:/app
+      - /app/node_modules
+      # Ajanların üzerinde çalışacağı hedef proje dizini (config.json'daki targetDir'i ezer)
+      - ${TARGET_DIR:-./target}:/workspace/target
+    command: ["--cwd", "/workspace/target", "--port", "4141"]
+    restart: unless-stopped

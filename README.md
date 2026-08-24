@@ -15,6 +15,27 @@ Kontrol akışı kodda, personalar md dosyalarında, tüm ayarlar tek `config.js
 npm install
 ```
 
+## Docker
+
+Kod değişikliği gerektirmeden farklı ortamlarda (host'a Node kurmadan) çalıştırmak için Docker/Docker Compose desteği vardır: `Dockerfile` bağımlılıkları kurup tip kontrolü yapar, `docker-compose.yml` panel portu, hedef proje dizini ve sağlayıcı kimlik bilgilerini env üzerinden ayarlar.
+
+```sh
+cp .env.example .env   # PORT, TARGET_DIR, ANTHROPIC_API_KEY vb. ayarla
+docker compose up --build
+```
+
+Panel `http://localhost:${PORT:-4141}` adresinde açılır (sunucu modu). `TARGET_DIR` env değişkeni, ajanların üzerinde çalışacağı hedef proje dizinini (host yolu) `/workspace/target` olarak konteynere bağlar ve `--cwd` bayrağıyla `config.json`'daki `targetDir`'in önüne geçer. Orkestratör kaynağı ve `.claude/` konteynere bind-mount edilir; persona/kural/config değişiklikleri için yeniden build gerekmez (kod değişikliğinde konteyneri yeniden başlatmak yeterli).
+
+Kimlik doğrulama: `ANTHROPIC_API_KEY` doluysa doğrudan Anthropic'e bağlanır. Boş bırakılırsa Claude Code oturumu aranır — bunun için host'taki `~/.claude` dizinini salt-okunur bağlamak gerekir (`docker-compose.yml`'e `- ~/.claude:/root/.claude:ro` ekle). `provider: "ollama"` gibi özel `baseUrl` kullanan config'ler için `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN` env değişkenlerini doldur.
+
+Not: `config.json`'daki `mcpServers` girdileri Windows'a özgüyse (`"command": "cmd", "args": ["/c", "npx", ...]`) Linux konteynerinde çalışmaz; `cmd /c` olmadan doğrudan `npx` kullanacak şekilde uyarlanmalı.
+
+Tek seferlik bir görev koşturmak istersen `command:`'i ezebilirsin:
+
+```sh
+docker compose run --rm alpai --cwd /workspace/target "Basit bir CLI todo uygulaması yaz"
+```
+
 ## Kullanım
 
 İki mod var:
