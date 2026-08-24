@@ -17,6 +17,8 @@ npm install
 
 ## Docker
 
+Kod değişikliği gerektirmeden farklı ortamlarda (host'a Node kurmadan) çalıştırmak için Docker/Docker Compose desteği vardır: `Dockerfile` bağımlılıkları kurup tip kontrolü yapar, `docker-compose.yml` panel portu, hedef proje dizini ve sağlayıcı kimlik bilgilerini env üzerinden ayarlar.
+
 ```sh
 cp .env.example .env   # PORT, TARGET_DIR, ANTHROPIC_API_KEY vb. ayarla
 docker compose up --build
