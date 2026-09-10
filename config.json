@@ -41,6 +41,13 @@
         "rules": [
           "arama"
         ],
+        "hooks": [
+          {
+            "event": "PreToolUse",
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+            "command": "node D:/work/alpai/.claude/hooks/guard-readonly.js"
+          }
+        ],
         "requiresUserApproval": true,
         "routes": {
           "field": "route",

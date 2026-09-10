@@ -108,6 +108,12 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
    gizlenebilen satırlar için aynı özgüllükte bir kural gerekiyor */
 #approval .row.hidden { display:none; }
 .lead { font-size:14px; margin:0 0 12px; }
+/* "Çıktı gelmedi" hissini önleyen uyarı: diff boş/kısmi geldiğinde panelin mi
+   bir şey kaybettiği yoksa modelin mi boş gönderdiği bir bakışta anlaşılsın */
+.notice { display:flex; gap:8px; align-items:flex-start; font-size:13px; margin:0 0 12px;
+  padding:10px 12px; border-radius:var(--md-shape-sm); background:var(--amberBg); color:var(--amber);
+  border:1px solid var(--amber); }
+.notice code { background:transparent; font-size:12px; }
 .diff-file { border:1px solid var(--border); border-radius:var(--md-shape-md); margin-bottom:10px; overflow:hidden; }
 .diff-fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; background:var(--bg); font-size:13px; }
 .diff-fhead code { font-family:ui-monospace,Consolas,monospace; }
@@ -417,6 +423,30 @@ function fmtMetrics(m) {
   return parts.join(" · ");
 }
 
+/**
+ * Onay kartındaki diff boş ya da kısmi geldiğinde NEDENİNİ yazar. Panel bir şey
+ * kaybetmiyor — koşu kayıtlarına göre vakaların bir kısmında model şemayı
+ * dolduruyor ama içini boş bırakıyor; bu ikisini ayırt ettirir.
+ */
+function outputNotice(structured, diff) {
+  const kutu = (html) => `<div class="notice"><span>⚠</span><span>${html}</span></div>`;
+  if (structured === undefined || structured === null) {
+    return kutu("Yapılandırılmış çıktı gelmedi (şema bozulmuş) — aşağıda ajanın ham metni var.");
+  }
+  const files = structured.file_plan || structured.changes;
+  if (!Array.isArray(files) || files.length === 0) {
+    return kutu("Ajan somut değişiklik üretmedi — <code>file_plan</code> boş geldi.");
+  }
+  const hunks = files.flatMap((f) => (Array.isArray(f.changes) ? f.changes : f.hunks) || []);
+  if (hunks.length === 0) {
+    return kutu(`${files.length} dosya listelenmiş ama değişiklik parçası yok — gösterilecek kod gelmedi.`);
+  }
+  if (!hunks.some((h) => (h.before || "").trim() || (h.after || "").trim())) {
+    return kutu("Değişiklik parçaları kodsuz geldi (<code>before</code>/<code>after</code> boş) — sadece konum ve gerekçe var.");
+  }
+  return "";
+}
+
 function rawJsonDetails(structured) {
   return `<details class="rawjson"><summary>Ham JSON</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
 }
@@ -580,11 +610,17 @@ function handle(e) {
         : "Red gerekçesi (isteğe bağlı)";
       $("when").classList.toggle("hidden", !!e.endsFlow);
       const diff = renderDiff(e.structured, true);
+      const uyari = outputNotice(e.structured, diff);
+      const lead = e.structured && e.structured.summary
+        ? `<p class="lead">${esc(e.structured.summary)}</p>`
+        : "";
       if (diff) {
-        const lead = e.structured.summary ? `<p class="lead">${esc(e.structured.summary)}</p>` : "";
-        $("approvalText").innerHTML = lead + diff + rawJsonDetails(e.structured);
+        $("approvalText").innerHTML = uyari + lead + diff + rawJsonDetails(e.structured);
+      } else if (e.structured) {
+        // Şema geldi ama içi boş: ham metin JSON'un kendisi olurdu — özet + ham JSON yeter
+        $("approvalText").innerHTML = uyari + lead + rawJsonDetails(e.structured);
       } else {
-        $("approvalText").innerHTML = `<pre>${esc(trunc(e.output, 4000))}</pre>`;
+        $("approvalText").innerHTML = uyari + `<pre>${esc(trunc(e.output, 4000))}</pre>`;
       }
       updateRejectLabel();
       resetWhen();
