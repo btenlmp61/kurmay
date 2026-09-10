@@ -4,14 +4,20 @@ import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
 import { RunCancelledError, type AgentDefinition, type AgentRunResult, type ProviderConfig } from "./types.js";
 
+/** Araç detayının log'a girmeden önce kesildiği sınır (kesilirse sonuna "…" gelir) */
+const TOOL_DETAIL_MAX = 300;
+
 /** Araç çağrısından insan-okur bir detay çıkarır (log için). Boş dönerse loglanmaz. */
 function toolDetail(input: unknown): string {
   if (!input || typeof input !== "object") return "";
   const i = input as Record<string, unknown>;
-  for (const key of ["description", "file_path", "path", "pattern", "command", "url", "query"]) {
+  // Sıra bilgilendiricilikten geneli: Grep'te `pattern`, `path`'ten daha anlamlı
+  // (yoksa desen yerine sadece aranan dizin loglanıyordu)
+  for (const key of ["description", "file_path", "pattern", "path", "command", "url", "query"]) {
     const value = i[key];
     if (typeof value === "string" && value.trim()) {
-      return value.trim().replace(/\s+/g, " ").slice(0, 120);
+      const detail = value.trim().replace(/\s+/g, " ");
+      return detail.length > TOOL_DETAIL_MAX ? detail.slice(0, TOOL_DETAIL_MAX) + "…" : detail;
     }
   }
   return "";

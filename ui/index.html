@@ -81,7 +81,9 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 }
 /* Kutu yükseklikleri ekranla ölçeklenir: küçük ekranda eski sabit değer korunur,
    büyük monitörde kendiliğinden açılır (alt sınır = eski değer, üst sınır = tavan) */
-#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:clamp(380px, 46vh, 720px); overflow-y:auto; }
+/* overflow-wrap:anywhere — uzun Windows yolları (`D:\a\b\c...`) boşluk içermediği
+   için sarmıyor, kartı yatay taşırıyordu; `\` bölme fırsatı sayılmaz. */
+#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:clamp(380px, 46vh, 720px); overflow-y:auto; overflow-wrap:anywhere; }
 #stream .t { color:var(--muted); margin-right:8px; }
 #stream .muted { color:var(--muted); }
 #stream .ok { color:var(--teal); }
@@ -102,6 +104,9 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 #buildLog { max-height:clamp(220px, 30vh, 460px); overflow:auto; white-space:pre-wrap; font-size:11px; margin-top:6px; }
 #approvalText > pre { white-space:pre-wrap; font-size:12px; max-height:clamp(220px, 34vh, 520px); overflow-y:auto; background:var(--bg); border-radius:var(--md-shape-sm); padding:10px; }
 #approval .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+/* `.hidden` (0-1-0) tek başına yukarıdaki id'li kuralı (1-1-1) yenemiyor —
+   gizlenebilen satırlar için aynı özgüllükte bir kural gerekiyor */
+#approval .row.hidden { display:none; }
 .lead { font-size:14px; margin:0 0 12px; }
 .diff-file { border:1px solid var(--border); border-radius:var(--md-shape-md); margin-bottom:10px; overflow:hidden; }
 .diff-fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; background:var(--bg); font-size:13px; }
@@ -265,6 +270,8 @@ $("btnTheme").addEventListener("click", () => {
 renderThemeBtn();
 
 let agents = [], states = {}, finished = false;
+// Bekleyen onay akışı bitirecek mi (ajan "kod değişikliği gerekmiyor" dedi mi)
+let approvalEndsFlow = false;
 // Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
 let runningSince = {};
 let pipelineTicker = null;
@@ -561,7 +568,17 @@ function handle(e) {
       }
       break;
     case "approval_required": {
-      $("approvalTitle").textContent = `${e.agent} çıktısı onayını bekliyor`;
+      // endsFlow: ajan "kod değişikliği gerekmiyor" dedi — onay akışı bitirir,
+      // red ise gerekçeyle yeniden planlatır. Zamanlama burada anlamsız, gizlenir.
+      $("approvalTitle").textContent = e.endsFlow
+        ? `${e.agent} kod değişikliği gerekmediğini söylüyor`
+        : `${e.agent} çıktısı onayını bekliyor`;
+      approvalEndsFlow = !!e.endsFlow;
+      $("btnApprove").textContent = e.endsFlow ? "Bitir" : "Onayla";
+      $("rejectComment").placeholder = e.endsFlow
+        ? "Neden gerekli? (isteğe bağlı)"
+        : "Red gerekçesi (isteğe bağlı)";
+      $("when").classList.toggle("hidden", !!e.endsFlow);
       const diff = renderDiff(e.structured, true);
       if (diff) {
         const lead = e.structured.summary ? `<p class="lead">${esc(e.structured.summary)}</p>` : "";
@@ -741,7 +758,9 @@ function buildRejectComment() {
 
 function updateRejectLabel() {
   const n = hunkComments().length;
-  $("btnReject").textContent = n ? `Reddet (${n} yorum)` : "Reddet";
+  // endsFlow'da "Reddet" yanıltıcı: reddedilen bir çıktı değil, "gerek yok" kararı
+  const base = approvalEndsFlow ? "Hayır, yeniden planla" : "Reddet";
+  $("btnReject").textContent = n ? `${base} (${n} yorum)` : base;
 }
 
 // Yorum kutuları diff yeniden çizildiğinde kaybolduğu için olay delegasyonu

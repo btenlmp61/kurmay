@@ -169,9 +169,13 @@ export async function runWorkflow(
 
     // 1) Kullanıcı onayı gereken düğüm: terminal veya web'den — hangisi önce cevap verirse.
     //    Reddedilirse yorumla birlikte aynı düğüm tekrarlanır.
-    //    Rota akışı bitirecekse (routeTarget === null) onay atlanır.
-    if (agent.config.requiresUserApproval && routeTarget !== null) {
-      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured, abortController.signal);
+    //    Rota akışı bitirecekse (routeTarget === null) onay ATLANMAZ: aksi halde
+    //    ajan "gerek yok" deyip akışı sessizce bitirir, kullanıcıya söz düşmezdi.
+    //    Onay = bitir; red = gerekçeyle aynı ajanı yeniden koştur (ör. "bu bir
+    //    değişiklik talebi, planla") — böylece developer'a boş planla gidilmez.
+    const endsFlow = routeTarget === null;
+    if (agent.config.requiresUserApproval) {
+      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured, abortController.signal, endsFlow);
       if (!approval.approved) {
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);
@@ -180,8 +184,9 @@ export async function runWorkflow(
 
       // Onaylandı ama ileri bir zaman verildiyse, o zamana kadar kodda gerçek
       // bir duraklama. Bekleme sırasında panelden/terminalden erken çalıştırma
-      // ya da iptal edilebilir (üç kanal yarışır).
-      if (approval.runAt && approval.runAt > Date.now()) {
+      // ya da iptal edilebilir (üç kanal yarışır). Akış zaten bitiyorsa
+      // (endsFlow) bekleyecek bir sonraki adım yok — zamanlama yok sayılır.
+      if (!endsFlow && approval.runAt && approval.runAt > Date.now()) {
         bus.emit({ type: "run_scheduled", agent: agent.key, runAt: approval.runAt });
         console.log(`\n⏰ ${agent.name} planı ${fmtDate(approval.runAt)} için zamanlandı — bekleniyor…`);
         const { outcome, source } = await waitForScheduledTime(approval.runAt, web, abortController.signal);

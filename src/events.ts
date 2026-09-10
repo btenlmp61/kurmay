@@ -35,7 +35,9 @@ export type OrchestratorEvent =
       /** Süre/tur/token ölçümü — panelde ajan satırının altında gösterilir */
       metrics?: AgentMetrics;
     }
-  | { type: "approval_required"; agent: string; output: string; structured?: unknown }
+  // endsFlow: rota akışı bitiriyor (ör. architect route=done) — onaylanırsa
+  // sonraki adım yok, reddedilirse aynı ajan gerekçeyle yeniden koşar
+  | { type: "approval_required"; agent: string; output: string; structured?: unknown; endsFlow?: boolean }
   | {
       type: "approval_resolved";
       agent: string;

@@ -53,7 +53,7 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 ## İş akışı grafı: düğümler ve geçişler
 
 - **Ajan düğümü** (varsayılan): `file`(persona md), `tools`, `rules`, `skills`, `model`, `requiresUserApproval`, `hooks`. Geçiş için **tam olarak biri**: `next` (koşulsuz) VEYA `verdict` (reviewer kararı → onApprove/onReject) VEYA `routes` (structured çıktı alanına göre dallan). (agents.ts bunu doğrular.)
-- **routes**: `{field, cases:{deger→hedef}, default}`. architect'in `route` alanı: `developer` → developer, `done` → null (akış biter). **route akışı bitirecekse onay da atlanır** (boş planı onaylatmaz).
+- **routes**: `{field, cases:{deger→hedef}, default}`. architect'in `route` alanı: `developer` → developer, `done` → null (akış biter). **Rota akışı bitirse bile onay ATLANMAZ** (eskiden atlanıyordu): `endsFlow` bayrağıyla onay sorulur — panelde kart "kod değişikliği gerekmediğini söylüyor" başlığı + **Bitir** / **Hayır, yeniden planla** butonlarıyla çıkar, zamanlama satırı gizlenir. Onay=akış biter, red=gerekçe `ctx.feedback`'e gidip aynı ajan yeniden koşar. Sebep: resume'lu 2. prompt'ta architect önceki turun diske yazılmış değişikliklerini görüp "zaten karşılanmış" deyip akışı sessizce bitiriyordu. Developer'a "yine de gönder" butonu bilinçli olarak YOK — `route=done`'da `file_plan` boş olur, developer plansız koşardı.
 - **Command düğümü** (`type:"command"`): LLM değil, deterministik build adımı. `{command, parent?:{path,command?}, onSuccess, onFailure}`. build.ts: developer'ın `changes[].file`'lerinden değişen repoları çıkarır (dosyanın targetDir altındaki en üst klasörü = repo), `parent` değişmişse önce onu build eder, sonra değişen servisleri; exit code'a göre onSuccess/onFailure (hata → developer'a log geri bildirimiyle döner). Modül listesi TUTULMAZ (otomatik).
 - **entry**: başlangıç düğümü. Değiştirmek o adımdan başlatır (ör. planlamayı atlamak için `entry:"developer"`); DİKKAT: architect'e bağlı onay, route ve **resume/oturum da entry'ye bağlıdır** — entry=developer yaparsan resume architect'in değil developer'ın oturumunu sürdürür.
 
@@ -105,7 +105,7 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 - **allowedTools sert sandbox değildir** — listede olmayan Bash bile çalışabildi. Asıl sınır: persona + izin listesi + hook'lar (PreToolUse guard).
 - **Node ≥ 20 şart** (v24.18). **zod ^4** (peer). **SSE**: /events'te hemen `: bagli\n\n`; 25 sn heartbeat. **EADDRINUSE :::4141** = zaten çalışan serve var.
 - **Kimlik**: Claude Code oturumu yeterli (API key gerekmez). **Ollama**: provider "ollama" + model zorunlu (buildAgentEnv env enjekte eder).
-- **Bu ortamda preview screenshot takılıyor** → panel doğrulamasını DOM/JS (read_page/javascript) ile yap.
+- **Preview screenshot artık ÇALIŞIYOR** (2026-09-10'da doğrulandı; eski "takılıyor" notu geçersiz). Yine de DOM/JS (read_page/javascript) daha ucuz ve kesin — metin doğrulaması için onu tercih et, screenshot'ı görsel/yerleşim sorunları için kullan. `zoom` bölge kırpması bu panelde desteklenmiyor: okunur görüntü için `resize_window` ile viewport'u KÜÇÜLT (ör. 900x620), büyütme değil.
 
 ## Test durumu
 

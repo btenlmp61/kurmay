@@ -66,16 +66,21 @@ export function parseRunAt(input: string): number | undefined {
   return Number.isNaN(abs) ? undefined : abs;
 }
 
-async function askTerminal(agentName: string, signal: AbortSignal): Promise<ApprovalResult> {
+async function askTerminal(
+  agentName: string,
+  signal: AbortSignal,
+  endsFlow = false,
+): Promise<ApprovalResult> {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
-    const answer = (
-      await rl.question(`\n❓ ${agentName} çıktısını onaylıyor musun? (e/h): `, { signal })
-    )
-      .trim()
-      .toLowerCase();
+    const soru = endsFlow
+      ? `\n❓ ${agentName} kod değişikliği gerekmediğini söylüyor. Akış burada bitsin mi? (e=bitir / h=gerekçeyle yeniden planlat): `
+      : `\n❓ ${agentName} çıktısını onaylıyor musun? (e/h): `;
+    const answer = (await rl.question(soru, { signal })).trim().toLowerCase();
 
     if (answer === "e" || answer === "evet" || answer === "y" || answer === "yes") {
+      // Akış zaten bitiyorsa ileri tarih sormanın anlamı yok
+      if (endsFlow) return { approved: true };
       const when = await rl.question(
         "Ne zaman çalışsın? (boş=hemen, örn 2026-07-10 14:00 veya +30m/+2h/+1d): ",
         { signal },
@@ -106,8 +111,9 @@ export async function askUserApproval(
   web?: WebApprovalChannel,
   structured?: unknown,
   runSignal?: AbortSignal,
+  endsFlow = false,
 ): Promise<ApprovalResult> {
-  bus.emit({ type: "approval_required", agent: agentName, output, structured });
+  bus.emit({ type: "approval_required", agent: agentName, output, structured, endsFlow });
 
   // Kaybeden taraf sessizce beklemede kalsın diye hatalar asla-çözülmeyen
   // bir promise'e çevrilir (kapalı stdin, abort vb. yarışı düşürmesin)
@@ -115,7 +121,7 @@ export async function askUserApproval(
   const ac = new AbortController();
 
   const candidates: Promise<{ result: ApprovalResult; source: "terminal" | "web" }>[] = [
-    askTerminal(agentName, ac.signal)
+    askTerminal(agentName, ac.signal, endsFlow)
       .then((result) => ({ result, source: "terminal" as const }))
       .catch(() => never),
   ];

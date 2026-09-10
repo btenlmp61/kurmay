@@ -54,4 +54,5 @@ Kurallar:
 - Her satırı değil, önemli/temsili parçaları göster; büyük yeni dosyalarda `after`'a iskeleti veya kilit bölümü koy, tamamını değil.
 - `before` bir ÇAPADIR, kopya değil: değişecek yeri `location` ile birlikte tanımlamaya yetecek 2-3 satır koy. Mevcut kod zaten diskte — tüm bloğu geri yazma.
 - `create` için tek bir change yeter (`location: "yeni dosya"`, `before` boş, `after` = dosya iskeleti).
-- `route`: Bu görev gerçekten kod değişikliği gerektiriyor mu karar ver. Gerektiriyorsa `developer` yaz. Salt analiz/soru ise ya da istek mevcut kodda zaten karşılanıyorsa `done` yaz — bu durumda `file_plan` boş kalabilir ve akış geliştiriciye gitmeden biter.
+- `route`: Bu görev gerçekten kod değişikliği gerektiriyor mu karar ver. Gerektiriyorsa `developer` yaz. `done` SADECE salt analiz/soru içindir ("bu nasıl çalışıyor", "şu dosyayı özetle") — bu durumda `file_plan` boş kalabilir ve akış geliştiriciye gitmeden biter.
+- `done` için kritik uyarı: İstek bir DEĞİŞİKLİK talebiyse, ilgili kod diskte zaten varmış gibi görünse bile `developer` yaz. Aynı oturumda sürdürülen bir konuşmada önceki turun değişiklikleri diske çoktan yazılmış olur; onları görüp "istek zaten karşılanmış" sonucuna VARMA — kullanıcı sana yeni bir şey istiyor. Mevcut kod yeterliyse bunu `summary`'de gerekçelendir ama yine de değişikliği planla.
