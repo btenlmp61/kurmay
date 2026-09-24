@@ -38,6 +38,7 @@ export interface UiServerOptions {
  *
  *   GET  /          panel sayfası (ui/index.html)
  *   GET  /theme.css paylaşılan Material 3 tema (ui/theme.css)
+ *   GET  /logo.svg  marka logosu — favicon + üst şerit (ui/logo.svg)
  *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
@@ -54,6 +55,7 @@ export function startUiServer(
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
   const themeCssPath = path.join(uiDir, "theme.css");
+  const logoPath = path.join(uiDir, "logo.svg");
   const sseClients = new Set<http.ServerResponse>();
   let pendingApproval: ((r: ApprovalResult) => void) | null = null;
   let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
@@ -69,6 +71,12 @@ export function startUiServer(
     if (req.method === "GET" && req.url === "/theme.css") {
       res.writeHead(200, { "content-type": "text/css; charset=utf-8" });
       res.end(fs.readFileSync(themeCssPath));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/logo.svg") {
+      res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8" });
+      res.end(fs.readFileSync(logoPath));
       return;
     }
 

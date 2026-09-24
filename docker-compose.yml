@@ -1,7 +1,7 @@
 services:
-  alpai:
+  yaver:
     build: .
-    container_name: alpai-orchestrator
+    container_name: yaver
     ports:
       - "${PORT:-4141}:4141"
     environment:

@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>alpai izleme paneli</title>
+<title>yaver izleme paneli</title>
+<link rel="icon" href="/logo.svg">
 <link rel="stylesheet" href="/theme.css">
 <script>
 // Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
 // bir an için yanlış gelip (flash) sonra düzelir.
 (function () {
   try {
-    var t = localStorage.getItem("alpai-theme");
+    var t = localStorage.getItem("yaver-theme");
     if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
   } catch (e) {}
 })();
@@ -170,6 +171,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <main class="main">
 
 <div class="card hdr">
+  <span class="brand"><img class="brand-logo" src="/logo.svg" alt="">yaver</span>
   <span class="task" id="task">bağlanıyor…</span>
   <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
   <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
@@ -270,7 +272,7 @@ function renderThemeBtn() {
 $("btnTheme").addEventListener("click", () => {
   const next = currentTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("alpai-theme", next); } catch (e) {}
+  try { localStorage.setItem("yaver-theme", next); } catch (e) {}
   renderThemeBtn();
 });
 renderThemeBtn();

@@ -1,4 +1,4 @@
-# alpai-orchestrator
+# yaver
 
 Md dosyalarıyla tanımlı ajanları (architect → developer ⇄ reviewer) deterministik bir iş akışıyla koordine eden TypeScript orkestratörü. Temel ilke: **kontrol akışı kodda, personalar md'de, tüm ayarlar tek config.json'da.** Ajan geçişleri asla modelin talimat hatırlamasına bırakılmaz. Graf artık düz bir hattan fazlası: **koşullu dallanma (routes/verdict), LLM olmayan komut/build düğümleri, zamanlanmış onay, iptal, oturum sürdürme (resume) ve görsel config editörü** var.
 
@@ -45,9 +45,10 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 | `src/events.ts` | EventBus: tüm adımlar tipli olay; terminal/panel/JSONL dinler. Yeni olaylar: build_*, run_scheduled/resumed, workflow_cancelled, workflow_started.resumed |
 | `src/server.ts` | Node http (bağımlılıksız). Uçlar: GET `/`,`/events`(SSE),`/config`,`/config-data`,`/sessions`,`/target-dir`; POST `/task`,`/approval`,`/schedule`,`/cancel`,`/session-delete`,`/agent-md`,`/config`,`/target-dir` |
 | `ui/index.html` | İzleme paneli: sol **oturum sidebar'ı** (isimli, seç→resume, × sil; **varsayılan kapalı**), ajan hattı (**çalışan ajanda canlı süre sayacı**), olay akışı, onay+diff kartı (**before/after yan yana**, değişen kelimeler `markChanged` ile vurgulu, **hunk başına yorum** → red gerekçesine toplanır, **boş/kısmi çıktıda `outputNotice` uyarısı** — "panel mi kaybetti, model mi boş gönderdi" ayrımı), **zamanlama kartı+geri sayım**, **build kartı**, **Durdur**, üstte **hedef dizin** (tıkla→düzenle, `/target-dir`), ⚙ Config bağlantısı. Görev ve red gerekçesi alanları **auto-grow textarea** (Enter gönderir, Shift+Enter satır açar). Kütüphanesiz, koyu-mod |
+| `ui/logo.svg` | Marka logosu — kenetlenmiş iki el (dostluk/yoldaşlık). `/logo.svg` ucundan servis edilir; her iki panelde favicon + üst şerit marka kilidi (`.brand`, stilleri `ui/theme.css`'te). `<img>` ile gömüldüğü için CSS değişkeni göremez: renkleri açık ve koyu yüzeyde ayrı ayrı kontrast verecek şekilde sabit |
 | `ui/config.html` | **Config editörü** (`/config`): SVG iş-akışı grafı + düğüm özellik/kenar düzenleme + düğüm ekle/sil + doğrulamalı kaydetme |
 | `src/config.ts` / `src/agents.ts` | Config yükleme+doğrulama; graf düğümlerini/kuralları/becerileri yükler, kenarları doğrular |
-| `.claude/launch.json` | Preview: `alpai-serve` (port 4141) |
+| `.claude/launch.json` | Preview: `yaver-serve` (port 4141) |
 | `runs/*.jsonl`, `runs/sessions.json` | Koşu olay kaydı + oturum kataloğu (ikisi de .gitignore'da) |
 
 ## İş akışı grafı: düğümler ve geçişler
@@ -85,7 +86,7 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 - **Sözleşme** (Claude Code semantiği): hook girdisi (tool_name, tool_input, session_id...) stdin'e JSON gelir. `exit 2` = aracı ENGELLE (stderr = modele giden gerekçe); `exit 0` = izin (stdout geçerli JSON ise doğrudan hook çıktısı olarak aktarılır — additionalContext/permissionDecision vb.); diğer çıkış = engellemeyen uyarı.
 - Olaylar: PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, PreCompact... (**PreToolUse Bash engelleme** ve **Stop tetikleme** canlı doğrulandı.)
 - `.claude/hooks/guard-bash.js`: PreToolUse Bash guard (rm -rf/mkfs/shutdown... engeller). `config.hooks.example.json` örnek.
-- **`.claude/hooks/guard-readonly.js`: architect'in kod yazmasını engeller** — aktif `config.json`'da architect'e `PreToolUse` `Write|Edit|MultiEdit|NotebookEdit|Bash` matcher'ıyla bağlı. Write/Edit/MultiEdit/NotebookEdit koşulsuz, Bash ise yazma belirtisi taşıyorsa (`>`/`tee`/`sed -i`/`rm|mv|cp|mkdir`/`git add|commit`/`npm install`) exit 2. Okuma/arama/`mvn test` serbest. Sebep: **`tools` listesi yeterli değil** — architect'in araç listesinde Write yokken bile kod yazdığı görüldü; sert kapı bu hook. Yol MUTLAK yazıldı (`node D:/work/alpai/.claude/hooks/guard-readonly.js`): hook ajanın cwd'sinde (targetDir) çalıştığı için göreli yol kırılır — örnek configlerdeki göreli yollar bu yüzden şüpheli.
+- **`.claude/hooks/guard-readonly.js`: architect'in kod yazmasını engeller** — aktif `config.json`'da architect'e `PreToolUse` `Write|Edit|MultiEdit|NotebookEdit|Bash` matcher'ıyla bağlı. Write/Edit/MultiEdit/NotebookEdit koşulsuz, Bash ise yazma belirtisi taşıyorsa (`>`/`tee`/`sed -i`/`rm|mv|cp|mkdir`/`git add|commit`/`npm install`) exit 2. Okuma/arama/`mvn test` serbest. Sebep: **`tools` listesi yeterli değil** — architect'in araç listesinde Write yokken bile kod yazdığı görüldü; sert kapı bu hook. Yol MUTLAK yazıldı (`node D:/work/yaver/.claude/hooks/guard-readonly.js`): hook ajanın cwd'sinde (targetDir) çalıştığı için göreli yol kırılır — örnek configlerdeki göreli yollar bu yüzden şüpheli.
 - **Java format = C yolu (hook DEĞİL)**: `spotless-maven-plugin` pom'da (`googleJavaFormat` + `<style>AOSP</style>`, `apply` goal'ü `process-sources` fazına bağlı). `build` düğümü `mvn` çalıştırınca format ekstra çağrı olmadan otomatik olur. `testapp/backend/pom.xml`'e eklenip AOSP 4-boşluğun diske yansıdığı doğrulandı. (B yolu — Stop hook record+apply — denendi; C daha temiz olduğu için tercih edildi, java-format hook'ları kaldırıldı.)
 
 ## Kritik bilinenler (tekrar keşfetme)
@@ -123,5 +124,5 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 - **Bu oturumun kazançları ÖLÇÜLMEDİ** — şema küçültme ve `limits` tahminle yapıldı; `structuredOutputRetries:2` ve `apiTimeoutMs:30dk` makul başlangıç, kanıt değil. Artık ölçüm var: ilk gerçek koşuda bak.
 - **Aktif `config.json`**: architect(routes) → developer → reviewer; `jetbrains-index-mcp-server` (mcpServers) + `arama` kuralı (semantik arama tercihi, Grep/Glob fallback); **build düğümü YOK**.
 - **Örnekler**: `config.microservices.example.json` (build düğümlü çok-repo; parent=common-events), `config.hooks.example.json` (guard-bash PreToolUse hook'u).
-- **Ayrı repo**: `testapp/backend/pom.xml`'e spotless (AOSP, process-sources) eklendi — java format C demosu (alpai reposu dışı).
+- **Ayrı repo**: `testapp/backend/pom.xml`'e spotless (AOSP, process-sources) eklendi — java format C demosu (yaver reposu dışı).
 - **Olası sıradaki adımlar**: (1) build düğümünü gerçek bir Java projesinde uçtan uca test (RED döngüsü + resume ile birlikte); (2) config editörüne hook düzenleme ekle; (3) reviewer RED→developer döngüsü / kullanıcı reddi / Ollama yollarını gerçek koşuda gör; (4) resume: bellekten dosyaya kalıcı katalog zaten var, "developer text çıktı verirse build boş kalır" gibi kenar durumlar için güvenlik ağı.

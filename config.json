@@ -45,7 +45,7 @@
           {
             "event": "PreToolUse",
             "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
-            "command": "node D:/work/alpai/.claude/hooks/guard-readonly.js"
+            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
           }
         ],
         "requiresUserApproval": true,
