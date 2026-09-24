@@ -7,7 +7,7 @@ import { EventBus } from "./events.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
 import { SessionStore } from "./sessions.js";
-import type { AgentDefinition, AppConfig } from "./types.js";
+import { isParallelNode, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
   task: string;
@@ -59,6 +59,11 @@ async function executeRun(
     entry: cfg.workflow.entry,
     maxCycles: cfg.workflow.maxCycles,
     agents: [...agents.keys()],
+    parallelGroups: Object.fromEntries(
+      Object.entries(cfg.workflow.agents)
+        .filter(([, n]) => isParallelNode(n))
+        .map(([key, n]) => [key, (n as { branches: string[] }).branches]),
+    ),
     resumed,
   });
 

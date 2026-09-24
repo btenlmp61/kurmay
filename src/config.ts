@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isCommandNode, type AppConfig, type ProviderConfig } from "./types.js";
+import { isCommandNode, isParallelNode, type AppConfig, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -68,6 +68,7 @@ export function loadAppConfig(configPath: string): AppConfig {
       }
       continue; // komut düğümünün tools listesi yok
     }
+    if (isParallelNode(node)) continue; // paralel düğüm de bir kapı, tools listesi yok
     for (const tool of node.tools) {
       if (tool.startsWith("mcp__")) {
         const serverName = tool.slice(5).split("__")[0];

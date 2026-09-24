@@ -20,11 +20,12 @@ import {
 export async function extractVerdict(
   reviewText: string,
   cfg: ProviderConfig,
+  abortController?: AbortController,
 ): Promise<ReviewVerdict> {
   const key = cfg.provider === "anthropic" ? (cfg.apiKey ?? process.env.ANTHROPIC_API_KEY) : undefined;
   return key
-    ? extractWithStructuredOutput(reviewText, cfg, key)
-    : extractWithAgentSdk(reviewText, cfg);
+    ? extractWithStructuredOutput(reviewText, cfg, key, abortController)
+    : extractWithAgentSdk(reviewText, cfg, abortController);
 }
 
 function buildExtractionPrompt(reviewText: string): string {
@@ -46,15 +47,21 @@ async function extractWithStructuredOutput(
   reviewText: string,
   cfg: ProviderConfig,
   apiKey: string,
+  abortController?: AbortController,
 ): Promise<ReviewVerdict> {
   const client = new Anthropic({ apiKey, ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}) });
-  const response = await client.messages.parse({
-    model: cfg.verdictModel ?? cfg.model ?? "claude-opus-4-8",
-    max_tokens: 2048,
-    thinking: { type: "adaptive" },
-    messages: [{ role: "user", content: buildExtractionPrompt(reviewText) }],
-    output_config: { format: zodOutputFormat(ReviewVerdictSchema) },
-  });
+  const response = await client.messages.parse(
+    {
+      model: cfg.verdictModel ?? cfg.model ?? "claude-opus-4-8",
+      max_tokens: 2048,
+      thinking: { type: "adaptive" },
+      messages: [{ role: "user", content: buildExtractionPrompt(reviewText) }],
+      output_config: { format: zodOutputFormat(ReviewVerdictSchema) },
+    },
+    // Durdur butonu bu çağrıyı da kessin — paralel incelemede dal başına bir
+    // tane olduğu için iptal edilemezlik N katına çıkıyordu
+    abortController ? { signal: abortController.signal } : undefined,
+  );
 
   if (!response.parsed_output) {
     throw new Error("Reviewer kararı ayrıştırılamadı (parsed_output boş)");
@@ -69,6 +76,7 @@ async function extractWithStructuredOutput(
 async function extractWithAgentSdk(
   reviewText: string,
   cfg: ProviderConfig,
+  abortController?: AbortController,
 ): Promise<ReviewVerdict> {
   const env = buildAgentEnv(cfg);
   const model = cfg.verdictModel ?? cfg.model;
@@ -78,6 +86,8 @@ async function extractWithAgentSdk(
     options: {
       allowedTools: [],
       permissionMode: "default",
+      // Durdur butonu bu çağrıyı da kessin (bkz. extractWithStructuredOutput)
+      ...(abortController ? { abortController } : {}),
       // maxTurns kısıtı KOYMA: SDK, şemaya uymayan çıktıyı ek turlarla kendisi
       // düzeltir; tek turda kesilirse structured_output boş kalır (yaşandı)
       outputFormat: {

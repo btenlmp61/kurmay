@@ -76,10 +76,34 @@
         "skills": [
           "test-yazimi"
         ],
-        "next": "reviewer"
+        "next": "review"
       },
-      "reviewer": {
-        "file": ".claude/agents/reviewer.md",
+      "review": {
+        "type": "parallel",
+        "branches": [
+          "security",
+          "tests",
+          "style"
+        ],
+        "onApprove": "stage",
+        "onReject": "developer"
+      },
+      "security": {
+        "file": ".claude/agents/security.md",
+        "tools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "genel",
+          "arama"
+        ],
+        "effort": "high"
+      },
+      "tests": {
+        "file": ".claude/agents/tests.md",
         "tools": [
           "Read",
           "Glob",
@@ -91,10 +115,28 @@
           "genel",
           "arama"
         ],
-        "verdict": {
-          "onApprove": "stage",
-          "onReject": "developer"
-        }
+        "effort": "medium",
+        "hooks": [
+          {
+            "event": "PreToolUse",
+            "matcher": "Bash",
+            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
+          }
+        ]
+      },
+      "style": {
+        "file": ".claude/agents/style.md",
+        "tools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "genel",
+          "arama"
+        ],
+        "effort": "low"
       },
       "stage": {
         "type": "command",

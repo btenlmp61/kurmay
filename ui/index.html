@@ -51,7 +51,9 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
 .pipe { display:flex; align-items:stretch; gap:10px; }
 .pipe .arrow { align-self:center; color:var(--muted); }
-.node { flex:1; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
+/* justify-content:center — paralel grup yan hücrelerden uzun olduğunda sıralı
+   düğümler de onun boyuna gerilir; metin tepede kalmasın diye dikey ortalanır. */
+.node { flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
 .node .nm { font-weight:700; font-size:14px; }
 .node .sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
 .node.running { background:var(--blueBg); border-color:var(--blue); }
@@ -60,6 +62,13 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .node.done .nm, .node.done .sub { color:var(--md-on-secondary-container); }
 .node.rejected { background:var(--redBg); border-color:var(--red); }
 .node.rejected .nm, .node.rejected .sub { color:var(--md-on-error-container); }
+/* Paralel grup — dallar TEK bir hattın içinde üst üste. Sıralı düğümlerle aynı
+   genişlikte bir hücre olması bilinçli: okuyan "burada üç şey aynı anda oluyor"
+   görsün, üç ayrı adım sanmasın. */
+.node.group { display:flex; flex-direction:column; gap:6px; padding:8px; background:var(--md-surface-container); }
+.node.group > .glabel { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.node.group > .node { flex:none; padding:8px 6px; }
+.node.group > .node .nm { font-size:13px; }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
 /* Ana görev başlatma butonu — M3 extended FAB: her zaman görünür elevation,
    daha büyük dokunma alanı, belirgin birincil renk. */
@@ -244,7 +253,8 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <div id="stream"></div>
   </div>
   <div class="card hidden" id="verdictCard">
-    <div class="label">Reviewer kararı</div>
+    <!-- Tek reviewer da paralel inceleme de bu kartı doldurur — etiket nötr -->
+    <div class="label">İnceleme kararı</div>
     <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
     <div id="issues"></div>
@@ -278,6 +288,8 @@ $("btnTheme").addEventListener("click", () => {
 renderThemeBtn();
 
 let agents = [], states = {}, finished = false;
+// Paralel düğüm adı → dalları (workflow_started'dan gelir; yoksa boş = hepsi sıralı)
+let parallelGroups = {};
 // Bekleyen onay akışı bitirecek mi (ajan "kod değişikliği gerekmiyor" dedi mi)
 let approvalEndsFlow = false;
 // Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
@@ -468,15 +480,38 @@ function fmtElapsed(sec) {
   return `${dk}dk ${String(kalan).padStart(2, "0")}sn`;
 }
 
+function isParallelBranch(a) {
+  return Object.values(parallelGroups).some((bs) => bs.includes(a));
+}
+
+function nodeCell(a) {
+  const st = states[a] || "pending";
+  let sub = stateLabels[st];
+  if (st === "running" && runningSince[a]) {
+    sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
+  }
+  return `<div class="node ${st}"><div class="nm">${esc(a)}</div><div class="sub">${sub}</div></div>`;
+}
+
 function renderPipeline() {
-  $("pipeline").innerHTML = agents.map((a) => {
-    const st = states[a] || "pending";
-    let sub = stateLabels[st];
-    if (st === "running" && runningSince[a]) {
-      sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
-    }
-    return `<div class="node ${st}"><div class="nm">${esc(a)}</div><div class="sub">${sub}</div></div>`;
-  }).join('<div class="arrow">→</div>');
+  // Bir paralel düğümün dalları hatta TEK hücre olarak çıkar: ilk dalın yerinde
+  // grup çizilir, grubun diğer dalları atlanır. Böylece sıra "architect → developer
+  // → [güvenlik|test|üslup] → stage" gibi okunur.
+  const groupOf = {};                      // dal adı → paralel düğüm adı
+  for (const [node, branches] of Object.entries(parallelGroups)) {
+    for (const b of branches) groupOf[b] = node;
+  }
+  const drawn = new Set();
+  const cells = [];
+  for (const a of agents) {
+    const g = groupOf[a];
+    if (!g) { cells.push(nodeCell(a)); continue; }
+    if (drawn.has(g)) continue;
+    drawn.add(g);
+    const inner = parallelGroups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
+    cells.push(`<div class="node group"><div class="glabel">${esc(g)} · eş zamanlı</div>${inner}</div>`);
+  }
+  $("pipeline").innerHTML = cells.join('<div class="arrow">→</div>');
 }
 
 // Çalışan ajan varken saniyede bir pipeline'ı yeniden çizer; kimse çalışmıyorsa durur
@@ -526,6 +561,7 @@ function handle(e) {
   switch (e.type) {
     case "workflow_started":
       agents = e.agents;
+      parallelGroups = e.parallelGroups || {};
       states = {};
       agents.forEach((a) => (states[a] = "pending"));
       $("task").textContent = e.task;
@@ -639,6 +675,11 @@ function handle(e) {
     case "verdict": {
       states[e.agent] = e.approved ? "done" : "rejected";
       renderPipeline();
+      addLog(e.ts, `<b>${esc(e.agent)}</b> kararı: ${e.approved ? "onay" : "red"} — ${esc(e.summary)}`,
+        e.approved ? "ok" : "err");
+      // Paralel dalsa karar kartını DOLDURMA: üç dal sırayla birbirini ezerdi.
+      // Kartı birleşmiş sonuçla parallel_finished dolduruyor.
+      if (isParallelBranch(e.agent)) break;
       $("verdictCard").classList.remove("hidden");
       const head = $("verdictHead");
       head.textContent = e.approved ? "Onaylandı" : "Reddedildi";
@@ -647,7 +688,41 @@ function handle(e) {
       $("issues").innerHTML = e.issues.map((i) =>
         `<div class="issue"><span class="sev ${i.severity}">${i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
       ).join("") || '<div style="font-size:13px;color:var(--muted)">Sorun bildirilmedi</div>';
-      addLog(e.ts, `karar: ${e.approved ? "onaylandı" : "reddedildi"}`, e.approved ? "ok" : "err");
+      break;
+    }
+    case "parallel_started":
+      addLog(e.ts, `⚡ paralel inceleme başladı: ${e.branches.map(esc).join(", ")}`);
+      break;
+    case "parallel_finished": {
+      // Dal durumlarını birleşik sonuçtan kesinleştir. Hata veren dal hiç verdict
+      // yayınlamaz — düzeltmezsek şeritte sonsuza kadar "çalışıyor" görünürdü.
+      for (const b of e.branches) {
+        states[b.branch] = b.ok && b.approved ? "done" : "rejected";
+        delete runningSince[b.branch];
+      }
+      renderPipeline();
+      // Birleşmiş karar: dallardan biri bile reddettiyse ya da inceleyemediyse red
+      $("verdictCard").classList.remove("hidden");
+      const head = $("verdictHead");
+      head.textContent = e.approved ? "Onaylandı" : "Reddedildi";
+      head.style.color = e.approved ? "var(--teal)" : "var(--red)";
+      const cost = e.costUsd ? ` · toplam $${e.costUsd.toFixed(4)}` : "";
+      $("verdictSummary").textContent =
+        `${e.branches.length} dal eş zamanlı inceledi${cost}`;
+      // Sorunlar dal başlığı altında gruplu — hangi uzmanlığın itiraz ettiği görünsün
+      $("issues").innerHTML = e.branches.map((b) => {
+        const mark = !b.ok ? "⚠" : b.approved ? "✅" : "❌";
+        const color = !b.ok ? "var(--amber)" : b.approved ? "var(--teal)" : "var(--red)";
+        const rows = b.issues.map((i) =>
+          `<div class="issue"><span class="sev ${i.severity}">${i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
+        ).join("");
+        return `<div style="margin-bottom:10px">` +
+          `<div style="font-size:12px;font-weight:700;color:${color};margin-bottom:4px">${mark} ${esc(b.branch)}</div>` +
+          `<div style="font-size:12.5px;color:var(--muted);margin-bottom:6px">${esc(b.summary)}</div>` +
+          rows + `</div>`;
+      }).join("");
+      addLog(e.ts, `paralel karar: ${e.approved ? "onaylandı" : "reddedildi"}${cost}`,
+        e.approved ? "ok" : "err");
       break;
     }
     case "cycle":

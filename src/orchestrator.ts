@@ -5,11 +5,14 @@ import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
 import {
   isCommandNode,
+  isParallelNode,
   ReviewVerdictSchema,
   RunCancelledError,
   type AgentDefinition,
   type AgentNodeConfig,
   type AgentRunResult,
+  type BranchOutcome,
+  type ParallelNodeConfig,
   type ProviderConfig,
   type ReviewVerdict,
   type WorkflowConfig,
@@ -89,6 +92,102 @@ function buildPrompt(agent: AgentDefinition, ctx: RunContext): string {
 }
 
 /**
+ * Paralel inceleme düğümünü koşar: dallar EŞ ZAMANLI çalışır, kararları burada
+ * deterministik olarak birleşir.
+ *
+ * allSettled (all değil) bilinçli: `all` ilk hatada döner ama diğer dallar arkada
+ * koşmaya devam ederdi. İptal edilen bir dal akışı komple durdurur; diğer hatalar
+ * o dalın "inceleyemedi" sonucu olur ve ASLA onay sayılmaz — sessizce geçilmesi
+ * en tehlikeli davranış olurdu.
+ */
+async function runParallel(
+  nodeKey: string,
+  node: ParallelNodeConfig,
+  agents: Map<string, AgentDefinition>,
+  ctx: RunContext,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  abortController: AbortController,
+): Promise<{ approved: boolean; branches: BranchOutcome[]; costUsd: number }> {
+  bus.emit({ type: "parallel_started", node: nodeKey, branches: node.branches });
+  console.log(`\n⚡ Paralel inceleme: ${node.branches.join(", ")}`);
+
+  const settled = await Promise.allSettled(
+    node.branches.map(async (key): Promise<BranchOutcome> => {
+      const agent = agents.get(key)!;
+      // Dallar oturum sürdürmez (entry değiller) ve birbirlerini görmezler —
+      // buildPrompt her birine developer çıktısını verir, doğrusu da bu
+      const result = await runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController);
+      const parsed = ReviewVerdictSchema.safeParse(result.structured);
+      const verdict: ReviewVerdict = parsed.success
+        ? parsed.data
+        : await (async () => {
+            console.log(`⚠ "${agent.name}" kararı yapılandırılmamış, rapor metninden çıkarılıyor…`);
+            return extractVerdict(result.text, cfg, abortController);
+          })();
+
+      bus.emit({
+        type: "verdict",
+        agent: agent.key,
+        approved: verdict.approved,
+        issues: verdict.issues,
+        summary: verdict.summary,
+      });
+      return {
+        branch: agent.key,
+        ok: true,
+        approved: verdict.approved,
+        summary: verdict.summary,
+        issues: verdict.issues,
+        costUsd: result.metrics?.costUsd,
+      };
+    }),
+  );
+
+  const branches: BranchOutcome[] = settled.map((s, i) => {
+    if (s.status === "fulfilled") return s.value;
+    // İptali yut ma: akışın tamamı durmalı
+    if (s.reason instanceof RunCancelledError) throw s.reason;
+    const key = node.branches[i];
+    const error = s.reason instanceof Error ? s.reason.message : String(s.reason);
+    console.log(`❌ "${key}" dalı inceleyemedi: ${error}`);
+    return {
+      branch: key,
+      ok: false,
+      approved: false,
+      summary: `İnceleme yapılamadı: ${error}`,
+      issues: [],
+      error,
+    };
+  });
+
+  const approved = branches.every((b) => b.ok && b.approved);
+  const costUsd = branches.reduce((sum, b) => sum + (b.costUsd ?? 0), 0);
+  bus.emit({ type: "parallel_finished", node: nodeKey, approved, branches, costUsd });
+  return { approved, branches, costUsd };
+}
+
+/** Dalların sorunlarını developer'a gidecek tek bir geri bildirime çevirir. */
+function mergeBranchFeedback(branches: BranchOutcome[]): string {
+  const lines: string[] = [];
+  for (const b of branches) {
+    if (!b.ok) {
+      lines.push(`- [${b.branch}] İNCELENEMEDİ: ${b.error}`);
+      continue;
+    }
+    if (b.approved) continue;
+    if (b.issues.length === 0) {
+      lines.push(`- [${b.branch}] ${b.summary}`);
+      continue;
+    }
+    // Dal adı etikette: developer hangi uzmanlığın itiraz ettiğini bilsin
+    for (const i of b.issues) lines.push(`- [${b.branch}][${i.severity}] ${i.file}: ${i.description}`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Grafı yürüten motor. Kim kimi çağırır, onay nerede beklenir, döngü ne zaman
  * biter — hepsi config'den gelir ve kodda deterministik işler; hiçbir geçiş
  * modelin "hatırlamasına" bırakılmaz. Her adım EventBus'a yayınlanır.
@@ -138,6 +237,40 @@ export async function runWorkflow(
       console.log(`\n🔁 Tur ${rejectCycles}/${workflow.maxCycles}: build hatası "${node.onFailure}" ajanına gönderiliyor`);
       bus.emit({ type: "cycle", n: rejectCycles, max: workflow.maxCycles, to: node.onFailure });
       current = node.onFailure;
+      continue;
+    }
+
+    // Paralel inceleme düğümü (LLM değil, bir kapı): dallar eş zamanlı koşar,
+    // kararları birleşir. Reject bütçesi verdict/build ile ORTAK — üç red kaynağı
+    // da aynı maxCycles'ı harcar, yoksa döngü koruması delinirdi.
+    if (isParallelNode(node)) {
+      const { approved, branches, costUsd } = await runParallel(
+        current, node, agents, ctx, cwd, cfg, bus, abortController,
+      );
+      console.log(
+        `\n📋 Paralel inceleme: ${approved ? "ONAYLANDI ✅" : "REDDEDİLDİ ❌"}` +
+          (costUsd > 0 ? ` — toplam $${costUsd.toFixed(4)}` : ""),
+      );
+      for (const b of branches) {
+        const mark = !b.ok ? "⚠" : b.approved ? "✅" : "❌";
+        console.log(`  ${mark} ${b.branch}: ${b.summary}`);
+      }
+      if (approved) {
+        ctx.feedback = undefined;
+        current = node.onApprove;
+        continue;
+      }
+      rejectCycles++;
+      if (rejectCycles >= workflow.maxCycles) {
+        const error = `Maksimum döngü sayısına (${workflow.maxCycles}) ulaşıldı; paralel inceleme onayı alınamadı`;
+        console.log(`\n⚠️ ${error}`);
+        bus.emit({ type: "workflow_failed", error });
+        return;
+      }
+      ctx.feedback = mergeBranchFeedback(branches);
+      console.log(`🔁 Tur ${rejectCycles}/${workflow.maxCycles}: sorunlar "${node.onReject}" ajanına gönderiliyor`);
+      bus.emit({ type: "cycle", n: rejectCycles, max: workflow.maxCycles, to: node.onReject });
+      current = node.onReject;
       continue;
     }
 
@@ -210,7 +343,7 @@ export async function runWorkflow(
         verdict = parsed.data;
       } else {
         console.log("⚠ Yapılandırılmış karar alınamadı, rapor metninden çıkarılıyor…");
-        verdict = await extractVerdict(result.text, cfg);
+        verdict = await extractVerdict(result.text, cfg, abortController);
       }
 
       bus.emit({

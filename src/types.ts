@@ -67,6 +67,9 @@ export interface AgentNodeConfig {
   skills?: string[];
   /** İsteğe bağlı model override'ı (config'deki genel "model" alanını ezer) */
   model?: string;
+  /** Akıl yürütme derinliği (SDK'nin effort seçeneği). Ucuz/dar işler için "low",
+   *  güvenlik gibi yüksek bedelli incelemeler için "high"/"xhigh". */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Bu ajana bağlı komut-hook'ları (araç kapıları, otomatik lint/format vb.) */
   hooks?: HookConfig[];
   /** true ise bu ajanın çıktısı sonrasında kullanıcı onayı beklenir */
@@ -116,10 +119,51 @@ export interface CommandNodeConfig {
   onFailure: string;
 }
 
-export type WorkflowNode = AgentNodeConfig | CommandNodeConfig;
+/**
+ * Paralel inceleme düğümü — LLM değil, bir fan-out/fan-in kapısı. "branches"taki
+ * ajanlar EŞ ZAMANLI koşar (her biri kendi query'si, kendi bağlamı, kendi modeli),
+ * sonra kararları kodda deterministik olarak birleşir: hepsi onayladıysa onApprove,
+ * aksi halde onReject (sorunlar dal adıyla etiketli geri bildirim olur).
+ *
+ * Neden ajanın Agent aracına (SDK subagent) bırakılmadı: orada kaç alt-ajanın ne
+ * zaman koşacağına MODEL karar verir; burada graf kodda sabit ve config editöründe
+ * görünür/düzenlenebilir kalır.
+ *
+ * Dallar salt-okunur olmalı — aynı dizinde eş zamanlı koştukları için yazma
+ * araçları yükleme zamanında reddedilir (bkz. agents.ts).
+ */
+export interface ParallelNodeConfig {
+  type: "parallel";
+  /** Eş zamanlı koşacak ajan düğümlerinin adları (en az 1) */
+  branches: string[];
+  /** Tüm dallar onayladığında gidilecek düğüm (null = akış biter) */
+  onApprove: string | null;
+  /** Herhangi bir dal reddettiğinde/inceleyemediğinde gidilecek düğüm */
+  onReject: string;
+}
+
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | ParallelNodeConfig;
 
 export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
   return (node as CommandNodeConfig).type === "command";
+}
+
+export function isParallelNode(node: WorkflowNode): node is ParallelNodeConfig {
+  return (node as ParallelNodeConfig).type === "parallel";
+}
+
+/** Paralel düğümde tek bir dalın sonucu — panel ve geri bildirim için. */
+export interface BranchOutcome {
+  branch: string;
+  /** Dal hata verdiyse false; "inceleyemedi" onay SAYILMAZ */
+  ok: boolean;
+  approved: boolean;
+  summary: string;
+  issues: ReviewVerdict["issues"];
+  /** Dalın tahmini maliyeti (USD) — toplanıp parallel_finished'te yayınlanır */
+  costUsd?: number;
+  /** ok=false ise hata mesajı */
+  error?: string;
 }
 
 export interface WorkflowConfig {
