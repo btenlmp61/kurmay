@@ -53,17 +53,17 @@
         "routes": {
           "field": "route",
           "cases": {
-            "developer": "dagit",
+            "developer": "developer-team",
             "done": null
           },
-          "default": "dagit"
+          "default": "developer-team"
         }
       },
-      "dagit": {
+      "developer-team": {
         "type": "fanout",
         "agent": "developer",
         "maxConcurrency": 2,
-        "next": "review"
+        "next": "reviewer"
       },
       "developer": {
         "file": ".claude/agents/developer.md",
@@ -84,32 +84,8 @@
           "test-yazimi"
         ]
       },
-      "review": {
-        "type": "parallel",
-        "branches": [
-          "security",
-          "tests",
-          "style"
-        ],
-        "onApprove": "stage",
-        "onReject": "dagit"
-      },
-      "security": {
-        "file": ".claude/agents/security.md",
-        "tools": [
-          "Read",
-          "Glob",
-          "Grep",
-          "mcp__jetbrains-index-mcp-server"
-        ],
-        "rules": [
-          "genel",
-          "arama"
-        ],
-        "effort": "high"
-      },
-      "tests": {
-        "file": ".claude/agents/tests.md",
+      "reviewer": {
+        "file": ".claude/agents/reviewer.md",
         "tools": [
           "Read",
           "Glob",
@@ -121,34 +97,10 @@
           "genel",
           "arama"
         ],
-        "effort": "medium",
-        "hooks": [
-          {
-            "event": "PreToolUse",
-            "matcher": "Bash",
-            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
-          }
-        ]
-      },
-      "style": {
-        "file": ".claude/agents/style.md",
-        "tools": [
-          "Read",
-          "Glob",
-          "Grep",
-          "mcp__jetbrains-index-mcp-server"
-        ],
-        "rules": [
-          "genel",
-          "arama"
-        ],
-        "effort": "low"
-      },
-      "stage": {
-        "type": "command",
-        "command": "git add -A",
-        "onSuccess": null,
-        "onFailure": "dagit"
+        "verdict": {
+          "onApprove": null,
+          "onReject": "developer-team"
+        }
       }
     }
   }

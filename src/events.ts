@@ -1,4 +1,4 @@
-import type { AgentMetrics, BranchOutcome, ReviewVerdict } from "./types.js";
+import type { AgentMetrics, ReviewVerdict } from "./types.js";
 
 export type OrchestratorEvent =
   | {
@@ -9,10 +9,6 @@ export type OrchestratorEvent =
       entry: string;
       maxCycles: number;
       agents: string[];
-      /** Paralel düğüm adı → dalları. Panel bu dalları tek bir grup hücresinde
-       *  yan yana çizsin diye BAŞTA gönderilir; yoksa koşu başlayana kadar
-       *  sıralıymış gibi görünürlerdi. */
-      parallelGroups?: Record<string, string[]>;
       /** true ise entry ajan önceki oturumu sürdürüyor — panel akışı temizlenmez */
       resumed?: boolean;
       /** Devre dışı düğümler — panel hatta soluk/üstü çizili gösterir */
@@ -63,19 +59,6 @@ export type OrchestratorEvent =
       summary: string;
     }
   | { type: "cycle"; n: number; max: number; to: string }
-  // Paralel inceleme: dallar eş zamanlı başlar. Dal başına agent_started/
-  // agent_finished/verdict olayları ZATEN "agent" alanı taşıyor — panel durumu
-  // onlarla tutar; bu ikisi yalnızca grubu ve birleşmiş sonucu bildirir.
-  | { type: "parallel_started"; node: string; branches: string[] }
-  | {
-      type: "parallel_finished";
-      node: string;
-      /** Tüm dallar onayladı VE hiçbiri hata vermediyse true */
-      approved: boolean;
-      branches: BranchOutcome[];
-      /** Dalların tahmini maliyet toplamı (USD) — ölçüm için */
-      costUsd?: number;
-    }
   // Repo başına dağıtım: ajanın kopyaları (key = "<ajan>@<repo>") başlar; kopya
   // başına agent_started/agent_finished olayları bu anahtarlarla gelir
   | {

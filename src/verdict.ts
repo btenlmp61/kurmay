@@ -58,8 +58,7 @@ async function extractWithStructuredOutput(
       messages: [{ role: "user", content: buildExtractionPrompt(reviewText) }],
       output_config: { format: zodOutputFormat(ReviewVerdictSchema) },
     },
-    // Durdur butonu bu çağrıyı da kessin — paralel incelemede dal başına bir
-    // tane olduğu için iptal edilemezlik N katına çıkıyordu
+    // Durdur butonu bu çağrıyı da kessin
     abortController ? { signal: abortController.signal } : undefined,
   );
 

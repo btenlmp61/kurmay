@@ -204,7 +204,7 @@ button:disabled::after { display:none; }
 /* — Metin alanları: M3 outlined text field (sabit üst etiket — akan/floating
    etiket bilinçli olarak atlandı: yoğun bir panelde çakışma hesaplamasının
    maliyeti kazancına değmiyor). — */
-input[type=text], input[type=datetime-local], textarea, select {
+input[type=text], input[type=number], input[type=datetime-local], textarea, select {
   font:var(--md-type-body-md);
   padding:10px 14px; min-height:44px;
   border-radius:var(--md-shape-sm);
@@ -223,5 +223,5 @@ button.icon { padding:6px 10px; min-height:36px; font-size:16px; line-height:1; 
 
 /* Dokunmatik/kaba işaretçide daha büyük hedef alanı (M3 dokunma hedefi ≥48px) */
 @media (pointer: coarse) {
-  button, input[type=text], input[type=datetime-local], textarea, select { min-height:48px; }
+  button, input[type=text], input[type=number], input[type=datetime-local], textarea, select { min-height:48px; }
 }

@@ -128,33 +128,6 @@ export interface CommandNodeConfig {
 }
 
 /**
- * Paralel inceleme düğümü — LLM değil, bir fan-out/fan-in kapısı. "branches"taki
- * ajanlar EŞ ZAMANLI koşar (her biri kendi query'si, kendi bağlamı, kendi modeli),
- * sonra kararları kodda deterministik olarak birleşir: hepsi onayladıysa onApprove,
- * aksi halde onReject (sorunlar dal adıyla etiketli geri bildirim olur).
- *
- * Neden ajanın Agent aracına (SDK subagent) bırakılmadı: orada kaç alt-ajanın ne
- * zaman koşacağına MODEL karar verir; burada graf kodda sabit ve config editöründe
- * görünür/düzenlenebilir kalır.
- *
- * Dallar salt-okunur olmalı — aynı dizinde eş zamanlı koştukları için yazma
- * araçları yükleme zamanında reddedilir (bkz. agents.ts).
- */
-export interface ParallelNodeConfig {
-  type: "parallel";
-  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
-   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
-   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
-  disabled?: boolean;
-  /** Eş zamanlı koşacak ajan düğümlerinin adları (en az 1) */
-  branches: string[];
-  /** Tüm dallar onayladığında gidilecek düğüm (null = akış biter) */
-  onApprove: string | null;
-  /** Herhangi bir dal reddettiğinde/inceleyemediğinde gidilecek düğüm */
-  onReject: string;
-}
-
-/**
  * Repo başına dağıtım düğümü — LLM değil, bir fan-out/fan-in kapısı. Architect'in
  * `file_plan`'ı repolara bölünür (dosyanın targetDir altındaki en üst klasörü =
  * repo, build.ts ile aynı kural) ve "agent" düğümünün her repo için AYRI bir
@@ -186,52 +159,33 @@ export interface FanoutNodeConfig {
   next: string | null;
 }
 
-export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | ParallelNodeConfig | FanoutNodeConfig;
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | FanoutNodeConfig;
 
 export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
   return (node as CommandNodeConfig).type === "command";
-}
-
-export function isParallelNode(node: WorkflowNode): node is ParallelNodeConfig {
-  return (node as ParallelNodeConfig).type === "parallel";
 }
 
 export function isFanoutNode(node: WorkflowNode): node is FanoutNodeConfig {
   return (node as FanoutNodeConfig).type === "fanout";
 }
 
-/** LLM olmayan kapı düğümleri (komut/paralel/fanout) — persona/araç listesi yok */
-export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | ParallelNodeConfig | FanoutNodeConfig {
-  return isCommandNode(node) || isParallelNode(node) || isFanoutNode(node);
+/** LLM olmayan kapı düğümleri (komut/fanout) — persona/araç listesi yok */
+export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | FanoutNodeConfig {
+  return isCommandNode(node) || isFanoutNode(node);
 }
 
 /**
  * Devre dışı düğümün "geçer" kenarı — akış onu koşturmadan buradan devam eder.
  * Hep BAŞARI yönü seçilir (düğüm hiç itiraz etmemiş gibi): komut → onSuccess,
- * paralel → onApprove, fanout → next, verdict → onApprove, routes → default, next → next.
+ * fanout → next, verdict → onApprove, routes → default, next → next.
  * null = akış biter.
  */
 export function passThroughTarget(node: WorkflowNode): string | null {
   if (isCommandNode(node)) return node.onSuccess;
-  if (isParallelNode(node)) return node.onApprove;
   if (isFanoutNode(node)) return node.next;
   if (node.verdict) return node.verdict.onApprove;
   if (node.routes) return node.routes.default ?? null;
   return node.next ?? null;
-}
-
-/** Paralel düğümde tek bir dalın sonucu — panel ve geri bildirim için. */
-export interface BranchOutcome {
-  branch: string;
-  /** Dal hata verdiyse false; "inceleyemedi" onay SAYILMAZ */
-  ok: boolean;
-  approved: boolean;
-  summary: string;
-  issues: ReviewVerdict["issues"];
-  /** Dalın tahmini maliyeti (USD) — toplanıp parallel_finished'te yayınlanır */
-  costUsd?: number;
-  /** ok=false ise hata mesajı */
-  error?: string;
 }
 
 export interface WorkflowConfig {

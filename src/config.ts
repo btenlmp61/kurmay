@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isCommandNode, isFanoutNode, isParallelNode, type AppConfig, type ProviderConfig } from "./types.js";
+import { isCommandNode, isFanoutNode, type AppConfig, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -62,6 +62,13 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   // Ajanların tools listesindeki mcp__ araçları tanımlı bir sunucuya işaret etmeli
   for (const [key, node] of Object.entries(cfg.workflow.agents)) {
+    const type = (node as { type?: unknown }).type;
+    if (type !== undefined && type !== "agent" && type !== "command" && type !== "fanout") {
+      throw new Error(
+        `config: "${key}" düğümünün tipi ${JSON.stringify(type)} tanınmıyor (agent | command | fanout)` +
+          (type === "parallel" ? ' — paralel inceleme kaldırıldı; tek reviewer için "verdict" kullan' : ""),
+      );
+    }
     if (node.disabled !== undefined && typeof node.disabled !== "boolean") {
       throw new Error(`config: "${key}.disabled" true/false olmalı (verilen: ${JSON.stringify(node.disabled)})`);
     }
@@ -71,7 +78,6 @@ export function loadAppConfig(configPath: string): AppConfig {
       }
       continue; // komut düğümünün tools listesi yok
     }
-    if (isParallelNode(node)) continue; // paralel düğüm de bir kapı, tools listesi yok
     if (isFanoutNode(node)) {
       const mc = node.maxConcurrency;
       if (mc !== undefined && (!Number.isInteger(mc) || mc < 0)) {

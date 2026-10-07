@@ -180,8 +180,8 @@ async function executeQuery(
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
-      // Akıl yürütme derinliği — dar/ucuz dallar "low", güvenlik gibi yüksek
-      // bedelli incelemeler "high"/"xhigh" ile koşsun diye ajan başına ayarlanır
+      // Akıl yürütme derinliği — dar/ucuz işler "low", yüksek bedelli
+      // incelemeler "high"/"xhigh" ile koşsun diye ajan başına ayarlanır
       ...(agent.config.effort ? { effort: agent.config.effort } : {}),
     },
   });
