@@ -175,6 +175,30 @@ export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | Fano
 }
 
 /**
+ * Akışın ANA yolu: entry'den başlayıp ileri (başarı/koşullu) kenarlar boyunca
+ * BFS sırası. Geri dönüş kenarları (red, build hatası) ve fanout işçileri
+ * (fanout'un içinde koşar) dahil değil. Panelin görev kartı düğüm çiplerini
+ * bu sırayla gösterir.
+ */
+export function mainPath(workflow: WorkflowConfig): string[] {
+  const order: string[] = [];
+  const queue = [workflow.entry];
+  while (queue.length) {
+    const key = queue.shift()!;
+    const node = workflow.agents[key];
+    if (!node || order.includes(key)) continue;
+    order.push(key);
+    const forward: Array<string | null | undefined> = isCommandNode(node)
+      ? [node.onSuccess]
+      : isFanoutNode(node)
+        ? [node.next]
+        : [node.next, node.verdict?.onApprove, ...Object.values(node.routes?.cases ?? {}), node.routes?.default];
+    for (const t of forward) if (t && !order.includes(t)) queue.push(t);
+  }
+  return order;
+}
+
+/**
  * Devre dışı düğümün "geçer" kenarı — akış onu koşturmadan buradan devam eder.
  * Hep BAŞARI yönü seçilir (düğüm hiç itiraz etmemiş gibi): komut → onSuccess,
  * fanout → next, verdict → onApprove, routes → default, next → next.

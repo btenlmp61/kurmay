@@ -163,6 +163,17 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 #when { align-items:center; }
 #when .label { margin:0; }
 .hidden { display:none; }
+/* Görev kartındaki akış çipleri: tıkla → düğüm kapanır/açılır (config.json'a yazılır).
+   Kapalı çip soluk + kesik + üstü çizili; fanout kapalıyken atlanmaz, "tek kopya" olur. */
+.flow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:10px; font-size:12px; color:var(--muted); }
+.flow .lbl { margin-right:4px; }
+.fchip { display:inline-flex; flex-direction:column; align-items:flex-start; gap:0; padding:5px 12px; min-height:auto;
+  border:1px solid var(--blue); border-radius:var(--md-shape-md); background:var(--blueBg); color:var(--md-on-primary-container);
+  font-size:13px; font-weight:600; line-height:1.25; cursor:pointer; }
+.fchip small { font-size:10.5px; font-weight:400; opacity:.8; }
+.fchip.off { background:transparent; border-style:dashed; border-color:var(--border); color:var(--muted); }
+.fchip.off.skip .nm { text-decoration:line-through; }
+.fchip:disabled { cursor:wait; }
 /* Devre dışı düğüm: akış onu koşturmadan geçer — soluk, kesik kenar, üstü çizili */
 .node.disabled { opacity:.5; border-style:dashed; background:transparent; }
 .node.disabled .nm { text-decoration:line-through; }
@@ -230,6 +241,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
     <button class="primary" id="btnStart">Başlat</button>
   </div>
+  <div class="flow" id="flowChips"></div>
   <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
   <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
 </div>
@@ -1269,9 +1281,50 @@ $("modelSel").addEventListener("change", async () => {
 });
 loadModels();
 
+// Akış çipleri: ana yoldaki düğümler sırayla; tıklayınca kapanır/açılır. Kalıcıdır
+// (config.json'a yazılır) — ör. küçük işler için architect'i kapatıp doğrudan developer'a ver.
+async function loadFlow() {
+  let wf = { nodes: [] };
+  try { wf = await (await fetch("/workflow")).json(); } catch {}
+  const el = $("flowChips");
+  if (!wf.nodes || !wf.nodes.length) { el.innerHTML = ""; return; }
+  const chips = wf.nodes.map((n) => {
+    const fan = n.type === "fanout";
+    const durum = fan
+      ? (n.disabled ? `${esc(n.agent)} · tek kopya` : `${esc(n.agent)} · repo başına`)
+      : (n.disabled ? "atlanır" : n.type === "command" ? "komut" : "açık");
+    const ipucu = fan
+      ? (n.disabled ? "Dağıtım kapalı — tıkla: repo başına dağıt" : "Tıkla: dağıtımı kapat, tek kopya koşsun")
+      : (n.disabled ? "Kapalı — tıkla: aç" : "Tıkla: bu adımı atla");
+    return `<button class="fchip${n.disabled ? " off" : ""}${n.disabled && !fan ? " skip" : ""}" data-node="${esc(n.key)}" ` +
+      `data-off="${n.disabled ? 1 : 0}" title="${ipucu}"><span class="nm">${esc(n.key)}</span><small>${durum}</small></button>`;
+  });
+  const atlanan = wf.nodes.filter((n) => n.disabled && n.type !== "fanout").map((n) => n.key);
+  el.innerHTML = `<span class="lbl">Akış:</span>` + chips.join("<span>→</span>") +
+    (atlanan.length ? `<span style="margin-left:6px">— ${atlanan.map(esc).join(", ")} atlanacak</span>` : "");
+}
+$("flowChips").addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".fchip");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    const res = await fetch("/node-disabled", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: b.dataset.node, disabled: b.dataset.off !== "1" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) $("taskError").textContent = data.error || "düğüm değiştirilemedi";
+  } catch {
+    $("taskError").textContent = "düğüm değiştirilemedi";
+  }
+  loadFlow();
+});
+
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");
   $("taskError").textContent = "";
+  loadFlow();
   updateTaskCtx();
   autoGrow($("taskInput"));
   $("taskInput").focus();

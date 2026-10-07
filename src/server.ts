@@ -37,6 +37,8 @@ export interface UiServerOptions {
   getModels?: () => Promise<{ current: string; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
   setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
+  /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
+  getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
   setNodeDisabled?: (key: string, disabled: boolean) => { ok: boolean; error?: string };
 }
@@ -55,6 +57,7 @@ export interface UiServerOptions {
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
  *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
+ *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  */
 export function startUiServer(
@@ -280,6 +283,12 @@ export function startUiServer(
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/workflow") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(options.getWorkflow?.() ?? { entry: "", nodes: [] }));
       return;
     }
 

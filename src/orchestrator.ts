@@ -37,6 +37,9 @@ interface RunContext {
    *  geri bildirimde adı geçen repolar yeniden koşar; diğerlerinin sonucu buradan
    *  birleşik çıktıya taşınır. */
   fanout: Map<string, Map<string, AgentRunResult>>;
+  /** Bu koşuda devre dışı olduğu için atlanan düğümler — sonraki ajanlar
+   *  onlardan çıktı gelmeyeceğini bilsin (ör. architect kapalıysa plan yok) */
+  skipped: string[];
 }
 
 /**
@@ -90,6 +93,16 @@ function buildPrompt(agent: AgentDefinition, ctx: RunContext): string {
 
   if (ctx.feedback) {
     parts.push(`# Düzeltilmesi gerekenler (öncelikli)\n${ctx.feedback}`);
+  }
+
+  // Kullanıcı bazı adımları kapattıysa (ör. küçük iş için planlamasız akış),
+  // ajan beklediği girdiyi aramasın: görevi doğrudan kendisi ele alsın
+  if (ctx.skipped.length > 0) {
+    parts.push(
+      `# Not: atlanan adımlar\nBu koşuda şu adımlar kullanıcı tarafından devre dışı bırakıldı: ` +
+        `${ctx.skipped.join(", ")}. Onlardan çıktı (ör. plan) gelmeyecek — görevi yukarıdaki ` +
+        `açıklamadan doğrudan ele al; kendi kapsamını ve yaklaşımını sen belirle.`,
+    );
   }
 
   parts.push("Rolünün gerektirdiği işi yap.");
@@ -329,7 +342,7 @@ export async function runWorkflow(
   // sürdürülür (resume), koşu boyunca en güncel kimlikle güncellenir (bellekte)
   sessionStore: { entrySessionId?: string } = {},
 ): Promise<void> {
-  const ctx: RunContext = { task, outputs: new Map(), changedFiles: [], fanout: new Map() };
+  const ctx: RunContext = { task, outputs: new Map(), changedFiles: [], fanout: new Map(), skipped: [] };
   let current: string | null = workflow.entry;
   let rejectCycles = 0;
   // Art arda atlanan devre dışı düğüm sayısı — geçer kenarları bir döngü
@@ -352,6 +365,7 @@ export async function runWorkflow(
       }
       console.log(`\n⏭ "${current}" devre dışı — atlandı → ${to ?? "akış biter"}`);
       bus.emit({ type: "node_skipped", node: current, to });
+      if (!ctx.skipped.includes(current)) ctx.skipped.push(current);
       current = to;
       continue;
     }
@@ -388,6 +402,7 @@ export async function runWorkflow(
       if (workflow.agents[node.agent]?.disabled) {
         console.log(`\n⏭ "${node.agent}" devre dışı — "${current}" dağıtımı atlandı → ${node.next ?? "akış biter"}`);
         bus.emit({ type: "node_skipped", node: current, to: node.next });
+        if (!ctx.skipped.includes(node.agent)) ctx.skipped.push(node.agent);
         current = node.next;
         continue;
       }

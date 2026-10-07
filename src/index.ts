@@ -8,7 +8,7 @@ import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
 import { SessionStore } from "./sessions.js";
-import { isFanoutNode, type AgentDefinition, type AppConfig } from "./types.js";
+import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
   task: string;
@@ -228,6 +228,18 @@ async function main() {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
+      getWorkflow: () => ({
+        entry: cfg.workflow.entry,
+        nodes: mainPath(cfg.workflow).map((key) => {
+          const n = cfg.workflow.agents[key];
+          return {
+            key,
+            type: n.type ?? "agent",
+            disabled: !!n.disabled,
+            ...(isFanoutNode(n) ? { agent: n.agent } : {}),
+          };
+        }),
+      }),
       setNodeDisabled: (key, disabled) => {
         if (!cfg.workflow.agents[key]) return { ok: false, error: `düğüm bulunamadı: ${key}` };
         const prev = fs.readFileSync(resolvedConfigPath, "utf8");
