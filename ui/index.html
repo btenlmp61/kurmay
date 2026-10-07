@@ -49,6 +49,7 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .hdr .dir { font-size:12.5px; color:var(--muted); cursor:pointer; border-bottom:1px dashed transparent; }
 .hdr .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
 .hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
+.hdr #modelSel { font-size:12.5px; padding:4px 10px; min-height:auto; width:auto; max-width:240px; }
 .pipe { display:flex; align-items:stretch; gap:10px; }
 .pipe .arrow { align-self:center; color:var(--muted); }
 /* justify-content:center — paralel grup yan hücrelerden uzun olduğunda sıralı
@@ -189,6 +190,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
     <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
   </span>
+  <select id="modelSel" title="Model — sıradaki görevde kullanılır"></select>
   <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
   <button id="btnTheme" class="icon" title="Tema değiştir"></button>
   <button id="btnCancel" class="hidden danger">Durdur</button>
@@ -1039,6 +1041,58 @@ async function loadTargetDir() {
   } catch {}
 }
 loadTargetDir();
+
+// Model seçimi: liste config'teki modelsUrl'den sunucu üzerinden çekilir (API
+// anahtarı tarayıcıya hiç gelmez). Seçim config.json'a yazılır, sıradaki görev kullanır.
+let currentModel = "";
+function fillModelSelect(models, error) {
+  const sel = $("modelSel");
+  const opts = [`<option value="">model: varsayılan</option>`];
+  const ids = new Set(models.map((m) => m.id));
+  // Config'teki model listede yoksa da görünsün (API düşük/eski kayıt)
+  if (currentModel && !ids.has(currentModel)) {
+    opts.push(`<option value="${esc(currentModel)}">${esc(currentModel)}</option>`);
+  }
+  for (const m of models) {
+    const label = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+    opts.push(`<option value="${esc(m.id)}">${esc(label)}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+  sel.value = currentModel;
+  sel.title = error ? `Model listesi alınamadı: ${error}` : "Model — sıradaki görevde kullanılır";
+  sel.style.borderColor = error ? "var(--red)" : "";
+}
+async function loadModels() {
+  try {
+    const data = await (await fetch("/models")).json();
+    currentModel = data.current || "";
+    fillModelSelect(data.models || [], data.error);
+  } catch {
+    fillModelSelect([], "sunucuya ulaşılamadı");
+  }
+}
+$("modelSel").addEventListener("change", async () => {
+  const model = $("modelSel").value;
+  try {
+    const res = await fetch("/model", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      currentModel = model;
+      addLog(new Date().toISOString(), `🧠 model değiştirildi: ${esc(model || "varsayılan")} — sıradaki görevde geçerli`, "ok");
+    } else {
+      alert(data.error || "model kaydedilemedi");
+      $("modelSel").value = currentModel;
+    }
+  } catch {
+    alert("model kaydedilemedi");
+    $("modelSel").value = currentModel;
+  }
+});
+loadModels();
 
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");

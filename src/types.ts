@@ -232,6 +232,9 @@ export interface ProviderConfig {
   apiKey?: string;
   /** Ajanların varsayılan modeli. Anthropic'te boşsa Claude Code varsayılanı */
   model?: string;
+  /** Panelde model seçimi için listenin çekileceği adres (GET). "apiKey" başlıkta
+   *  gönderilir (Authorization: Bearer + x-api-key). Boşsa panelde seçici kapalı */
+  modelsUrl?: string;
   /** Karar çıkarma (verdict) adımında kullanılacak model; yoksa "model" kullanılır */
   verdictModel?: string;
   /** Geliştirmenin yapılacağı hedef proje dizini (CLI --cwd bayrağı bunu ezer) */

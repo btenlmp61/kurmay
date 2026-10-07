@@ -4,6 +4,7 @@ import process from "node:process";
 import { loadAgents } from "./agents.js";
 import { loadAppConfig } from "./config.js";
 import { EventBus } from "./events.js";
+import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
 import { SessionStore } from "./sessions.js";
@@ -188,6 +189,33 @@ async function main() {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
+      getModels: async () => {
+        const current = cfg.model ?? "";
+        if (!cfg.modelsUrl) {
+          return { current, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
+        }
+        try {
+          return { current, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
+        } catch (e) {
+          return { current, models: [], error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      setModel: (model) => {
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as Record<string, unknown>;
+          parsed.model = model; // "" = sağlayıcı varsayılanı (loadAppConfig tanımsız sayar)
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath); // ör. ollama'da model zorunlu — boş geçilemez
+          // Sıradaki görev bu modeli kullanır; çalışan koşu kendi kopyasıyla devam eder
+          if (model) cfg.model = model;
+          else delete cfg.model;
+          return { ok: true, model };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, resumeSessionId) => {
@@ -210,7 +238,7 @@ async function main() {
     // Tek görev modu: çalıştır ve çık (yeni oturum)
     const sessionStore = { entrySessionId: undefined as string | undefined };
     try {
-      await executeRun(task, cfg, agents, cwd, bus, runsDir, sessionStore, server);
+      await executeRun(task, { ...cfg }, agents, cwd, bus, runsDir, sessionStore, server);
     } finally {
       if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
@@ -229,7 +257,8 @@ async function main() {
     // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
     const sessionStore = { entrySessionId: resumeSessionId };
     try {
-      await executeRun(nextTask, cfg, agents, cwd, bus, runsDir, sessionStore, server);
+      // Kopya: panelden model değişirse çalışan koşunun kalan ajanları etkilenmesin
+      await executeRun(nextTask, { ...cfg }, agents, cwd, bus, runsDir, sessionStore, server);
     } catch (err) {
       // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
       console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);

@@ -16,7 +16,7 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   // Boş bırakılan ("") alanlar tanımsız sayılır — config şablonunda alanların
   // görünür kalması için boş string'e izin veriyoruz
-  for (const key of ["baseUrl", "apiKey", "model", "verdictModel", "targetDir"] as const) {
+  for (const key of ["baseUrl", "apiKey", "model", "modelsUrl", "verdictModel", "targetDir"] as const) {
     if (cfg[key] === "") delete cfg[key];
   }
 

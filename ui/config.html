@@ -445,6 +445,7 @@ function render(){
 
   // model
   const m = document.createElement("input"); m.type="text"; m.value = n.model||""; m.placeholder="(genel model)";
+  m.setAttribute("list", "modelList"); // modelsUrl'den çekilen öneriler (serbest yazım da serbest)
   m.addEventListener("input", ()=>{ if (m.value.trim()) n.model = m.value.trim(); else delete n.model; mark(); });
   panel.appendChild(field("model (override)", m, "Bu ajana özel model; boşsa config'teki genel model kullanılır."));
 
@@ -578,6 +579,21 @@ async function load(){
   $("tdir").value = cfg.targetDir || "";
   refreshEntry();
   render();
+  loadModelList();
+}
+// Ajan başına model alanı için öneri listesi — config'teki modelsUrl'den sunucu çeker
+async function loadModelList(){
+  let models = [];
+  try { models = (await (await fetch("/models")).json()).models || []; } catch {}
+  let dl = $("modelList");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "modelList"; document.body.appendChild(dl); }
+  dl.innerHTML = "";
+  for (const m of models) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    if (m.name && m.name !== m.id) o.label = m.name;
+    dl.appendChild(o);
+  }
 }
 load();
 </script>

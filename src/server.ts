@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt, type ApprovalResult, type ScheduleOutcome, type WebApprovalChannel } from "./approval.js";
 import type { EventBus } from "./events.js";
+import type { ModelInfo } from "./models.js";
 
 export interface UiServer {
   url: string;
@@ -31,6 +32,11 @@ export interface UiServerOptions {
   getTargetDir?: () => string;
   /** Hedef dizini değiştirir: doğrular, çalışan sürece uygular, config.json'a yazar */
   setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
+  /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
+   *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
+  getModels?: () => Promise<{ current: string; models: ModelInfo[]; error?: string }>;
+  /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
+  setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
 }
 
 /**
@@ -45,6 +51,8 @@ export interface UiServerOptions {
  *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
  *   GET  /target-dir  şu an kullanılan hedef proje dizinini döner
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
+ *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
+ *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
  */
 export function startUiServer(
   bus: EventBus,
@@ -232,6 +240,40 @@ export function startUiServer(
           return;
         }
         const r = options.setTargetDir ? options.setTargetDir(dir) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/models") {
+      const json = (payload: unknown) => {
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(payload));
+      };
+      if (!options.getModels) {
+        json({ current: "", models: [], error: "kapalı" });
+        return;
+      }
+      options.getModels().then(json, (e: unknown) =>
+        json({ current: "", models: [], error: e instanceof Error ? e.message : String(e) }),
+      );
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/model") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let model = "";
+        try {
+          model = String((JSON.parse(body) as { model?: unknown }).model ?? "").trim();
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          return;
+        }
+        const r = options.setModel ? options.setModel(model) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });
