@@ -109,8 +109,15 @@ async function main() {
   // "let": panelden değiştirilebilir (bkz. setTargetDir) — bir sonraki görev yeni
   // değeri kullanır, config.json'a da yazılır (sürekli dosyayı elle açmamak için).
   let cwd = path.resolve(cwdFlag ?? cfg.targetDir ?? process.cwd());
-  if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
-    throw new Error(`Hedef proje dizini bulunamadı: ${cwd}`);
+  const dirOk = (d: string) => fs.existsSync(d) && fs.statSync(d).isDirectory();
+  if (!dirOk(cwd)) {
+    // Tek görev modunda çalışacak yer yok — dur. Sunucu modunda ise servis açılsın:
+    // panel uyarı gösterir, kullanıcı dizini üst çubuktan değiştirene kadar görev başlamaz
+    if (task || noUi) throw new Error(`Hedef proje dizini bulunamadı: ${cwd}`);
+    console.warn(
+      `⚠ Hedef proje dizini bulunamadı: ${cwd}\n` +
+        "  Panel yine de açılıyor — üst çubuktaki dizine tıklayıp geçerli bir dizin seç (o zamana kadar görev başlatılamaz).",
+    );
   }
 
   if (!task && noUi) {
@@ -264,6 +271,9 @@ async function main() {
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, resumeSessionId) => {
             if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
+            if (!dirOk(cwd)) {
+              return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
+            }
             running = true;
             const wake = wakeWithTask;
             wakeWithTask = null;

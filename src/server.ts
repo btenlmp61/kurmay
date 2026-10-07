@@ -53,7 +53,7 @@ export interface UiServerOptions {
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
  *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
- *   GET  /target-dir  şu an kullanılan hedef proje dizinini döner
+ *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
  *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
@@ -224,7 +224,15 @@ export function startUiServer(
 
     if (req.method === "GET" && req.url === "/target-dir") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ dir: options.getTargetDir?.() ?? "" }));
+      // exists her istekte bakılır: dizin sonradan oluşturulursa uyarı kendiliğinden kalkar
+      const dir = options.getTargetDir?.() ?? "";
+      let exists = false;
+      try {
+        exists = !!dir && fs.statSync(dir).isDirectory();
+      } catch {
+        /* yok */
+      }
+      res.end(JSON.stringify({ dir, exists }));
       return;
     }
 

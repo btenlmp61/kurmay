@@ -48,6 +48,8 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .hdr .dir-wrap { margin-left:auto; display:flex; align-items:center; gap:6px; }
 .hdr .dir { font-size:12.5px; color:var(--muted); cursor:pointer; border-bottom:1px dashed transparent; }
 .hdr .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
+/* Hedef dizin diskte yok: kırmızı + uyarı işareti, tıklayınca düzenlenir */
+.hdr .dir.missing { color:var(--red); font-weight:600; }
 .hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
 .hdr #modelSel { font-size:12.5px; padding:4px 10px; min-height:auto; width:auto; max-width:240px; }
 .pipe { display:flex; align-items:stretch; gap:10px; }
@@ -240,6 +242,11 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
     <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
     <button class="primary" id="btnStart">Başlat</button>
+  </div>
+  <div class="notice hidden" id="dirWarn" style="margin:10px 0 0;align-items:center">
+    <span>⚠</span>
+    <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
+    <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
   </div>
   <div class="flow" id="flowChips"></div>
   <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -1179,8 +1186,18 @@ loadSessions();
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
 // tıkla → metin kutusu, Enter kaydeder (sunucuda doğrulanır + config.json'a yazılır)
 let currentDir = "";
+// Diskte yoksa servis yine açılır; panel uyarır ve dizin düzelene dek görev başlatılamaz
+let dirMissing = false;
+function applyDirState() {
+  $("dir").classList.toggle("missing", dirMissing);
+  $("dir").title = dirMissing ? "Bu dizin bulunamadı — değiştirmek için tıkla" : "Değiştirmek için tıkla";
+  $("dirWarn").classList.toggle("hidden", !dirMissing);
+  $("dirWarnPath").textContent = currentDir;
+  $("btnStart").disabled = dirMissing;
+  $("btnStart").title = dirMissing ? "Önce geçerli bir hedef dizin seç" : "";
+}
 function showDirDisplay(text) {
-  $("dir").textContent = text;
+  $("dir").textContent = dirMissing ? `⚠ ${text} (bulunamadı)` : text;
   $("dir").classList.remove("hidden");
   $("dirInput").classList.add("hidden");
 }
@@ -1203,6 +1220,8 @@ async function saveDir() {
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
       currentDir = data.dir || val;
+      dirMissing = false; // sunucu var olduğunu doğruladı
+      applyDirState();
       showDirDisplay(currentDir);
       addLog(new Date().toISOString(), `📁 hedef dizin değiştirildi: ${esc(currentDir)}`, "ok");
     } else {
@@ -1224,10 +1243,13 @@ async function loadTargetDir() {
   try {
     const data = await (await fetch("/target-dir")).json();
     currentDir = data.dir || "";
+    dirMissing = data.exists === false;
+    applyDirState();
     showDirDisplay(currentDir);
   } catch {}
 }
 loadTargetDir();
+$("btnDirFix").addEventListener("click", showDirEditor);
 
 // Model seçimi: liste config'teki modelsUrl'den sunucu üzerinden çekilir (API
 // anahtarı tarayıcıya hiç gelmez). Seçim config.json'a yazılır, sıradaki görev kullanır.
@@ -1324,6 +1346,7 @@ $("flowChips").addEventListener("click", async (ev) => {
 function showTaskCard() {
   $("taskCard").classList.remove("hidden");
   $("taskError").textContent = "";
+  loadTargetDir(); // dizin bu arada oluşturulmuş olabilir — uyarıyı tazele
   loadFlow();
   updateTaskCtx();
   autoGrow($("taskInput"));
@@ -1335,6 +1358,7 @@ function showTaskCard() {
 async function startTask() {
   const task = $("taskInput").value.trim();
   if (!task) return;
+  if (dirMissing) { $("taskError").textContent = "Hedef dizin bulunamadı — önce geçerli bir dizin seç"; return; }
   const res = await fetch("/task", {
     method: "POST",
     headers: { "content-type": "application/json" },
