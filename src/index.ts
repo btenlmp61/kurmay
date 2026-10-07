@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { loadAgents } from "./agents.js";
+import { fmtDate, parseRunAt } from "./approval.js";
 import { loadAppConfig } from "./config.js";
 import { EventBus } from "./events.js";
 import { fetchModels } from "./models.js";
@@ -16,11 +17,14 @@ function parseArgs(argv: string[]): {
   cwdFlag?: string;
   portFlag?: number;
   noUi: boolean;
+  /** --at: görevin başlama zamanı ("+30m", "+2h", "2026-07-10 14:00") */
+  atFlag?: string;
 } {
   let configPath = "config.json";
   let cwdFlag: string | undefined;
   let portFlag: number | undefined;
   let noUi = false;
+  let atFlag: string | undefined;
   const taskParts: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -28,10 +32,11 @@ function parseArgs(argv: string[]): {
     else if (argv[i] === "--cwd") cwdFlag = argv[++i];
     else if (argv[i] === "--port") portFlag = Number(argv[++i]);
     else if (argv[i] === "--no-ui") noUi = true;
+    else if (argv[i] === "--at") atFlag = argv[++i];
     else taskParts.push(argv[i]);
   }
 
-  return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi };
+  return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi, atFlag };
 }
 
 /**
@@ -53,6 +58,8 @@ async function executeRun(
   runsDir: string,
   sessionStore: { entrySessionId?: string },
   server?: UiServer,
+  /** Verilirse akış bu zamana kadar bekler (zamanlanmış görev) */
+  startAt?: number,
 ): Promise<void> {
   // Resume'lu koşuda panel geçmişini temizleme — konuşma birikiyormuş gibi görünsün
   const resumed = !!sessionStore.entrySessionId;
@@ -85,7 +92,7 @@ async function executeRun(
   server?.setRunAborter(abortController);
 
   try {
-    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore);
+    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore, startAt);
   } catch (err) {
     bus.emit({ type: "workflow_failed", error: err instanceof Error ? err.message : String(err) });
     throw err;
@@ -97,7 +104,11 @@ async function executeRun(
 }
 
 async function main() {
-  const { task, configPath, cwdFlag, portFlag, noUi } = parseArgs(process.argv.slice(2));
+  const { task, configPath, cwdFlag, portFlag, noUi, atFlag } = parseArgs(process.argv.slice(2));
+  const startAt = atFlag ? parseRunAt(atFlag) : undefined;
+  if (atFlag && startAt === undefined) {
+    throw new Error(`--at anlaşılamadı: "${atFlag}" (ör. +30m, +2h, +1d, "2026-07-10 14:00")`);
+  }
 
   const cfg = loadAppConfig(configPath);
   const resolvedConfigPath = path.resolve(configPath);
@@ -122,7 +133,7 @@ async function main() {
 
   if (!task && noUi) {
     console.error(
-      'Kullanım: npm start -- "görev" [--config config.json] [--cwd dizin] [--port 4141] [--no-ui]\n' +
+      'Kullanım: npm start -- "görev" [--config config.json] [--cwd dizin] [--port 4141] [--no-ui] [--at +30m]\n' +
         "Görev verilmezse sunucu modu açılır ve görev panelden beklenir (--no-ui ile birlikte kullanılamaz).",
     );
     process.exit(1);
@@ -137,7 +148,7 @@ async function main() {
 
   // Sunucu modunda panelden görev kabulü: aynı anda tek koşu
   let running = false;
-  let wakeWithTask: ((v: { task: string; resumeSessionId?: string }) => void) | null = null;
+  let wakeWithTask: ((v: { task: string; resumeSessionId?: string; runAt?: number }) => void) | null = null;
 
   let server: UiServer | undefined;
   if (!noUi) {
@@ -269,7 +280,7 @@ async function main() {
       },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
-        : (t, resumeSessionId) => {
+        : (t, resumeSessionId, runAt) => {
             if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
             if (!dirOk(cwd)) {
               return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
@@ -277,7 +288,7 @@ async function main() {
             running = true;
             const wake = wakeWithTask;
             wakeWithTask = null;
-            wake({ task: t, resumeSessionId });
+            wake({ task: t, resumeSessionId, runAt });
             return { ok: true };
           },
     });
@@ -292,7 +303,8 @@ async function main() {
     // Tek görev modu: çalıştır ve çık (yeni oturum)
     const sessionStore = { entrySessionId: undefined as string | undefined };
     try {
-      await executeRun(task, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server);
+      if (startAt) console.log(`⏰ Görev ${fmtDate(startAt)} için zamanlandı`);
+      await executeRun(task, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, startAt);
     } finally {
       if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
@@ -303,16 +315,19 @@ async function main() {
   // Sunucu modu: panelden görev bekle, bitince yenisini bekle
   console.log("⏳ Görev bekleniyor — panelden girebilirsin.");
   while (true) {
-    const { task: nextTask, resumeSessionId } = await new Promise<{ task: string; resumeSessionId?: string }>(
-      (resolve) => {
-        wakeWithTask = resolve;
-      },
-    );
+    const { task: nextTask, resumeSessionId, runAt } = await new Promise<{
+      task: string;
+      resumeSessionId?: string;
+      runAt?: number;
+    }>((resolve) => {
+      wakeWithTask = resolve;
+    });
     // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
     const sessionStore = { entrySessionId: resumeSessionId };
     try {
       // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
-      await executeRun(nextTask, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server);
+      // runAt: panelden zamanlanmış görev — akış o saate kadar bekler (geri sayım kartı)
+      await executeRun(nextTask, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, runAt);
     } catch (err) {
       // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
       console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);

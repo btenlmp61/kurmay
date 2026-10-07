@@ -248,6 +248,18 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
     <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
   </div>
+  <div class="row" id="taskWhen" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <span class="label" style="margin:0">Ne zaman başlasın?</span>
+    <select id="taskWhenPreset" style="width:auto">
+      <option value="0">Hemen</option>
+      <option value="30m">+30 dakika</option>
+      <option value="1h">+1 saat</option>
+      <option value="3h">+3 saat</option>
+      <option value="1d">Yarın (+1 gün)</option>
+      <option value="custom">Belirli tarih/saat…</option>
+    </select>
+    <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
+  </div>
   <div class="flow" id="flowChips"></div>
   <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
   <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
@@ -347,6 +359,8 @@ let agents = [], states = {}, finished = false;
 let groups = {};
 // Fanout düğümü → { agent, max } — grup etiketi için
 let fanoutMeta = {};
+// Zamanlama iptal edildiyse ardından gelen workflow_finished "tamamlandı" demesin
+let scheduleCancelled = false;
 // Bekleyen onay akışı bitirecek mi (ajan "kod değişikliği gerekmiyor" dedi mi)
 let approvalEndsFlow = false;
 // Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
@@ -749,6 +763,7 @@ function handle(e) {
       agents = e.agents;
       groups = {};
       fanoutMeta = {};
+      scheduleCancelled = false;
       for (const [node, agent] of Object.entries(e.fanouts || {})) fanoutMeta[node] = { agent, max: 0 };
       states = {};
       agents.forEach((a) => (states[a] = "pending"));
@@ -972,6 +987,7 @@ function handle(e) {
       addLog(e.ts, `zamanlama tamam (${esc(e.source)}) — devam ediliyor`, "ok");
       break;
     case "run_schedule_cancelled":
+      scheduleCancelled = true;
       $("schedule").classList.add("hidden");
       stopCountdown();
       setStatus("iptal edildi", "err");
@@ -981,8 +997,14 @@ function handle(e) {
       finished = true;
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
-      setStatus("tamamlandı", "ok");
-      addLog(e.ts, "iş akışı tamamlandı 🎉", "ok");
+      // Zamanlama iptaliyle biten koşu "tamamlandı" değil — iptal durumu korunur
+      if (scheduleCancelled) {
+        setStatus("iptal edildi", "err");
+        addLog(e.ts, "iş akışı zamanlama iptaliyle sonlandı", "err");
+      } else {
+        setStatus("tamamlandı", "ok");
+        addLog(e.ts, "iş akışı tamamlandı 🎉", "ok");
+      }
       showTaskCard();
       break;
     case "workflow_cancelled":
@@ -1013,36 +1035,51 @@ function toLocalInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// Zaman seçici çifti (preset + datetime-local) iki yerde var: onay kartında
+// (plan onaylanınca developer ne zaman başlasın) ve görev kartında (görevin
+// kendisi — architect dahil — ne zaman başlasın). Aynı kod ikisine bağlanır.
 // "Belirli tarih/saat…" seçilince native picker'ı göster, alt sınırı ve
 // varsayılanı (şimdi+1 saat) ayarla
-$("whenPreset").addEventListener("change", () => {
-  const custom = $("whenPreset").value === "custom";
-  $("whenCustom").classList.toggle("hidden", !custom);
-  if (custom && !$("whenCustom").value) {
-    const now = new Date();
-    $("whenCustom").min = toLocalInput(now);
-    $("whenCustom").value = toLocalInput(new Date(now.getTime() + 3600000));
-  }
-});
+function bindWhen(presetId, customId, onChange) {
+  $(presetId).addEventListener("change", () => {
+    const custom = $(presetId).value === "custom";
+    $(customId).classList.toggle("hidden", !custom);
+    if (custom && !$(customId).value) {
+      const now = new Date();
+      $(customId).min = toLocalInput(now);
+      $(customId).value = toLocalInput(new Date(now.getTime() + 3600000));
+    }
+    onChange?.();
+  });
+}
 
 // Seçilen zamandan epoch ms üretir; "hemen" ya da geçersizse undefined döner
-function selectedRunAt() {
-  const preset = $("whenPreset").value;
+function readRunAt(presetId, customId) {
+  const preset = $(presetId).value;
   if (preset === "0") return undefined;
   if (preset === "custom") {
-    const v = $("whenCustom").value;
+    const v = $(customId).value;
     const t = v ? new Date(v).getTime() : NaN;
     return Number.isFinite(t) && t > Date.now() ? t : undefined;
   }
   const offsets = { "30m": 1800000, "1h": 3600000, "3h": 10800000, "1d": 86400000 };
   return Date.now() + offsets[preset];
 }
+function selectedRunAt() { return readRunAt("whenPreset", "whenCustom"); }
 
-function resetWhen() {
-  $("whenPreset").value = "0";
-  $("whenCustom").value = "";
-  $("whenCustom").classList.add("hidden");
+function resetWhenOf(presetId, customId) {
+  $(presetId).value = "0";
+  $(customId).value = "";
+  $(customId).classList.add("hidden");
 }
+function resetWhen() { resetWhenOf("whenPreset", "whenCustom"); }
+
+// Görev kartı: ileri bir zaman seçiliyse buton "Zamanla" olur
+function updateStartLabel() {
+  $("btnStart").textContent = $("taskWhenPreset").value === "0" ? "Başlat" : "Zamanla";
+}
+bindWhen("whenPreset", "whenCustom");
+bindWhen("taskWhenPreset", "taskWhenCustom", updateStartLabel);
 
 // Diff'teki hunk yorumlarını topla: [{path, loc, text}]
 function hunkComments() {
@@ -1359,16 +1396,24 @@ async function startTask() {
   const task = $("taskInput").value.trim();
   if (!task) return;
   if (dirMissing) { $("taskError").textContent = "Hedef dizin bulunamadı — önce geçerli bir dizin seç"; return; }
+  // Zamanlanmış görev: architect dahil tüm akış seçilen saatte başlar
+  const runAt = readRunAt("taskWhenPreset", "taskWhenCustom");
+  if ($("taskWhenPreset").value !== "0" && runAt === undefined) {
+    $("taskError").textContent = "Seçilen zaman geçmişte ya da geçersiz";
+    return;
+  }
   const res = await fetch("/task", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ task, resumeSessionId: selectedSessionId || undefined }),
+    body: JSON.stringify({ task, resumeSessionId: selectedSessionId || undefined, runAt }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.ok) {
     $("taskInput").value = "";
     autoGrow($("taskInput"));
     $("taskError").textContent = "";
+    resetWhenOf("taskWhenPreset", "taskWhenCustom"); // sıradaki görev yine "hemen" başlasın
+    updateStartLabel();
   } else {
     $("taskError").textContent = data.error || "görev başlatılamadı";
   }

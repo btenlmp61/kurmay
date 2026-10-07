@@ -341,6 +341,9 @@ export async function runWorkflow(
   // Entry ajanın SDK oturum kimliği burada tutulur: gelen değer varsa o oturum
   // sürdürülür (resume), koşu boyunca en güncel kimlikle güncellenir (bellekte)
   sessionStore: { entrySessionId?: string } = {},
+  /** Verilirse akış (ilk düğüm dahil) bu zamana kadar bekler — görevin kendisini
+   *  ileri bir saate kurmak için. Beklerken "şimdi çalıştır"/iptal/Durdur çalışır. */
+  startAt?: number,
 ): Promise<void> {
   const ctx: RunContext = { task, outputs: new Map(), changedFiles: [], fanout: new Map(), skipped: [] };
   let current: string | null = workflow.entry;
@@ -350,6 +353,22 @@ export async function runWorkflow(
   let consecutiveSkips = 0;
 
   try {
+  // Zamanlanmış başlangıç: onaydan sonraki zamanlamayla aynı mekanizma (geri sayım
+  // kartı, terminal/panelden erken çalıştırma ya da iptal)
+  if (startAt && startAt > Date.now()) {
+    bus.emit({ type: "run_scheduled", agent: workflow.entry, runAt: startAt });
+    console.log(`\n⏰ Görev ${fmtDate(startAt)} için zamanlandı — bekleniyor…`);
+    const { outcome, source } = await waitForScheduledTime(startAt, web, abortController.signal);
+    if (outcome === "cancelled") {
+      bus.emit({ type: "run_schedule_cancelled", agent: workflow.entry, source });
+      console.log(`\n🛑 Zamanlama iptal edildi (${source}) — görev çalıştırılmadı.`);
+      bus.emit({ type: "workflow_finished" });
+      return;
+    }
+    bus.emit({ type: "run_resumed", agent: workflow.entry, source });
+    console.log(`\n▶ ${outcome === "run_now" ? "Erken çalıştırma" : "Zamanı geldi"} (${source}) — görev başlıyor.`);
+  }
+
   while (current !== null) {
     // Kullanıcı adımlar arasında iptal ettiyse burada temiz dur
     if (abortController.signal.aborted) throw new RunCancelledError();

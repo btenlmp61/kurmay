@@ -17,7 +17,7 @@ export interface UiServer {
 export interface UiServerOptions {
   /** Panelden görev gönderimi (POST /task). resumeSessionId verilirse o architect
    *  oturumu sürdürülür, yoksa yeni oturum. Kabul edilmezse error döndür. */
-  onTask?: (task: string, resumeSessionId?: string) => { ok: boolean; error?: string };
+  onTask?: (task: string, resumeSessionId?: string, runAt?: number) => { ok: boolean; error?: string };
   /** İsimli architect oturumları listesi (GET /sessions) */
   getSessions?: () => unknown[];
   /** Bir oturumu katalogdan siler (POST /session-delete); silindiyse true */
@@ -52,7 +52,8 @@ export interface UiServerOptions {
  *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
- *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
+ *   POST /task      { task, resumeSessionId?, runAt? } — panelden yeni görev başlatır; runAt
+ *                   verilirse akış o zamana kadar bekler (sunucu modu)
  *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
@@ -370,7 +371,7 @@ export function startUiServer(
           return;
         }
         try {
-          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown };
+          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown; runAt?: unknown };
           const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
           if (!task) {
             json(400, { ok: false, error: "görev boş olamaz" });
@@ -380,7 +381,17 @@ export function startUiServer(
             typeof parsed.resumeSessionId === "string" && parsed.resumeSessionId
               ? parsed.resumeSessionId
               : undefined;
-          const result = options.onTask(task, resumeSessionId);
+          // runAt: ileri bir başlangıç zamanı (epoch ms ya da "+30m"/"2026-07-10 14:00" metni)
+          let runAt: number | undefined;
+          if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) runAt = parsed.runAt;
+          else if (typeof parsed.runAt === "string" && parsed.runAt.trim()) {
+            runAt = parseRunAt(parsed.runAt);
+            if (runAt === undefined) {
+              json(400, { ok: false, error: `başlangıç zamanı anlaşılamadı: ${parsed.runAt}` });
+              return;
+            }
+          }
+          const result = options.onTask(task, resumeSessionId, runAt);
           json(result.ok ? 202 : 409, result);
         } catch {
           json(400, { ok: false, error: "geçersiz JSON" });
