@@ -2,7 +2,13 @@ import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
-import { RunCancelledError, type AgentDefinition, type AgentRunResult, type ProviderConfig } from "./types.js";
+import {
+  RunCancelledError,
+  type AgentDefinition,
+  type AgentMetrics,
+  type AgentRunResult,
+  type ProviderConfig,
+} from "./types.js";
 
 /** Araç detayının log'a girmeden önce kesildiği sınır (kesilirse sonuna "…" gelir) */
 const TOOL_DETAIL_MAX = 300;
@@ -33,6 +39,42 @@ const SCHEMA_FAILED = Symbol("schema_failed");
  */
 interface SessionHolder {
   id?: string;
+}
+
+/**
+ * Onarım turu prompt'u. Claude Code (CLI 2.1.x), model StructuredOutput aracını
+ * çağırmadan düz metinle bitirirse onu YALNIZCA BİR KEZ dürtüyor; model ikinci
+ * kez de metin yazarsa tur `success` ile ama structured_output OLMADAN kapanıyor
+ * (MAX_STRUCTURED_OUTPUT_RETRIES bu hali kapsamıyor — o, aracın geçersiz girdiyle
+ * çağrılması içindir). Sahte API ile yeniden üretildi (2026-10-07). Yerel
+ * modellerde, özellikle bağlantı kopup oturum resume edildikten sonra görülüyor.
+ * Bağlam oturumda zaten var; modelden yalnızca sonucu şemayla vermesi istenir.
+ */
+const REPAIR_PROMPT =
+  "Yapılandırılmış çıktın alınamadı (StructuredOutput aracı çağrılmadı). " +
+  "İşi baştan yapma, yeni araç çağırma: şimdiye kadarki çalışmana dayanarak " +
+  "sonucunu ŞİMDİ StructuredOutput aracıyla, şemaya uygun olarak ver.";
+
+/** İki koşunun ölçümünü toplar — onarım turunun maliyeti de ajana yazılsın */
+function mergeMetrics(a: AgentMetrics | undefined, b: AgentMetrics | undefined): AgentMetrics | undefined {
+  if (!a || !b) return a ?? b;
+  const perModel = new Map<string, { model: string; inputTokens: number; outputTokens: number }>();
+  for (const p of [...a.perModel, ...b.perModel]) {
+    const cur = perModel.get(p.model) ?? { model: p.model, inputTokens: 0, outputTokens: 0 };
+    cur.inputTokens += p.inputTokens;
+    cur.outputTokens += p.outputTokens;
+    perModel.set(p.model, cur);
+  }
+  return {
+    durationMs: a.durationMs + b.durationMs,
+    apiDurationMs: a.apiDurationMs + b.apiDurationMs,
+    turns: a.turns + b.turns,
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    costUsd: a.costUsd + b.costUsd,
+    perModel: [...perModel.values()],
+  };
 }
 
 /** Beklerken iptal edilebilen uyku: süre dolarsa döner, Durdur'a basılırsa RunCancelledError atar */
@@ -241,8 +283,11 @@ export async function runAgent(
 
   const session: SessionHolder = { id: resume };
   let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session);
+  // Şemasız yedeğe düşüldüyse structured zaten beklenmez — onarım turu denenmez
+  let schemaless = false;
 
   if (result === SCHEMA_FAILED) {
+    schemaless = true;
     const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
@@ -252,6 +297,24 @@ export async function runAgent(
     result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
+    }
+  }
+
+  // Sessiz bozulma: koşu başarılı ama structured yok (bkz. REPAIR_PROMPT). Aynı
+  // oturum bir kez daha, şemayla ve kısa bir onarım prompt'uyla sürdürülür.
+  if (agent.outputSchema && !schemaless && result.structured === undefined && result.sessionId) {
+    const note = `${agent.name}: yapılandırılmış çıktı gelmedi — aynı oturumda şemayla onarım turu isteniyor`;
+    console.warn(`\n⚠ ${note}`);
+    bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
+    const repairSession: SessionHolder = { id: result.sessionId };
+    const repaired = await executeWithRetry(agent, REPAIR_PROMPT, cwd, cfg, bus, true, abortController, repairSession);
+    if (repaired !== SCHEMA_FAILED) {
+      const metrics = mergeMetrics(result.metrics, repaired.metrics);
+      if (repaired.structured !== undefined) {
+        result = { ...repaired, metrics };
+      } else {
+        result = { ...result, metrics }; // onarım da metinle döndü — ilk metin daha bilgili
+      }
     }
   }
 
