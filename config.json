@@ -53,11 +53,17 @@
         "routes": {
           "field": "route",
           "cases": {
-            "developer": "developer",
+            "developer": "dagit",
             "done": null
           },
-          "default": "developer"
+          "default": "dagit"
         }
+      },
+      "dagit": {
+        "type": "fanout",
+        "agent": "developer",
+        "maxConcurrency": 2,
+        "next": "review"
       },
       "developer": {
         "file": ".claude/agents/developer.md",
@@ -76,8 +82,7 @@
         ],
         "skills": [
           "test-yazimi"
-        ],
-        "next": "review"
+        ]
       },
       "review": {
         "type": "parallel",
@@ -87,7 +92,7 @@
           "style"
         ],
         "onApprove": "stage",
-        "onReject": "developer"
+        "onReject": "dagit"
       },
       "security": {
         "file": ".claude/agents/security.md",
@@ -143,7 +148,7 @@
         "type": "command",
         "command": "git add -A",
         "onSuccess": null,
-        "onFailure": "developer"
+        "onFailure": "dagit"
       }
     }
   }

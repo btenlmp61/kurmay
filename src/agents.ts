@@ -3,6 +3,8 @@ import path from "node:path";
 import matter from "gray-matter";
 import {
   isCommandNode,
+  isFanoutNode,
+  isGateNode,
   isParallelNode,
   reviewVerdictJsonSchema,
   type AgentDefinition,
@@ -103,7 +105,8 @@ function validateEdges(
   key: string,
   config: AgentNodeConfig,
   workflow: WorkflowConfig,
-  isBranch: boolean,
+  /** Bu ajanı yöneten kapı (paralel düğümün dalı ya da fanout'un işçisi) — kendi kenarı olamaz */
+  owner: { key: string; kind: "paralel" | "fanout" } | null,
 ): void {
   const routeTargets = config.routes
     ? [...Object.values(config.routes.cases), config.routes.default]
@@ -122,10 +125,13 @@ function validateEdges(
   // Paralel dalın kendi kenarı OLAMAZ: nereye gidileceğine paralel düğüm karar
   // verir (dallar birleşmeden kimse ilerleyemez). Sessizce yok saymak yerine
   // hata veriyoruz — config editöründe çizilmeyen bir kenar kafa karıştırır.
-  if (isBranch && branchCount > 0) {
+  if (owner && branchCount > 0) {
     throw new Error(
-      `"${key}" bir paralel dal — kendi next/verdict/routes kenarı olamaz; ` +
-        `yönlendirmeyi bağlı olduğu paralel düğümün onApprove/onReject'i yapar`,
+      owner.kind === "paralel"
+        ? `"${key}" bir paralel dal — kendi next/verdict/routes kenarı olamaz; ` +
+            `yönlendirmeyi bağlı olduğu paralel düğümün onApprove/onReject'i yapar`
+        : `"${key}" "${owner.key}" fanout düğümünün işçisi — kendi next/verdict/routes kenarı olamaz; ` +
+            `kopyalar bitince geçişi "${owner.key}.next" yapar`,
     );
   }
 }
@@ -154,7 +160,7 @@ function validateParallelNode(
     if (!node) {
       throw new Error(`"${key}" paralel düğümü var olmayan bir dala işaret ediyor: "${branch}"`);
     }
-    if (isCommandNode(node) || isParallelNode(node)) {
+    if (isGateNode(node)) {
       throw new Error(`"${key}" paralel düğümünün dalı ajan olmalı; "${branch}" bir ${node.type} düğümü`);
     }
     // Dallar eş zamanlı ve aynı dizinde koşuyor — yazma araçları yarış demek
@@ -190,6 +196,29 @@ export function loadAgents(
   for (const config of Object.values(workflow.agents)) {
     if (isParallelNode(config)) for (const b of config.branches) branchKeys.add(b);
   }
+  // Fanout işçileri: kenarsızdır ama (dallardan farklı olarak) yazabilir ve kendi
+  // md şemasını kullanır — her repo kopyası developer gibi çalışır
+  const workerOf = new Map<string, string>();
+  for (const [key, config] of Object.entries(workflow.agents)) {
+    if (!isFanoutNode(config)) continue;
+    const worker = workflow.agents[config.agent];
+    if (!config.agent || !worker) {
+      throw new Error(`"${key}" fanout düğümü var olmayan bir ajana işaret ediyor: "${config.agent}"`);
+    }
+    if (isGateNode(worker)) {
+      throw new Error(`"${key}" fanout düğümünün işçisi ajan olmalı; "${config.agent}" bir ${worker.type} düğümü`);
+    }
+    if (branchKeys.has(config.agent)) {
+      throw new Error(`"${config.agent}" hem paralel dal hem "${key}" fanout işçisi olamaz`);
+    }
+    if (workerOf.has(config.agent)) {
+      throw new Error(`"${config.agent}" iki fanout düğümünün ("${workerOf.get(config.agent)}", "${key}") işçisi olamaz`);
+    }
+    workerOf.set(config.agent, key);
+    if (config.next != null && !workflow.agents[config.next]) {
+      throw new Error(`"${key}" fanout düğümü var olmayan bir düğüme işaret ediyor: "${config.next}"`);
+    }
+  }
 
   for (const [key, config] of Object.entries(workflow.agents)) {
     // Komut düğümü ajan değildir — persona/araç yüklenmez, yalnızca kenarları doğrulanır
@@ -208,6 +237,9 @@ export function loadAgents(
       continue;
     }
 
+    // Fanout da ajan değildir — yukarıda doğrulandı
+    if (isFanoutNode(config)) continue;
+
     const mdPath = path.resolve(projectRoot, config.file);
     if (!fs.existsSync(mdPath)) {
       throw new Error(`"${key}" ajanının md dosyası bulunamadı: ${mdPath}`);
@@ -215,7 +247,10 @@ export function loadAgents(
 
     const isBranch = branchKeys.has(key);
     const { data, content } = matter(fs.readFileSync(mdPath, "utf8"));
-    validateEdges(key, config, workflow, isBranch);
+    const owner = isBranch
+      ? { key: [...Object.entries(workflow.agents)].find(([, n]) => isParallelNode(n) && n.branches.includes(key))![0], kind: "paralel" as const }
+      : workerOf.has(key) ? { key: workerOf.get(key)!, kind: "fanout" as const } : null;
+    validateEdges(key, config, workflow, owner);
 
     const rules = (config.rules ?? []).map((name) => loadRule(name, projectRoot, key));
     const skills = (config.skills ?? []).map((name) => loadSkill(name, projectRoot, key));

@@ -327,6 +327,9 @@ renderThemeBtn();
 let agents = [], states = {}, finished = false;
 // Paralel düğüm adı → dalları (workflow_started'dan gelir; yoksa boş = hepsi sıralı)
 let parallelGroups = {};
+// Fanout düğümü → { agent, max }. Kopyalar ("<ajan>@<repo>") fanout_started'da
+// parallelGroups'a girer; grup etiketi "repo başına" olur
+let fanoutMeta = {};
 // Bekleyen onay akışı bitirecek mi (ajan "kod değişikliği gerekmiyor" dedi mi)
 let approvalEndsFlow = false;
 // Çalışan ajanların başlangıç zamanı — pipeline düğümünde canlı süre göstermek için
@@ -657,7 +660,9 @@ function nodeCell(a) {
   if (st === "running" && runningSince[a]) {
     sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
   }
-  return `<div class="node ${st}"><div class="nm">${esc(a)}</div><div class="sub">${sub}</div></div>`;
+  // Fanout kopyası "developer@repoA": hücrede repo adı yeter, grup etiketi ajanı söylüyor
+  const ad = a.includes("@") ? a.slice(a.indexOf("@") + 1) : a;
+  return `<div class="node ${st}" title="${esc(a)}"><div class="nm">${esc(ad)}</div><div class="sub">${sub}</div></div>`;
 }
 
 function renderPipeline() {
@@ -676,7 +681,11 @@ function renderPipeline() {
     if (drawn.has(g)) continue;
     drawn.add(g);
     const inner = parallelGroups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
-    cells.push(`<div class="node group"><div class="glabel">${esc(g)} · eş zamanlı</div>${inner}</div>`);
+    const fm = fanoutMeta[g];
+    const etiket = fm
+      ? `${esc(fm.agent)} · repo başına${fm.max ? ` · en fazla ${fm.max}` : ""}`
+      : `${esc(g)} · eş zamanlı`;
+    cells.push(`<div class="node group"><div class="glabel">${etiket}</div>${inner}</div>`);
   }
   $("pipeline").innerHTML = cells.join('<div class="arrow">→</div>');
 }
@@ -729,6 +738,8 @@ function handle(e) {
     case "workflow_started":
       agents = e.agents;
       parallelGroups = e.parallelGroups || {};
+      fanoutMeta = {};
+      for (const [node, agent] of Object.entries(e.fanouts || {})) fanoutMeta[node] = { agent, max: 0 };
       states = {};
       agents.forEach((a) => (states[a] = "pending"));
       (e.disabled || []).forEach((a) => (states[a] = "disabled"));
@@ -758,7 +769,9 @@ function handle(e) {
       renderPipeline();
       const dal = isParallelBranch(e.node);
       addLog(e.ts, `⏭ <b>${esc(e.node)}</b> devre dışı — ` +
-        (dal ? "dal incelemeye katılmadı" : `atlandı → ${e.to ? esc(e.to) : "akış biter"}`), "muted");
+        (dal ? "dal incelemeye katılmadı"
+          : fanoutMeta[e.node] ? `dağıtım yok, ${esc(e.to)} tek kopya koşuyor`
+          : `atlandı → ${e.to ? esc(e.to) : "akış biter"}`), "muted");
       break;
     }
     case "agent_started":
@@ -876,6 +889,33 @@ function handle(e) {
       ).join("") || '<div style="font-size:13px;color:var(--muted)">Sorun bildirilmedi</div>';
       break;
     }
+    case "fanout_started": {
+      // Hattaki tek ajan hücresi (ya da önceki kopyalar) repo kopyalarıyla yer değiştirir.
+      // Kısmi turda (red sonrası yalnızca ilgili repolar) önceki kopyalar "tamamlandı" kalır.
+      const keys = e.workers.map((w) => w.key);
+      const onceki = parallelGroups[e.node] || [];
+      const grup = e.partial ? [...onceki, ...keys.filter((k) => !onceki.includes(k))] : keys;
+      const yer = agents.findIndex((a) => a === e.agent || onceki.includes(a));
+      agents = agents.filter((a) => a !== e.agent && !onceki.includes(a));
+      agents.splice(yer < 0 ? agents.length : yer, 0, ...grup);
+      parallelGroups[e.node] = grup;
+      fanoutMeta[e.node] = { agent: e.agent, max: e.maxConcurrency };
+      keys.forEach((k) => (states[k] = "pending"));
+      renderPipeline();
+      addLog(e.ts, `🔀 <b>${esc(e.agent)}</b> ${keys.length} repoya dağıtıldı: ${e.workers.map((w) => esc(w.repo)).join(", ")}` +
+        (e.maxConcurrency ? ` — aynı anda en fazla ${e.maxConcurrency}` : "") +
+        (e.partial ? " (yalnızca geri bildirimdeki repolar)" : ""));
+      break;
+    }
+    case "fanout_finished":
+      if (e.failed.length) {
+        for (const f of e.failed) states[`${fanoutMeta[e.node]?.agent}@${f.repo}`] = "rejected";
+        renderPipeline();
+        addLog(e.ts, `🔀 dağıtım hatası: ${e.failed.map((f) => `${esc(f.repo)} — ${esc(trunc(f.error, 160))}`).join("; ")}`, "err");
+      } else {
+        addLog(e.ts, `🔀 ${e.repos.length} repo tamamlandı, sonuçlar birleştirildi`, "ok");
+      }
+      break;
     case "parallel_started":
       addLog(e.ts, `⚡ paralel inceleme başladı: ${e.branches.map(esc).join(", ")}`);
       break;

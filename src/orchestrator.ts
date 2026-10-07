@@ -1,3 +1,4 @@
+import path from "node:path";
 import { askUserApproval, fmtDate, waitForScheduledTime, type WebApprovalChannel } from "./approval.js";
 import { runBuild } from "./build.js";
 import type { EventBus } from "./events.js";
@@ -5,6 +6,7 @@ import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
 import {
   isCommandNode,
+  isFanoutNode,
   isParallelNode,
   passThroughTarget,
   ReviewVerdictSchema,
@@ -13,6 +15,7 @@ import {
   type AgentNodeConfig,
   type AgentRunResult,
   type BranchOutcome,
+  type FanoutNodeConfig,
   type ParallelNodeConfig,
   type ProviderConfig,
   type ReviewVerdict,
@@ -33,6 +36,10 @@ interface RunContext {
   feedback?: string;
   /** En son structured çıktıdaki değişen dosya yolları — build düğümü kullanır */
   changedFiles: string[];
+  /** Fanout düğümü → repo → o repo kopyasının son sonucu. Red turunda yalnızca
+   *  geri bildirimde adı geçen repolar yeniden koşar; diğerlerinin sonucu buradan
+   *  birleşik çıktıya taşınır. */
+  fanout: Map<string, Map<string, AgentRunResult>>;
 }
 
 /**
@@ -171,6 +178,221 @@ async function runParallel(
   return { approved, branches, costUsd };
 }
 
+/** Dosyanın reposu: targetDir altındaki en üst klasör (build.ts ile aynı kural); kökteki dosyalar "." */
+function repoOfPath(file: string, cwd: string): string | null {
+  const rel = path.relative(cwd, path.resolve(cwd, file));
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  const parts = rel.split(/[\\/]/);
+  return parts.length > 1 ? parts[0] : ".";
+}
+
+/** En son file_plan taşıyan çıktı (architect planı) — fanout bunu repolara böler */
+function findPlan(ctx: RunContext): { key: string; plan: unknown[] } | null {
+  let found: { key: string; plan: unknown[] } | null = null;
+  for (const [key, entry] of ctx.outputs) {
+    const fp = (entry.result.structured as { file_plan?: unknown } | undefined)?.file_plan;
+    if (Array.isArray(fp)) found = { key, plan: fp };
+  }
+  return found;
+}
+
+/** Geri bildirim metni bu repoyu anıyor mu (yol başı, tırnaklı ad ya da köşeli etiket) */
+function mentionsRepo(feedback: string, repo: string): boolean {
+  const r = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Sol sınırda / ve \ YOK: yol ortasındaki klasör (ör. ".../src/...") repo sayılmasın.
+  // Eşleşme bulunamazsa çağıran tüm repoları yeniden koşturur (güvenli taraf).
+  return new RegExp(`(^|[\\s"'\`\\[(])${r}([/\\\\"'\`\\]):\\s]|$)`, "m").test(feedback);
+}
+
+/** En fazla `limit` iş aynı anda; iptal edildiyse yeni iş başlatmaz */
+async function runLimited<T, R>(
+  items: T[],
+  limit: number,
+  signal: AbortSignal,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next++;
+      if (signal.aborted) {
+        results[i] = { status: "rejected", reason: new RunCancelledError() };
+        continue;
+      }
+      try {
+        results[i] = { status: "fulfilled", value: await fn(items[i]) };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  const width = Math.max(1, Math.min(limit > 0 ? limit : items.length, items.length));
+  await Promise.all(Array.from({ length: width }, lane));
+  return results;
+}
+
+/**
+ * Kopyaların sonuçlarını tek çıktıda birleştirir (sonraki düğümler — inceleme,
+ * build — tek bir developer çıktısı görür). Diziler birleşir, metin alanları repo
+ * etiketiyle satır satır toplanır. changes[].file yolları targetDir'e göre
+ * normalize edilir; yapılandırılmış çıktısı gelmeyen repo için bir işaretçi
+ * eklenir — yoksa build düğümü o repoyu hiç derlemezdi.
+ */
+function mergeWorkerResults(parts: Array<[string, AgentRunResult]>): AgentRunResult {
+  const merged: Record<string, unknown> = {};
+  for (const [repo, res] of parts) {
+    const st = res.structured as Record<string, unknown> | undefined;
+    if (!st || typeof st !== "object") {
+      const arr = (merged.changes as unknown[] | undefined) ?? (merged.changes = []) as unknown[];
+      arr.push({ file: repo === "." ? "." : `${repo}/`, action: "modified", summary: "(yapılandırılmış çıktı yok — ayrıntı metinde)" });
+      continue;
+    }
+    for (const [k, v] of Object.entries(st)) {
+      if (Array.isArray(v)) {
+        const items = v.map((item) => {
+          if (typeof item === "string") return `[${repo}] ${item}`;
+          if (k === "changes" && item && typeof item === "object" && repo !== ".") {
+            const f = (item as { file?: unknown }).file;
+            if (typeof f === "string" && !path.isAbsolute(f) && !f.replace(/\\/g, "/").startsWith(`${repo}/`)) {
+              return { ...item, file: `${repo}/${f}` };
+            }
+          }
+          return item;
+        });
+        merged[k] = [...((merged[k] as unknown[] | undefined) ?? []), ...items];
+      } else if (typeof v === "string") {
+        merged[k] = merged[k] ? `${merged[k]}\n[${repo}] ${v}` : `[${repo}] ${v}`;
+      } else if (!(k in merged)) {
+        merged[k] = v;
+      }
+    }
+  }
+  return {
+    text: parts.map(([repo, r]) => `## ${repo}\n${r.text}`).join("\n\n"),
+    structured: merged,
+  };
+}
+
+/**
+ * Fanout düğümü: planı repolara böler, ajanın repo başına kopyalarını koşturur.
+ * Sıra: parent (varsa ve plandaysa) tek başına → diğer repolar eş zamanlı
+ * (maxConcurrency sınırıyla) → kökteki dosyalar (".") en sonda tek başına (yazma
+ * kapsamı tüm dizin olduğu için kimseyle aynı anda koşamaz). Plan yoksa ya da
+ * tek repoya dokunuyorsa ajan tek kez normal koşar.
+ */
+async function runFanout(
+  nodeKey: string,
+  node: FanoutNodeConfig,
+  agents: Map<string, AgentDefinition>,
+  ctx: RunContext,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  abortController: AbortController,
+): Promise<AgentRunResult> {
+  const agent = agents.get(node.agent)!;
+  const plan = findPlan(ctx);
+  const groups = new Map<string, unknown[]>();
+  for (const item of plan?.plan ?? []) {
+    const p = (item as { path?: unknown } | null)?.path;
+    if (typeof p !== "string" || !p) continue;
+    const repo = repoOfPath(p, cwd) ?? ".";
+    (groups.get(repo) ?? groups.set(repo, []).get(repo)!).push(item);
+  }
+
+  if (!plan || groups.size <= 1) {
+    const why = !plan ? "plan (file_plan) bulunamadı" : "plan tek repoya dokunuyor";
+    console.log(`\n🔀 ${nodeKey}: ${why} — ${agent.name} tek kopya koşuyor`);
+    bus.emit({ type: "agent_text", agent: agent.key, text: `🔀 ${why} — dağıtım gerekmedi, tek kopya` });
+    return runAgent(agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController);
+  }
+
+  const prev = ctx.fanout.get(nodeKey) ?? new Map<string, AgentRunResult>();
+  ctx.fanout.set(nodeKey, prev);
+  let repos = [...groups.keys()];
+  // Red/build turu: yalnızca geri bildirimde adı geçen (ve daha önce koşmuş) repolar
+  let partial = false;
+  if (ctx.feedback && prev.size > 0) {
+    const hit = repos.filter((r) => r !== "." && mentionsRepo(ctx.feedback!, r));
+    const fresh = repos.filter((r) => !prev.has(r)); // plan değiştiyse yeni repolar da koşar
+    const pick = [...new Set([...hit, ...fresh])];
+    if (pick.length > 0 && pick.length < repos.length) {
+      repos = pick;
+      partial = true;
+    }
+  }
+
+  const workerKey = (repo: string) => `${agent.key}@${repo}`;
+  const maxConcurrency = node.maxConcurrency ?? 0;
+  bus.emit({
+    type: "fanout_started",
+    node: nodeKey,
+    agent: agent.key,
+    workers: repos.map((repo) => ({ key: workerKey(repo), repo })),
+    maxConcurrency,
+    partial,
+  });
+  console.log(
+    `\n🔀 ${nodeKey}: ${agent.name} ${repos.length} repoya dağıtılıyor (${repos.join(", ")})` +
+      `${maxConcurrency ? ` — aynı anda en fazla ${maxConcurrency}` : ""}${partial ? " [yalnızca geri bildirimdeki repolar]" : ""}`,
+  );
+
+  const others = (repo: string) => [...groups.keys()].filter((r) => r !== repo);
+  const runOne = (repo: string): Promise<AgentRunResult> => {
+    const clone: AgentDefinition = { ...agent, key: workerKey(repo), name: `${agent.name} · ${repo}` };
+    // Plan yalnızca bu repo dilimiyle; prompt'un geri kalanı (görev, geri bildirim) ortak
+    const outputs = new Map(ctx.outputs);
+    const src = outputs.get(plan.key)!;
+    outputs.set(plan.key, {
+      name: src.name,
+      result: { ...src.result, structured: { ...(src.result.structured as object), file_plan: groups.get(repo) } },
+    });
+    const scopeNote = repo === "."
+      ? `# Kapsamın\nBu görev repo başına bölündü; sana düşen kısım hedef dizinin KÖKÜNDEKİ dosyalar ` +
+        `(yukarıdaki plan yalnızca onları içeriyor). Repo klasörlerine (${others(repo).join(", ")}) dokunma — ` +
+        `onlar başka geliştiricilere atandı.`
+      : `# Kapsamın\nBu görev repo başına bölündü; sana düşen repo: "${repo}" (yukarıdaki plan yalnızca bu ` +
+        `repoya ait kısım). Yalnızca bu klasördeki dosyaları değiştir — yazma araçların bu klasörün dışına ` +
+        `engellenmiştir. Diğer repolar (${others(repo).join(", ")}) aynı anda başka geliştiricilere atandı; ` +
+        `onlara dokunma, okuman serbest. Çıktındaki dosya yollarını hedef dizine göre ver (ör. "${repo}/src/...").`;
+    const prompt = buildPrompt(agent, { ...ctx, outputs }) + "\n\n" + scopeNote;
+    return runAgent(clone, prompt, cwd, cfg, bus, abortController, undefined, {
+      writeScope: repo === "." ? undefined : path.join(cwd, repo),
+    });
+  };
+
+  const phases: string[][] = [];
+  if (node.parent && repos.includes(node.parent)) phases.push([node.parent]);
+  const middle = repos.filter((r) => r !== node.parent && r !== ".");
+  if (middle.length) phases.push(middle);
+  if (repos.includes(".")) phases.push(["."]);
+
+  const failed: Array<{ repo: string; error: string }> = [];
+  for (const phase of phases) {
+    const settled = await runLimited(phase, maxConcurrency, abortController.signal, runOne);
+    settled.forEach((s, i) => {
+      if (s.status === "fulfilled") {
+        prev.set(phase[i], s.value);
+        return;
+      }
+      if (s.reason instanceof RunCancelledError) throw s.reason; // iptal: akışın tamamı durur
+      failed.push({ repo: phase[i], error: s.reason instanceof Error ? s.reason.message : String(s.reason) });
+    });
+    if (failed.length) break; // parent düştüyse servisleri eski sözleşmeyle koşturmanın anlamı yok
+  }
+  bus.emit({ type: "fanout_finished", node: nodeKey, repos, failed });
+  if (failed.length) {
+    throw new Error(`${nodeKey}: ${failed.length} repo tamamlanamadı — ${failed.map((f) => `${f.repo}: ${f.error}`).join("; ")}`);
+  }
+
+  // Plandan çıkmış repoların eski sonuçları birleşime girmez
+  const parts = [...groups.keys()].filter((r) => prev.has(r)).map((r) => [r, prev.get(r)!] as [string, AgentRunResult]);
+  const merged = mergeWorkerResults(parts);
+  bus.emit({ type: "agent_finished", agent: agent.key, output: merged.text, structured: merged.structured });
+  return merged;
+}
+
 /** Dalların sorunlarını developer'a gidecek tek bir geri bildirime çevirir. */
 function mergeBranchFeedback(branches: BranchOutcome[]): string {
   const lines: string[] = [];
@@ -208,7 +430,7 @@ export async function runWorkflow(
   // sürdürülür (resume), koşu boyunca en güncel kimlikle güncellenir (bellekte)
   sessionStore: { entrySessionId?: string } = {},
 ): Promise<void> {
-  const ctx: RunContext = { task, outputs: new Map(), changedFiles: [] };
+  const ctx: RunContext = { task, outputs: new Map(), changedFiles: [], fanout: new Map() };
   let current: string | null = workflow.entry;
   let rejectCycles = 0;
   // Art arda atlanan devre dışı düğüm sayısı — geçer kenarları bir döngü
@@ -221,8 +443,10 @@ export async function runWorkflow(
     if (abortController.signal.aborted) throw new RunCancelledError();
     const node: WorkflowNode = workflow.agents[current];
 
-    // Devre dışı düğüm: koşturulmaz, "geçer" kenarından (başarı yönü) devam edilir
-    if (node.disabled) {
+    // Devre dışı düğüm: koşturulmaz, "geçer" kenarından (başarı yönü) devam edilir.
+    // İstisna fanout: kapalıyken DAĞITIM kapanır, ajan tek kopya koşar (aşağıda) —
+    // böylece aynı anahtarla paralel/tek kopya karşılaştırılabilir.
+    if (node.disabled && !isFanoutNode(node)) {
       const to = passThroughTarget(node);
       if (++consecutiveSkips > Object.keys(workflow.agents).length) {
         throw new Error(`Devre dışı düğümlerin geçer kenarları döngü oluşturuyor ("${current}" civarı) — en az birini aç`);
@@ -256,6 +480,32 @@ export async function runWorkflow(
       console.log(`\n🔁 Tur ${rejectCycles}/${workflow.maxCycles}: build hatası "${node.onFailure}" ajanına gönderiliyor`);
       bus.emit({ type: "cycle", n: rejectCycles, max: workflow.maxCycles, to: node.onFailure });
       current = node.onFailure;
+      continue;
+    }
+
+    // Fanout düğümü (LLM değil, bir kapı): ajanın repo başına kopyaları koşar,
+    // sonuçlar birleşip ajanın kendi çıktısıymış gibi kaydedilir (inceleme/build onu görür)
+    if (isFanoutNode(node)) {
+      if (workflow.agents[node.agent]?.disabled) {
+        console.log(`\n⏭ "${node.agent}" devre dışı — "${current}" dağıtımı atlandı → ${node.next ?? "akış biter"}`);
+        bus.emit({ type: "node_skipped", node: current, to: node.next });
+        current = node.next;
+        continue;
+      }
+      const worker = agents.get(node.agent)!;
+      let result: AgentRunResult;
+      if (node.disabled) {
+        console.log(`\n🔀 "${current}" devre dışı — dağıtım yok, ${worker.name} tek kopya koşuyor`);
+        bus.emit({ type: "node_skipped", node: current, to: node.agent });
+        result = await runAgent(worker, buildPrompt(worker, ctx), cwd, cfg, bus, abortController);
+      } else {
+        result = await runFanout(current, node, agents, ctx, cwd, cfg, bus, abortController);
+      }
+      ctx.outputs.set(worker.key, { name: worker.name, result });
+      ctx.feedback = undefined;
+      const changed = changedFilesOf(result);
+      if (changed) ctx.changedFiles = changed;
+      current = node.next;
       continue;
     }
 

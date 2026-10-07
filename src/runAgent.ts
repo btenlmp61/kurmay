@@ -1,4 +1,5 @@
-import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import path from "node:path";
+import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
@@ -77,6 +78,43 @@ function mergeMetrics(a: AgentMetrics | undefined, b: AgentMetrics | undefined):
   };
 }
 
+/** runAgent'ın isteğe bağlı ayarları */
+export interface RunAgentOptions {
+  /** Verilirse Write/Edit/MultiEdit/NotebookEdit bu dizin DIŞINA engellenir
+   *  (fanout kopyası kendi reposunda kalsın — kardeş kopyalar aynı anda çalışıyor) */
+  writeScope?: string;
+}
+
+/**
+ * Dosya yazan araçları bir dizinle sınırlayan PreToolUse hook'u. Yol cwd'ye göre
+ * çözülür; kapsam dışıysa araç engellenir ve gerekçe modele döner.
+ */
+function writeScopeHook(scope: string, cwd: string): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+  const root = path.resolve(scope);
+  return {
+    PreToolUse: [
+      {
+        matcher: "Write|Edit|MultiEdit|NotebookEdit",
+        hooks: [
+          async (input) => {
+            const ti = ((input as { tool_input?: Record<string, unknown> }).tool_input ?? {});
+            const target = ti.file_path ?? ti.notebook_path;
+            if (typeof target !== "string") return { continue: true };
+            const rel = path.relative(root, path.resolve(cwd, target));
+            if (!rel.startsWith("..") && !path.isAbsolute(rel)) return { continue: true };
+            return {
+              decision: "block",
+              reason:
+                `Bu kopyanın yazma kapsamı yalnızca "${root}". "${target}" kapsam dışı — ` +
+                `o repo başka bir geliştiriciye atandı, dokunma. Gerekiyorsa deviations'a yaz.`,
+            };
+          },
+        ],
+      },
+    ],
+  };
+}
+
 /** Beklerken iptal edilebilen uyku: süre dolarsa döner, Durdur'a basılırsa RunCancelledError atar */
 function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -105,11 +143,17 @@ async function executeQuery(
   useSchema: boolean,
   abortController: AbortController,
   session: SessionHolder,
+  opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const resume = session.id;
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
-  const hooks = buildHooks(agent.config.hooks, cwd);
+  let hooks = buildHooks(agent.config.hooks, cwd);
+  if (opts.writeScope) {
+    // Config hook'larına ek olarak yazma kapsamı kapısı (ikisi de çalışır)
+    const scope = writeScopeHook(opts.writeScope, cwd);
+    hooks = { ...hooks, PreToolUse: [...(hooks?.PreToolUse ?? []), ...scope.PreToolUse!] };
+  }
   const result: AgentRunResult = { text: "" };
 
   let iterator;
@@ -222,6 +266,7 @@ async function executeWithRetry(
   useSchema: boolean,
   abortController: AbortController,
   session: SessionHolder,
+  opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const retry = cfg.retry ?? {};
   const enabled = retry.enabled !== false;
@@ -232,7 +277,7 @@ async function executeWithRetry(
 
   while (true) {
     try {
-      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session);
+      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session, opts);
     } catch (err) {
       // Kullanıcının Durdur'u tek çıkış kapısı — onu asla yutma
       if (err instanceof RunCancelledError) throw err;
@@ -277,12 +322,13 @@ export async function runAgent(
   bus: EventBus,
   abortController: AbortController,
   resume?: string,
+  opts: RunAgentOptions = {},
 ): Promise<AgentRunResult> {
   console.log(`\n━━━ ▶ ${agent.name} çalışıyor${resume ? " (oturum sürdürülüyor)" : ""} ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
 
   const session: SessionHolder = { id: resume };
-  let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session);
+  let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session, opts);
   // Şemasız yedeğe düşüldüyse structured zaten beklenmez — onarım turu denenmez
   let schemaless = false;
 
@@ -294,7 +340,7 @@ export async function runAgent(
     // Şemasız deneme TAZE oturumla yapılır: şema turlarıyla dolmuş oturumu
     // sürdürmek yerine aynı prompt baştan koşar (mevcut davranış korunuyor)
     const fresh: SessionHolder = { id: resume };
-    result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh);
+    result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh, opts);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
     }
@@ -307,7 +353,7 @@ export async function runAgent(
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
     const repairSession: SessionHolder = { id: result.sessionId };
-    const repaired = await executeWithRetry(agent, REPAIR_PROMPT, cwd, cfg, bus, true, abortController, repairSession);
+    const repaired = await executeWithRetry(agent, REPAIR_PROMPT, cwd, cfg, bus, true, abortController, repairSession, opts);
     if (repaired !== SCHEMA_FAILED) {
       const metrics = mergeMetrics(result.metrics, repaired.metrics);
       if (repaired.structured !== undefined) {

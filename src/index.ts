@@ -8,7 +8,7 @@ import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
 import { SessionStore } from "./sessions.js";
-import { isParallelNode, type AgentDefinition, type AppConfig } from "./types.js";
+import { isFanoutNode, isParallelNode, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
   task: string;
@@ -75,6 +75,11 @@ async function executeRun(
         .map(([key, n]) => [key, (n as { branches: string[] }).branches]),
     ),
     resumed,
+    fanouts: Object.fromEntries(
+      Object.entries(cfg.workflow.agents)
+        .filter(([, n]) => isFanoutNode(n))
+        .map(([key, n]) => [key, (n as { agent: string }).agent]),
+    ),
     disabled: Object.entries(cfg.workflow.agents)
       .filter(([, n]) => n.disabled)
       .map(([key]) => key),

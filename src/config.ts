@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isCommandNode, isParallelNode, type AppConfig, type ProviderConfig } from "./types.js";
+import { isCommandNode, isFanoutNode, isParallelNode, type AppConfig, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -72,6 +72,13 @@ export function loadAppConfig(configPath: string): AppConfig {
       continue; // komut düğümünün tools listesi yok
     }
     if (isParallelNode(node)) continue; // paralel düğüm de bir kapı, tools listesi yok
+    if (isFanoutNode(node)) {
+      const mc = node.maxConcurrency;
+      if (mc !== undefined && (!Number.isInteger(mc) || mc < 0)) {
+        throw new Error(`config: "${key}.maxConcurrency" negatif olmayan bir tam sayı olmalı (verilen: ${JSON.stringify(mc)})`);
+      }
+      continue; // fanout da bir kapı; çoğalttığı ajanın araçları kendi düğümünde kontrol edilir
+    }
     for (const tool of node.tools) {
       if (tool.startsWith("mcp__")) {
         const serverName = tool.slice(5).split("__")[0];

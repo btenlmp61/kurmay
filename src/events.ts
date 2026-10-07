@@ -17,6 +17,8 @@ export type OrchestratorEvent =
       resumed?: boolean;
       /** Devre dışı düğümler — panel hatta soluk/üstü çizili gösterir */
       disabled?: string[];
+      /** Fanout düğümü → çoğalttığı ajan. Kopyalar fanout_started'da belli olur */
+      fanouts?: Record<string, string>;
     }
   /** Devre dışı düğüm koşturulmadan geçildi; to = devam edilen düğüm (null = akış bitti) */
   | { type: "node_skipped"; node: string; to: string | null }
@@ -74,6 +76,19 @@ export type OrchestratorEvent =
       /** Dalların tahmini maliyet toplamı (USD) — ölçüm için */
       costUsd?: number;
     }
+  // Repo başına dağıtım: ajanın kopyaları (key = "<ajan>@<repo>") başlar; kopya
+  // başına agent_started/agent_finished olayları bu anahtarlarla gelir
+  | {
+      type: "fanout_started";
+      node: string;
+      agent: string;
+      workers: Array<{ key: string; repo: string }>;
+      /** 0 = sınırsız */
+      maxConcurrency: number;
+      /** Red/build turunda yalnızca geri bildirimde adı geçen repolar yeniden koşar */
+      partial: boolean;
+    }
+  | { type: "fanout_finished"; node: string; repos: string[]; failed: Array<{ repo: string; error: string }> }
   | { type: "build_started"; order: string[] }
   | { type: "build_module_started"; module: string; command: string }
   | { type: "build_output"; module: string; text: string }

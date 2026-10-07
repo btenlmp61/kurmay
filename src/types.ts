@@ -154,7 +154,39 @@ export interface ParallelNodeConfig {
   onReject: string;
 }
 
-export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | ParallelNodeConfig;
+/**
+ * Repo başına dağıtım düğümü — LLM değil, bir fan-out/fan-in kapısı. Architect'in
+ * `file_plan`'ı repolara bölünür (dosyanın targetDir altındaki en üst klasörü =
+ * repo, build.ts ile aynı kural) ve "agent" düğümünün her repo için AYRI bir
+ * kopyası koşar; kaç kopya olacağına KOD karar verir (plan kaç repoya dokunuyorsa).
+ * Sonuçlar tek bir çıktıda birleşir ve akış "next"e geçer.
+ *
+ * Her kopya yalnızca kendi repo dilimini görür ve Write/Edit'i o repo dışına
+ * hook ile ENGELLENİR — aynı dizinde eş zamanlı çalıştıkları için. (Bash yine
+ * de yazabilir; persona + kapsam talimatı ona karşı.)
+ *
+ * Neden SDK subagent değil: orada kaç alt-ajanın koşacağına model karar verir.
+ */
+export interface FanoutNodeConfig {
+  type: "fanout";
+  /** true ise DAĞITIM kapalı: ajan bölünmemiş planla TEK kopya koşar, sonra "next".
+   *  (Diğer düğümlerden farklı: atlanmaz — işi yapan ajan zaten bu düğümün içinde.
+   *  Ajanın kendisini atlamak için işçi düğümü kapat.) */
+  disabled?: boolean;
+  /** Repo başına çoğaltılacak ajan düğümü (ör. "developer"). Kendi kenarı olamaz. */
+  agent: string;
+  /** Aynı anda en fazla kaç kopya koşar. Yerel model sunucusu istekleri sırayla
+   *  işliyorsa paralellik HIZ KAZANDIRMAZ, kuyruk ve zaman aşımı riski getirir —
+   *  sunucunun eş zamanlı kapasitesine göre ayarla. 0/yok = sınırsız. */
+  maxConcurrency?: number;
+  /** Ortak/parent repo klasörü (ör. common-events): plana dahilse diğerlerinden
+   *  ÖNCE tek başına koşar — servisler güncel sözleşmeye göre kod yazsın. */
+  parent?: string;
+  /** Tüm kopyalar bitince gidilecek düğüm (null = akış biter) */
+  next: string | null;
+}
+
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | ParallelNodeConfig | FanoutNodeConfig;
 
 export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
   return (node as CommandNodeConfig).type === "command";
@@ -164,15 +196,25 @@ export function isParallelNode(node: WorkflowNode): node is ParallelNodeConfig {
   return (node as ParallelNodeConfig).type === "parallel";
 }
 
+export function isFanoutNode(node: WorkflowNode): node is FanoutNodeConfig {
+  return (node as FanoutNodeConfig).type === "fanout";
+}
+
+/** LLM olmayan kapı düğümleri (komut/paralel/fanout) — persona/araç listesi yok */
+export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | ParallelNodeConfig | FanoutNodeConfig {
+  return isCommandNode(node) || isParallelNode(node) || isFanoutNode(node);
+}
+
 /**
  * Devre dışı düğümün "geçer" kenarı — akış onu koşturmadan buradan devam eder.
  * Hep BAŞARI yönü seçilir (düğüm hiç itiraz etmemiş gibi): komut → onSuccess,
- * paralel → onApprove, verdict → onApprove, routes → default, next → next.
+ * paralel → onApprove, fanout → next, verdict → onApprove, routes → default, next → next.
  * null = akış biter.
  */
 export function passThroughTarget(node: WorkflowNode): string | null {
   if (isCommandNode(node)) return node.onSuccess;
   if (isParallelNode(node)) return node.onApprove;
+  if (isFanoutNode(node)) return node.next;
   if (node.verdict) return node.verdict.onApprove;
   if (node.routes) return node.routes.default ?? null;
   return node.next ?? null;
