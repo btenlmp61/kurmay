@@ -15,7 +15,11 @@ export type OrchestratorEvent =
       parallelGroups?: Record<string, string[]>;
       /** true ise entry ajan önceki oturumu sürdürüyor — panel akışı temizlenmez */
       resumed?: boolean;
+      /** Devre dışı düğümler — panel hatta soluk/üstü çizili gösterir */
+      disabled?: string[];
     }
+  /** Devre dışı düğüm koşturulmadan geçildi; to = devam edilen düğüm (null = akış bitti) */
+  | { type: "node_skipped"; node: string; to: string | null }
   | { type: "agent_started"; agent: string }
   | { type: "agent_text"; agent: string; text: string }
   | {

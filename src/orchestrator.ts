@@ -6,6 +6,7 @@ import { runAgent } from "./runAgent.js";
 import {
   isCommandNode,
   isParallelNode,
+  passThroughTarget,
   ReviewVerdictSchema,
   RunCancelledError,
   type AgentDefinition,
@@ -103,6 +104,8 @@ function buildPrompt(agent: AgentDefinition, ctx: RunContext): string {
 async function runParallel(
   nodeKey: string,
   node: ParallelNodeConfig,
+  /** Devre dışı olanlar ayıklanmış dallar */
+  branchKeys: string[],
   agents: Map<string, AgentDefinition>,
   ctx: RunContext,
   cwd: string,
@@ -110,11 +113,11 @@ async function runParallel(
   bus: EventBus,
   abortController: AbortController,
 ): Promise<{ approved: boolean; branches: BranchOutcome[]; costUsd: number }> {
-  bus.emit({ type: "parallel_started", node: nodeKey, branches: node.branches });
-  console.log(`\n⚡ Paralel inceleme: ${node.branches.join(", ")}`);
+  bus.emit({ type: "parallel_started", node: nodeKey, branches: branchKeys });
+  console.log(`\n⚡ Paralel inceleme: ${branchKeys.join(", ")}`);
 
   const settled = await Promise.allSettled(
-    node.branches.map(async (key): Promise<BranchOutcome> => {
+    branchKeys.map(async (key): Promise<BranchOutcome> => {
       const agent = agents.get(key)!;
       // Dallar oturum sürdürmez (entry değiller) ve birbirlerini görmezler —
       // buildPrompt her birine developer çıktısını verir, doğrusu da bu
@@ -149,7 +152,7 @@ async function runParallel(
     if (s.status === "fulfilled") return s.value;
     // İptali yut ma: akışın tamamı durmalı
     if (s.reason instanceof RunCancelledError) throw s.reason;
-    const key = node.branches[i];
+    const key = branchKeys[i];
     const error = s.reason instanceof Error ? s.reason.message : String(s.reason);
     console.log(`❌ "${key}" dalı inceleyemedi: ${error}`);
     return {
@@ -208,12 +211,28 @@ export async function runWorkflow(
   const ctx: RunContext = { task, outputs: new Map(), changedFiles: [] };
   let current: string | null = workflow.entry;
   let rejectCycles = 0;
+  // Art arda atlanan devre dışı düğüm sayısı — geçer kenarları bir döngü
+  // oluşturuyorsa (A→B→A, hepsi kapalı) sonsuza dönmesin
+  let consecutiveSkips = 0;
 
   try {
   while (current !== null) {
     // Kullanıcı adımlar arasında iptal ettiyse burada temiz dur
     if (abortController.signal.aborted) throw new RunCancelledError();
     const node: WorkflowNode = workflow.agents[current];
+
+    // Devre dışı düğüm: koşturulmaz, "geçer" kenarından (başarı yönü) devam edilir
+    if (node.disabled) {
+      const to = passThroughTarget(node);
+      if (++consecutiveSkips > Object.keys(workflow.agents).length) {
+        throw new Error(`Devre dışı düğümlerin geçer kenarları döngü oluşturuyor ("${current}" civarı) — en az birini aç`);
+      }
+      console.log(`\n⏭ "${current}" devre dışı — atlandı → ${to ?? "akış biter"}`);
+      bus.emit({ type: "node_skipped", node: current, to });
+      current = to;
+      continue;
+    }
+    consecutiveSkips = 0;
 
     // Komut düğümü (LLM değil): değişen modülleri deterministik sırada build eder.
     // Başarılıysa onSuccess'e, ilk hata onFailure'a (build log'u geri bildirim olur).
@@ -244,8 +263,19 @@ export async function runWorkflow(
     // kararları birleşir. Reject bütçesi verdict/build ile ORTAK — üç red kaynağı
     // da aynı maxCycles'ı harcar, yoksa döngü koruması delinirdi.
     if (isParallelNode(node)) {
+      // Devre dışı dallar gruptan çıkar; hiç dal kalmadıysa düğüm kapalıymış gibi geçilir
+      const active = node.branches.filter((b) => !workflow.agents[b]?.disabled);
+      for (const b of node.branches) {
+        if (!active.includes(b)) bus.emit({ type: "node_skipped", node: b, to: null });
+      }
+      if (active.length === 0) {
+        console.log(`\n⏭ "${current}" paralel düğümünün tüm dalları devre dışı — onApprove'a geçiliyor`);
+        bus.emit({ type: "node_skipped", node: current, to: node.onApprove });
+        current = node.onApprove;
+        continue;
+      }
       const { approved, branches, costUsd } = await runParallel(
-        current, node, agents, ctx, cwd, cfg, bus, abortController,
+        current, node, active, agents, ctx, cwd, cfg, bus, abortController,
       );
       console.log(
         `\n📋 Paralel inceleme: ${approved ? "ONAYLANDI ✅" : "REDDEDİLDİ ❌"}` +

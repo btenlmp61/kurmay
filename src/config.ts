@@ -62,6 +62,9 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   // Ajanların tools listesindeki mcp__ araçları tanımlı bir sunucuya işaret etmeli
   for (const [key, node] of Object.entries(cfg.workflow.agents)) {
+    if (node.disabled !== undefined && typeof node.disabled !== "boolean") {
+      throw new Error(`config: "${key}.disabled" true/false olmalı (verilen: ${JSON.stringify(node.disabled)})`);
+    }
     if (isCommandNode(node)) {
       if (typeof node.command !== "string" || !node.command.trim()) {
         throw new Error(`config: "${key}" komut düğümü için "command" (build komutu) zorunlu`);

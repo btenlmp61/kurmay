@@ -56,6 +56,10 @@ export interface HookConfig {
 export interface AgentNodeConfig {
   /** Düğüm türü — ajan düğümü (varsayılan). Komut düğümleri "command" kullanır. */
   type?: "agent";
+  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
+   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
+   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
+  disabled?: boolean;
   /** Ajanın system prompt'unu içeren md dosyası (config dosyasının dizinine göre) */
   file: string;
   /** Bu ajanın kullanabileceği Claude Code araçları */
@@ -104,6 +108,10 @@ export interface AgentNodeConfig {
  */
 export interface CommandNodeConfig {
   type: "command";
+  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
+   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
+   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
+  disabled?: boolean;
   /** Değişen servis repolarında çalıştırılacak varsayılan build komutu */
   command: string;
   /** Ortak parent (örn. common-events). Değişmişse diğerlerinden ÖNCE build edilir. */
@@ -134,6 +142,10 @@ export interface CommandNodeConfig {
  */
 export interface ParallelNodeConfig {
   type: "parallel";
+  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
+   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
+   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
+  disabled?: boolean;
   /** Eş zamanlı koşacak ajan düğümlerinin adları (en az 1) */
   branches: string[];
   /** Tüm dallar onayladığında gidilecek düğüm (null = akış biter) */
@@ -150,6 +162,20 @@ export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
 
 export function isParallelNode(node: WorkflowNode): node is ParallelNodeConfig {
   return (node as ParallelNodeConfig).type === "parallel";
+}
+
+/**
+ * Devre dışı düğümün "geçer" kenarı — akış onu koşturmadan buradan devam eder.
+ * Hep BAŞARI yönü seçilir (düğüm hiç itiraz etmemiş gibi): komut → onSuccess,
+ * paralel → onApprove, verdict → onApprove, routes → default, next → next.
+ * null = akış biter.
+ */
+export function passThroughTarget(node: WorkflowNode): string | null {
+  if (isCommandNode(node)) return node.onSuccess;
+  if (isParallelNode(node)) return node.onApprove;
+  if (node.verdict) return node.verdict.onApprove;
+  if (node.routes) return node.routes.default ?? null;
+  return node.next ?? null;
 }
 
 /** Paralel düğümde tek bir dalın sonucu — panel ve geri bildirim için. */

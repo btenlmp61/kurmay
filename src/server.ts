@@ -37,6 +37,8 @@ export interface UiServerOptions {
   getModels?: () => Promise<{ current: string; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
   setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
+  /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
+  setNodeDisabled?: (key: string, disabled: boolean) => { ok: boolean; error?: string };
 }
 
 /**
@@ -53,6 +55,7 @@ export interface UiServerOptions {
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
  *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
+ *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  */
 export function startUiServer(
   bus: EventBus,
@@ -274,6 +277,28 @@ export function startUiServer(
           return;
         }
         const r = options.setModel ? options.setModel(model) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/node-disabled") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let key = "";
+        let disabled = false;
+        try {
+          const parsed = JSON.parse(body) as { key?: unknown; disabled?: unknown };
+          key = String(parsed.key ?? "");
+          disabled = parsed.disabled === true;
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          return;
+        }
+        const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });

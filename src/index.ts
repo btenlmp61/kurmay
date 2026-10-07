@@ -34,6 +34,15 @@ function parseArgs(argv: string[]): {
   return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi };
 }
 
+/**
+ * Koşu başına config kopyası: panelden canlı değişen alanlar (model, düğümlerin
+ * `disabled`'ı) o an çalışan koşuyu ORTASINDA etkilemesin, sıradaki görevde
+ * geçerli olsun. Workflow da kopyalanır çünkü `disabled` onun içinde.
+ */
+function snapshotConfig(cfg: AppConfig): AppConfig {
+  return { ...cfg, workflow: structuredClone(cfg.workflow) };
+}
+
 /** Tek bir görevi baştan sona koşturur; olaylar bus'a, kayıt runs/'a gider */
 async function executeRun(
   task: string,
@@ -66,6 +75,9 @@ async function executeRun(
         .map(([key, n]) => [key, (n as { branches: string[] }).branches]),
     ),
     resumed,
+    disabled: Object.entries(cfg.workflow.agents)
+      .filter(([, n]) => n.disabled)
+      .map(([key]) => key),
   });
 
   // Koşu başına iptal denetçisi: panelden POST /cancel bunu abort eder
@@ -216,6 +228,26 @@ async function main() {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
+      setNodeDisabled: (key, disabled) => {
+        if (!cfg.workflow.agents[key]) return { ok: false, error: `düğüm bulunamadı: ${key}` };
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as AppConfig;
+          const node = parsed.workflow?.agents?.[key];
+          if (!node) return { ok: false, error: `düğüm config dosyasında yok: ${key}` };
+          if (disabled) node.disabled = true;
+          else delete node.disabled;
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath); // yapı doğrulaması
+          // Sıradaki görev görür; çalışan koşu kendi workflow kopyasıyla devam eder
+          if (disabled) cfg.workflow.agents[key].disabled = true;
+          else delete cfg.workflow.agents[key].disabled;
+          return { ok: true };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, resumeSessionId) => {
@@ -238,7 +270,7 @@ async function main() {
     // Tek görev modu: çalıştır ve çık (yeni oturum)
     const sessionStore = { entrySessionId: undefined as string | undefined };
     try {
-      await executeRun(task, { ...cfg }, agents, cwd, bus, runsDir, sessionStore, server);
+      await executeRun(task, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server);
     } finally {
       if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
@@ -257,8 +289,8 @@ async function main() {
     // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
     const sessionStore = { entrySessionId: resumeSessionId };
     try {
-      // Kopya: panelden model değişirse çalışan koşunun kalan ajanları etkilenmesin
-      await executeRun(nextTask, { ...cfg }, agents, cwd, bus, runsDir, sessionStore, server);
+      // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
+      await executeRun(nextTask, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server);
     } catch (err) {
       // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
       console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);

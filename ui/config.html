@@ -114,6 +114,7 @@ input[type=text], select { width:100%; }
       <span class="k"><span class="sw" style="border-color:var(--teal)"></span> onay / başarılı</span>
       <span class="k"><span class="sw" style="border-color:var(--red)"></span> red / hata</span>
       <span class="k"><span class="tybadge entry">entry</span> başlangıç düğümü</span>
+      <span class="k"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span> kesik kutu = devre dışı</span>
     </div>
   </div>
   <div class="card side" id="side">
@@ -181,6 +182,15 @@ function isPar(n){ return n && n.type === "parallel"; }
 function branchOwner(key){
   for (const k of keys()){ const n = nodes()[k]; if (isPar(n) && (n.branches||[]).includes(key)) return k; }
   return null;
+}
+
+/** Devre dışı düğümün akışı devam ettireceği "geçer" kenarı — src/types.ts passThroughTarget ile aynı kural */
+function passThrough(n){
+  if (isCmd(n)) return n.onSuccess || null;
+  if (isPar(n)) return n.onApprove || null;
+  if (n.verdict) return n.verdict.onApprove || null;
+  if (n.routes) return n.routes.default || null;
+  return n.next || null;
 }
 
 // Bir düğümün çıkış kenarları (çizim + panel için)
@@ -280,10 +290,12 @@ function drawGraph(){
       : isPar(n) ? `parallel · ${(n.branches||[]).length} dal`
       : owner ? `${owner} dalı`
       : (n.verdict ? "verdict" : (n.routes ? "routes" : "next"));
-    return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})">
-      <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
-      <text x="12" y="24">${esc(k)}</text>
-      <text class="sub" x="12" y="42">${esc(sub)}${isEntry?" · entry":""}</text>
+    // Devre dışı: soluk + kesik kenar + üstü çizili ad — akış bu kutuyu atlar
+    const off = !!n.disabled;
+    return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})"${off?' opacity="0.5"':""}>
+      <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${off?' stroke-dasharray="5 4"':""}/>
+      <text x="12" y="24"${off?' text-decoration="line-through"':""}>${esc(k)}</text>
+      <text class="sub" x="12" y="42">${off?"devre dışı · ":""}${esc(sub)}${isEntry?" · entry":""}</text>
     </g>`;
   }).join("");
 
@@ -379,6 +391,38 @@ function render(){
     : (n.verdict ? "İnceleme ajanı; kararına göre onApprove/onReject'e dallanır."
     : "Ajan; işini bitince koşulsuz olarak next'e geçer."));
   panel.appendChild(desc);
+
+  // Devre dışı anahtarı — Kaydet'i beklemez: anında config.json'a yazılır ve
+  // çalışan servise uygulanır (sıradaki görevde geçerli, restart gerekmez)
+  const dWrap = document.createElement("div"); dWrap.className = "field"; dWrap.style.marginTop = "10px";
+  const dL = document.createElement("label"); dL.style.cssText = "display:flex;align-items:center;gap:6px;font-size:13px";
+  const dChk = document.createElement("input"); dChk.type = "checkbox"; dChk.checked = !!n.disabled;
+  dL.appendChild(dChk); dL.append("Devre dışı — akış bu düğümü atlar");
+  const dH = document.createElement("div"); dH.className = "fhint";
+  const gecer = passThrough(n);
+  dH.textContent = owner
+    ? `Kapalı dal "${owner}" incelemesine katılmaz; tüm dallar kapalıysa grup onaylanmış sayılır.`
+    : `Kapalıyken koşturulmaz, akış başarı yönünden devam eder → ${gecer ? `"${gecer}"` : "akış biter"}. `
+      + "Anında uygulanır (Kaydet ve restart gerekmez), o an çalışan koşuyu etkilemez.";
+  dWrap.appendChild(dL); dWrap.appendChild(dH);
+  dChk.addEventListener("change", async ()=>{
+    const want = dChk.checked;
+    dChk.disabled = true;
+    try {
+      const res = await fetch("/node-disabled", { method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({ key, disabled: want }) });
+      const data = await res.json().catch(()=>({}));
+      if (!data.ok) throw new Error(data.error || "uygulanamadı");
+      if (want) n.disabled = true; else delete n.disabled;
+      $("msg").innerHTML = `<span style="color:var(--teal)">✓ "${esc(key)}" ${want ? "devre dışı" : "yeniden açık"} — sıradaki görevde geçerli</span>`;
+      render();
+    } catch (err) {
+      dChk.checked = !want;
+      dChk.disabled = false;
+      $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err.message)}</span>`;
+    }
+  });
+  panel.appendChild(dWrap);
   panel.appendChild(document.createElement("hr"));
 
   if (isPar(n)){
