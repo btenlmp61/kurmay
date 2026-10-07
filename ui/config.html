@@ -42,16 +42,17 @@ svg { display:block; }
 .gbar { display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; }
 .gbar .grow { flex:1; min-width:220px; }
 input[type=checkbox] { width:auto; min-height:auto; }
+.hidden { display:none; }
 .field { margin-bottom:12px; }
 .field > label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
-input[type=text], select { width:100%; }
+input[type=text], input[type=number], select { width:100%; }
 .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 .chip { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; background:var(--blueBg); color:var(--blue); }
 .chip button { padding:0 3px; border:none; background:none; color:inherit; font-size:14px; line-height:1; min-height:auto; }
 .chips { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; }
 .tybadge.agent { background:var(--blueBg); color:var(--blue); }
 .tybadge.command { background:var(--amberBg); color:var(--amber); }
-.tybadge.parallel { background:var(--tealBg); color:var(--teal); }
+.tybadge.fanout { background:var(--amberBg); color:var(--amber); }
 .tybadge.entry { background:var(--tealBg); color:var(--teal); }
 #msg { font-size:13px; }
 .mono { font-family:ui-monospace,Consolas,monospace; }
@@ -92,7 +93,7 @@ input[type=text], select { width:100%; }
   <div id="addForm" class="hidden" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
     <div class="gbar">
       <div><label class="minl">Anahtar (key)</label><input type="text" id="ndKey" placeholder="ör. tester" style="width:150px"></div>
-      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">agent</option><option value="command">command (build)</option><option value="parallel">parallel (eş zamanlı inceleme)</option></select></div>
+      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">agent</option><option value="command">command (build)</option><option value="fanout">fanout (ajanı repo başına dağıt)</option></select></div>
       <div id="ndAgentSrc"><label class="minl">Rol tanımı (.md · system prompt)</label><select id="ndMd"></select></div>
       <div id="ndNewMd" class="hidden"><label class="minl">Yeni rol adı</label><input type="text" id="ndMdName" placeholder="ör. tester" style="width:150px"></div>
       <button class="primary" id="ndAddBtn">Ekle</button>
@@ -114,6 +115,7 @@ input[type=text], select { width:100%; }
       <span class="k"><span class="sw" style="border-color:var(--teal)"></span> onay / başarılı</span>
       <span class="k"><span class="sw" style="border-color:var(--red)"></span> red / hata</span>
       <span class="k"><span class="tybadge entry">entry</span> başlangıç düğümü</span>
+      <span class="k"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span> kesik kutu = devre dışı</span>
     </div>
   </div>
   <div class="card side" id="side">
@@ -176,11 +178,44 @@ function refreshEntry(){
 function nodes(){ return cfg.workflow.agents; }
 function keys(){ return Object.keys(nodes()); }
 function isCmd(n){ return n && n.type === "command"; }
-function isPar(n){ return n && n.type === "parallel"; }
-/** Bir ajan başka bir düğümün paralel dalı mı? Dalların kendi kenarı olamaz. */
-function branchOwner(key){
-  for (const k of keys()){ const n = nodes()[k]; if (isPar(n) && (n.branches||[]).includes(key)) return k; }
+function isFan(n){ return n && n.type === "fanout"; }
+function isGate(n){ return isCmd(n) || isFan(n); }
+/** Bir ajan bir fanout düğümünün işçisi mi? İşçinin de kendi kenarı olamaz. */
+function fanoutOwner(key){
+  for (const k of keys()){ const n = nodes()[k]; if (isFan(n) && n.agent === key) return k; }
   return null;
+}
+/**
+ * Ajanı fanout'un işçisi yapar ve grafı geçerli tutar: işçinin next'i fanout'a
+ * taşınır, işçiye gelen tüm kenarlar (ve entry) fanout'a çevrilir. Böylece
+ * "developer'ı repo başına dağıt" tek seçimle olur. Hata varsa mesaj döner.
+ */
+function adoptWorker(fk, wk){
+  const f = nodes()[fk], w = nodes()[wk];
+  if (!w || isGate(w)) return `"${wk}" bir ajan düğümü değil`;
+  if (w.verdict || w.routes) return `"${wk}" verdict/routes ile dallanıyor — işçi kendi kenarı olmayan bir ajan olmalı`;
+  const eski = fanoutOwner(wk);
+  if (eski && eski !== fk) return `"${wk}" zaten "${eski}" fanout'unun işçisi`;
+  if (w.next){ if (!f.next) f.next = w.next; }
+  delete w.next;
+  for (const k of keys()){ if (k === fk) continue; const nn = nodes()[k];
+    if (nn.next === wk) nn.next = fk;
+    if (nn.verdict){ if (nn.verdict.onApprove === wk) nn.verdict.onApprove = fk; if (nn.verdict.onReject === wk) nn.verdict.onReject = fk; }
+    if (nn.routes){ for (const c in nn.routes.cases) if (nn.routes.cases[c] === wk) nn.routes.cases[c] = fk; if (nn.routes.default === wk) nn.routes.default = fk; }
+    if (isCmd(nn)){ if (nn.onSuccess === wk) nn.onSuccess = fk; if (nn.onFailure === wk) nn.onFailure = fk; }
+  }
+  if (cfg.workflow.entry === wk) cfg.workflow.entry = fk;
+  f.agent = wk;
+  return null;
+}
+
+/** Devre dışı düğümün akışı devam ettireceği "geçer" kenarı — src/types.ts passThroughTarget ile aynı kural */
+function passThrough(n){
+  if (isCmd(n)) return n.onSuccess || null;
+  if (isFan(n)) return n.next || null;
+  if (n.verdict) return n.verdict.onApprove || null;
+  if (n.routes) return n.routes.default || null;
+  return n.next || null;
 }
 
 // Bir düğümün çıkış kenarları (çizim + panel için)
@@ -189,11 +224,9 @@ function outEdges(key){
   if (isCmd(n)) {
     if (n.onSuccess) e.push({ to:n.onSuccess, kind:"ok", label:"başarılı" });
     if (n.onFailure) e.push({ to:n.onFailure, kind:"fail", label:"hata" });
-  } else if (isPar(n)) {
-    // Dallara giden kenarlar: BFS bunları bir sonraki sütuna yerleştirir
-    for (const b of n.branches || []) e.push({ to:b, kind:"next", label:"eş zamanlı" });
-    if (n.onApprove) e.push({ to:n.onApprove, kind:"ok", label:"hepsi onay" });
-    if (n.onReject) e.push({ to:n.onReject, kind:"fail", label:"red" });
+  } else if (isFan(n)) {
+    if (n.agent) e.push({ to:n.agent, kind:"next", label:"repo başına" });
+    if (n.next) e.push({ to:n.next, kind:"next", label:"" });
   } else if (n.verdict) {
     if (n.verdict.onApprove) e.push({ to:n.verdict.onApprove, kind:"ok", label:"onay" });
     if (n.verdict.onReject) e.push({ to:n.verdict.onReject, kind:"fail", label:"red" });
@@ -270,20 +303,22 @@ function drawGraph(){
 
   const boxes = keys().map((k)=>{
     const p = pos[k], n = nodes()[k];
-    const ty = isCmd(n) ? "command" : isPar(n) ? "parallel" : "agent";
+    const ty = isCmd(n) ? "command" : isFan(n) ? "fanout" : "agent";
     const isEntry = k === cfg.workflow.entry;
     const fill = k===selected ? "var(--blueBg)" : "var(--card)";
     const stroke = k===selected ? "var(--blue)" : "var(--border)";
     const badge = isEntry ? "entry" : ty;
-    const owner = branchOwner(k);
+    const fOwner = fanoutOwner(k);
     const sub = isCmd(n) ? "command"
-      : isPar(n) ? `parallel · ${(n.branches||[]).length} dal`
-      : owner ? `${owner} dalı`
+      : isFan(n) ? `fanout · ${n.agent || "?"}${n.maxConcurrency ? ` · en fazla ${n.maxConcurrency}` : ""}`
+      : fOwner ? `${fOwner} işçisi`
       : (n.verdict ? "verdict" : (n.routes ? "routes" : "next"));
-    return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})">
-      <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
-      <text x="12" y="24">${esc(k)}</text>
-      <text class="sub" x="12" y="42">${esc(sub)}${isEntry?" · entry":""}</text>
+    // Devre dışı: soluk + kesik kenar + üstü çizili ad — akış bu kutuyu atlar
+    const off = !!n.disabled;
+    return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})"${off?' opacity="0.5"':""}>
+      <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${off?' stroke-dasharray="5 4"':""}/>
+      <text x="12" y="24"${off?' text-decoration="line-through"':""}>${esc(k)}</text>
+      <text class="sub" x="12" y="42">${off?"devre dışı · ":""}${esc(sub)}${isEntry?" · entry":""}</text>
     </g>`;
   }).join("");
 
@@ -347,6 +382,7 @@ function render(){
     const delWrap = document.createElement("div"); delWrap.style.marginTop="16px";
     const del = document.createElement("button"); del.className="danger"; del.textContent="Bu düğümü sil";
     if (key === cfg.workflow.entry){ del.disabled = true; del.title = "entry düğümü silinemez — önce başka bir başlangıç seç"; }
+    if (fanoutOwner(key)){ del.disabled = true; del.title = `"${fanoutOwner(key)}" fanout'unun işçisi — önce fanout'u sil ya da başka bir ajan seç`; }
     del.addEventListener("click", ()=>{
       delete nodes()[key];
       for (const k of keys()){ const nn = nodes()[k];       // bu düğüme işaret eden kenarları temizle
@@ -354,10 +390,7 @@ function render(){
         if (nn.verdict){ if (nn.verdict.onApprove===key) nn.verdict.onApprove=null; if (nn.verdict.onReject===key) nn.verdict.onReject=null; }
         if (nn.routes){ for (const c in nn.routes.cases) if (nn.routes.cases[c]===key) nn.routes.cases[c]=null; if (nn.routes.default===key) nn.routes.default=null; }
         if (isCmd(nn)){ if (nn.onSuccess===key) nn.onSuccess=null; if (nn.onFailure===key) nn.onFailure=null; }
-        if (isPar(nn)){
-          nn.branches = (nn.branches||[]).filter((b)=> b!==key);   // silinen dalı gruptan da çıkar
-          if (nn.onApprove===key) nn.onApprove=null; if (nn.onReject===key) nn.onReject=null;
-        }
+        if (isFan(nn) && nn.next===key) nn.next=null;
       }
       selected = null; markDirty(); refreshEntry(); render();
     });
@@ -365,34 +398,83 @@ function render(){
   };
 
   const head = document.createElement("div");
-  const owner = branchOwner(key);
-  const ty = isCmd(n) ? "command" : isPar(n) ? "parallel" : "agent";
+  const ty = isCmd(n) ? "command" : isFan(n) ? "fanout" : "agent";
+  const fOwner = fanoutOwner(key);
   head.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${esc(key)}</div>
     <span class="tybadge ${key===cfg.workflow.entry?"entry":ty}">${key===cfg.workflow.entry?"entry · ":""}${ty}</span>`;
   panel.appendChild(head);
   const desc = document.createElement("div"); desc.className="fhint"; desc.style.margin="6px 0 2px";
   desc.textContent = isCmd(n)
     ? "LLM değil — değişen repoları sırayla build eden deterministik komut adımı."
-    : isPar(n) ? "LLM değil — dalları EŞ ZAMANLI koşturan kapı. Hepsi onaylarsa onApprove, biri bile reddederse/inceleyemezse onReject."
-    : owner ? `"${owner}" paralel düğümünün dalı. Kendi geçiş kenarı olamaz — nereye gidileceğine "${owner}" karar verir.`
+    : isFan(n) ? "LLM değil — architect'in planını repolara böler ve seçilen ajanı her repo için AYRI kopya olarak koşturur (kaç kopya olacağına kod karar verir). Her kopya yalnızca kendi reposuna yazabilir; sonuçlar birleşip next'e geçer. Plan tek repoya dokunuyorsa ajan tek kopya koşar."
+    : fOwner ? `"${fOwner}" fanout düğümünün işçisi — repo başına kopyalanır. Kendi geçiş kenarı olamaz; kopyalar bitince geçişi "${fOwner}" yapar.`
     : (n.routes ? "Ajan; structured çıktısındaki rota alanına göre dallanır (ör. developer / done)."
     : (n.verdict ? "İnceleme ajanı; kararına göre onApprove/onReject'e dallanır."
     : "Ajan; işini bitince koşulsuz olarak next'e geçer."));
   panel.appendChild(desc);
+
+  // Devre dışı anahtarı — Kaydet'i beklemez: anında config.json'a yazılır ve
+  // çalışan servise uygulanır (sıradaki görevde geçerli, restart gerekmez)
+  const dWrap = document.createElement("div"); dWrap.className = "field"; dWrap.style.marginTop = "10px";
+  const dL = document.createElement("label"); dL.style.cssText = "display:flex;align-items:center;gap:6px;font-size:13px";
+  const dChk = document.createElement("input"); dChk.type = "checkbox"; dChk.checked = !!n.disabled;
+  // Fanout'ta kapatmak atlamak değil: dağıtım kapanır, ajan tek kopya koşar
+  dL.appendChild(dChk); dL.append(isFan(n) ? "Dağıtımı kapat — ajan tek kopya koşar" : "Devre dışı — akış bu düğümü atlar");
+  const dH = document.createElement("div"); dH.className = "fhint";
+  const gecer = passThrough(n);
+  dH.textContent = isFan(n) ? `Kapalıyken DAĞITIM yapılmaz: "${n.agent}" bölünmemiş planla tek kopya koşar, sonra next. `
+      + "Paralel ile tek kopyayı karşılaştırmak için. Anında uygulanır (Kaydet ve restart gerekmez)."
+    : `Kapalıyken koşturulmaz, akış başarı yönünden devam eder → ${gecer ? `"${gecer}"` : "akış biter"}. `
+      + "Anında uygulanır (Kaydet ve restart gerekmez), o an çalışan koşuyu etkilemez.";
+  dWrap.appendChild(dL); dWrap.appendChild(dH);
+  dChk.addEventListener("change", async ()=>{
+    const want = dChk.checked;
+    dChk.disabled = true;
+    try {
+      const res = await fetch("/node-disabled", { method:"POST", headers:{"content-type":"application/json"},
+        body: JSON.stringify({ key, disabled: want }) });
+      const data = await res.json().catch(()=>({}));
+      if (!data.ok) throw new Error(data.error || "uygulanamadı");
+      if (want) n.disabled = true; else delete n.disabled;
+      $("msg").innerHTML = `<span style="color:var(--teal)">✓ "${esc(key)}" ${want ? "devre dışı" : "yeniden açık"} — sıradaki görevde geçerli</span>`;
+      render();
+    } catch (err) {
+      dChk.checked = !want;
+      dChk.disabled = false;
+      $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err.message)}</span>`;
+    }
+  });
+  panel.appendChild(dWrap);
   panel.appendChild(document.createElement("hr"));
 
-  if (isPar(n)){
-    n.branches = n.branches || [];
-    // Dal adayları: ajan düğümleri, kendisi hariç, başka bir gruba ait olmayanlar
-    const adaylar = keys().filter((k)=> k!==key && !isCmd(nodes()[k]) && !isPar(nodes()[k])
-      && (branchOwner(k)===null || n.branches.includes(k)));
-    panel.appendChild(field("branches (eş zamanlı koşacak dallar)",
-      chipEditor(n.branches, adaylar, changed),
-      "Dallar aynı anda ve aynı dizinde koşar — salt-okunur olmalı (yazma aracı verirsen config yüklenmez). Bash yazabilir: guard-readonly hook'u kullan."));
-    panel.appendChild(field("onApprove", targetSelect(n.onApprove, (v)=>{ n.onApprove=v; changed(); }, true),
-      "TÜM dallar onaylarsa gidilecek düğüm ((bitir)=akış sonlanır)."));
-    panel.appendChild(field("onReject", targetSelect(n.onReject, (v)=>{ n.onReject=v; changed(); }, false),
-      "Bir dal bile reddederse veya inceleyemezse gidilecek düğüm — sorunlar dal adıyla geri bildirim olur."));
+  if (isFan(n)){
+    // İşçi adayları: dallanmayan ajanlar (verdict/routes yok), dal ya da başka fanout işçisi olmayanlar
+    const adaylar = keys().filter((k)=> !isGate(nodes()[k]) && !nodes()[k].verdict && !nodes()[k].routes
+      && (!fanoutOwner(k) || fanoutOwner(k) === key));
+    const ag = document.createElement("select");
+    ag.innerHTML = (n.agent ? "" : `<option value="">(seç)</option>`)
+      + adaylar.map((k)=>`<option value="${esc(k)}" ${k===n.agent?"selected":""}>${esc(k)}</option>`).join("");
+    ag.addEventListener("change", ()=>{
+      const err = adoptWorker(key, ag.value);
+      if (err){ $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err)}</span>`; ag.value = n.agent || ""; return; }
+      changed();
+    });
+    panel.appendChild(field("agent (repo başına kopyalanacak ajan)", ag,
+      "Seçince ajanın next'i bu düğüme taşınır ve ajana gelen kenarlar buraya çevrilir — graf geçerli kalır. Yazma araçları serbest (her kopya kendi reposuna kilitli)."));
+
+    const mc = document.createElement("input"); mc.type = "number"; mc.min = "0"; mc.step = "1";
+    mc.value = n.maxConcurrency ?? ""; mc.placeholder = "0 = sınırsız";
+    mc.addEventListener("input", ()=>{ const v = parseInt(mc.value, 10); if (Number.isInteger(v) && v > 0) n.maxConcurrency = v; else delete n.maxConcurrency; mark(); drawGraph(); });
+    panel.appendChild(field("maxConcurrency (aynı anda en fazla kaç kopya)", mc,
+      "Model sunucun istekleri SIRAYLA işliyorsa (ör. Ollama varsayılanı) paralellik hız kazandırmaz, kuyruk ve zaman aşımı getirir. Sunucunun eş zamanlı kapasitesine göre ayarla; 0/boş = sınırsız."));
+
+    const pr = document.createElement("input"); pr.type = "text"; pr.value = n.parent || ""; pr.placeholder = "ör. common-events";
+    pr.addEventListener("input", ()=>{ if (pr.value.trim()) n.parent = pr.value.trim(); else delete n.parent; mark(); });
+    panel.appendChild(field("parent (ortak repo, isteğe bağlı)", pr,
+      "Plana dahilse diğer repolardan ÖNCE tek başına koşar — servisler güncel sözleşmeye göre kod yazsın."));
+
+    panel.appendChild(field("next", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true),
+      "Tüm kopyalar bitince gidilecek düğüm (ör. review). Reddedilirse oraya bu düğümü ver: yalnızca geri bildirimde adı geçen repolar yeniden koşar."));
     addDelete();
     return;
   }
@@ -445,16 +527,17 @@ function render(){
 
   // model
   const m = document.createElement("input"); m.type="text"; m.value = n.model||""; m.placeholder="(genel model)";
+  m.setAttribute("list", "modelList"); // modelsUrl'den çekilen öneriler (serbest yazım da serbest)
   m.addEventListener("input", ()=>{ if (m.value.trim()) n.model = m.value.trim(); else delete n.model; mark(); });
   panel.appendChild(field("model (override)", m, "Bu ajana özel model; boşsa config'teki genel model kullanılır."));
 
-  // effort: akıl yürütme derinliği — paralel dallarda asıl maliyet kolu
+  // effort: akıl yürütme derinliği
   const ef = document.createElement("select");
   ef.innerHTML = ["", "low", "medium", "high", "xhigh", "max"]
     .map((v)=>`<option value="${v}" ${(n.effort||"")===v?"selected":""}>${v || "(varsayılan)"}</option>`).join("");
   ef.addEventListener("change", ()=>{ if (ef.value) n.effort = ef.value; else delete n.effort; mark(); });
   panel.appendChild(field("effort (akıl yürütme derinliği)", ef,
-    "Dar/ucuz işler low, yüksek bedelli incelemeler high/xhigh. Paralel dallarda maliyeti burada ayarlarsın."));
+    "Dar/ucuz işler low, yüksek bedelli incelemeler high/xhigh."));
 
   // tools
   n.tools = n.tools || [];
@@ -477,11 +560,9 @@ function render(){
   // kenarlar: next / verdict / routes
   const eh = document.createElement("div"); eh.className="label"; eh.style.marginTop="6px"; eh.textContent="Geçişler";
   panel.appendChild(eh);
-  if (owner){
-    // Paralel dalın kendi kenarı olamaz — seçtirsek config yüklenmezdi
+  if (fOwner){
     const note = document.createElement("div"); note.className="fhint";
-    note.textContent = `Bu düğüm "${owner}" paralel grubunun bir dalı; geçişi grup yapar. `
-      + `Kendi kenarını vermek için önce "${owner}" içindeki dallardan çıkar.`;
+    note.textContent = `Bu düğüm "${fOwner}" fanout'unun işçisi; geçişi fanout yapar (next'i orada).`;
     panel.appendChild(note);
     addDelete();
     return;
@@ -547,9 +628,13 @@ $("ndAddBtn").addEventListener("click", async ()=>{
   let node;
   if ($("ndType").value === "command"){
     node = { type:"command", command:"mvn clean install -q", onSuccess:null, onFailure: cfg.workflow.entry };
-  } else if ($("ndType").value === "parallel"){
-    // Dalsız başlar; kullanıcı özellik panelinden ekler (var olan ajanlardan seçilir)
-    node = { type:"parallel", branches:[], onApprove:null, onReject: cfg.workflow.entry };
+  } else if ($("ndType").value === "fanout"){
+    // Varsayılan işçi: developer (yoksa dallanmayan ilk ajan) — eklenir eklenmez sarılır
+    node = { type:"fanout", agent:"", maxConcurrency:2, next:null };
+    nodes()[key] = node;
+    const aday = ["developer", ...keys()].find((k)=> nodes()[k] && !isGate(nodes()[k]) && !nodes()[k].verdict
+      && !nodes()[k].routes && !fanoutOwner(k));
+    if (aday) adoptWorker(key, aday);
   } else {
     let file;
     if ($("ndMd").value === "__new__"){
@@ -578,6 +663,21 @@ async function load(){
   $("tdir").value = cfg.targetDir || "";
   refreshEntry();
   render();
+  loadModelList();
+}
+// Ajan başına model alanı için öneri listesi — config'teki modelsUrl'den sunucu çeker
+async function loadModelList(){
+  let models = [];
+  try { models = (await (await fetch("/models")).json()).models || []; } catch {}
+  let dl = $("modelList");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "modelList"; document.body.appendChild(dl); }
+  dl.innerHTML = "";
+  for (const m of models) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    if (m.name && m.name !== m.id) o.label = m.name;
+    dl.appendChild(o);
+  }
 }
 load();
 </script>

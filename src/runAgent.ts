@@ -1,8 +1,15 @@
-import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import path from "node:path";
+import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import { buildAgentEnv } from "./config.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
-import { RunCancelledError, type AgentDefinition, type AgentRunResult, type ProviderConfig } from "./types.js";
+import {
+  RunCancelledError,
+  type AgentDefinition,
+  type AgentMetrics,
+  type AgentRunResult,
+  type ProviderConfig,
+} from "./types.js";
 
 /** Araç detayının log'a girmeden önce kesildiği sınır (kesilirse sonuna "…" gelir) */
 const TOOL_DETAIL_MAX = 300;
@@ -35,6 +42,79 @@ interface SessionHolder {
   id?: string;
 }
 
+/**
+ * Onarım turu prompt'u. Claude Code (CLI 2.1.x), model StructuredOutput aracını
+ * çağırmadan düz metinle bitirirse onu YALNIZCA BİR KEZ dürtüyor; model ikinci
+ * kez de metin yazarsa tur `success` ile ama structured_output OLMADAN kapanıyor
+ * (MAX_STRUCTURED_OUTPUT_RETRIES bu hali kapsamıyor — o, aracın geçersiz girdiyle
+ * çağrılması içindir). Sahte API ile yeniden üretildi (2026-10-07). Yerel
+ * modellerde, özellikle bağlantı kopup oturum resume edildikten sonra görülüyor.
+ * Bağlam oturumda zaten var; modelden yalnızca sonucu şemayla vermesi istenir.
+ */
+const REPAIR_PROMPT =
+  "Yapılandırılmış çıktın alınamadı (StructuredOutput aracı çağrılmadı). " +
+  "İşi baştan yapma, yeni araç çağırma: şimdiye kadarki çalışmana dayanarak " +
+  "sonucunu ŞİMDİ StructuredOutput aracıyla, şemaya uygun olarak ver.";
+
+/** İki koşunun ölçümünü toplar — onarım turunun maliyeti de ajana yazılsın */
+function mergeMetrics(a: AgentMetrics | undefined, b: AgentMetrics | undefined): AgentMetrics | undefined {
+  if (!a || !b) return a ?? b;
+  const perModel = new Map<string, { model: string; inputTokens: number; outputTokens: number }>();
+  for (const p of [...a.perModel, ...b.perModel]) {
+    const cur = perModel.get(p.model) ?? { model: p.model, inputTokens: 0, outputTokens: 0 };
+    cur.inputTokens += p.inputTokens;
+    cur.outputTokens += p.outputTokens;
+    perModel.set(p.model, cur);
+  }
+  return {
+    durationMs: a.durationMs + b.durationMs,
+    apiDurationMs: a.apiDurationMs + b.apiDurationMs,
+    turns: a.turns + b.turns,
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    costUsd: a.costUsd + b.costUsd,
+    perModel: [...perModel.values()],
+  };
+}
+
+/** runAgent'ın isteğe bağlı ayarları */
+export interface RunAgentOptions {
+  /** Verilirse Write/Edit/MultiEdit/NotebookEdit bu dizin DIŞINA engellenir
+   *  (fanout kopyası kendi reposunda kalsın — kardeş kopyalar aynı anda çalışıyor) */
+  writeScope?: string;
+}
+
+/**
+ * Dosya yazan araçları bir dizinle sınırlayan PreToolUse hook'u. Yol cwd'ye göre
+ * çözülür; kapsam dışıysa araç engellenir ve gerekçe modele döner.
+ */
+function writeScopeHook(scope: string, cwd: string): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+  const root = path.resolve(scope);
+  return {
+    PreToolUse: [
+      {
+        matcher: "Write|Edit|MultiEdit|NotebookEdit",
+        hooks: [
+          async (input) => {
+            const ti = ((input as { tool_input?: Record<string, unknown> }).tool_input ?? {});
+            const target = ti.file_path ?? ti.notebook_path;
+            if (typeof target !== "string") return { continue: true };
+            const rel = path.relative(root, path.resolve(cwd, target));
+            if (!rel.startsWith("..") && !path.isAbsolute(rel)) return { continue: true };
+            return {
+              decision: "block",
+              reason:
+                `Bu kopyanın yazma kapsamı yalnızca "${root}". "${target}" kapsam dışı — ` +
+                `o repo başka bir geliştiriciye atandı, dokunma. Gerekiyorsa deviations'a yaz.`,
+            };
+          },
+        ],
+      },
+    ],
+  };
+}
+
 /** Beklerken iptal edilebilen uyku: süre dolarsa döner, Durdur'a basılırsa RunCancelledError atar */
 function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,11 +143,17 @@ async function executeQuery(
   useSchema: boolean,
   abortController: AbortController,
   session: SessionHolder,
+  opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const resume = session.id;
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
-  const hooks = buildHooks(agent.config.hooks, cwd);
+  let hooks = buildHooks(agent.config.hooks, cwd);
+  if (opts.writeScope) {
+    // Config hook'larına ek olarak yazma kapsamı kapısı (ikisi de çalışır)
+    const scope = writeScopeHook(opts.writeScope, cwd);
+    hooks = { ...hooks, PreToolUse: [...(hooks?.PreToolUse ?? []), ...scope.PreToolUse!] };
+  }
   const result: AgentRunResult = { text: "" };
 
   let iterator;
@@ -94,8 +180,8 @@ async function executeQuery(
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
-      // Akıl yürütme derinliği — dar/ucuz dallar "low", güvenlik gibi yüksek
-      // bedelli incelemeler "high"/"xhigh" ile koşsun diye ajan başına ayarlanır
+      // Akıl yürütme derinliği — dar/ucuz işler "low", yüksek bedelli
+      // incelemeler "high"/"xhigh" ile koşsun diye ajan başına ayarlanır
       ...(agent.config.effort ? { effort: agent.config.effort } : {}),
     },
   });
@@ -180,6 +266,7 @@ async function executeWithRetry(
   useSchema: boolean,
   abortController: AbortController,
   session: SessionHolder,
+  opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const retry = cfg.retry ?? {};
   const enabled = retry.enabled !== false;
@@ -190,7 +277,7 @@ async function executeWithRetry(
 
   while (true) {
     try {
-      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session);
+      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session, opts);
     } catch (err) {
       // Kullanıcının Durdur'u tek çıkış kapısı — onu asla yutma
       if (err instanceof RunCancelledError) throw err;
@@ -235,23 +322,45 @@ export async function runAgent(
   bus: EventBus,
   abortController: AbortController,
   resume?: string,
+  opts: RunAgentOptions = {},
 ): Promise<AgentRunResult> {
   console.log(`\n━━━ ▶ ${agent.name} çalışıyor${resume ? " (oturum sürdürülüyor)" : ""} ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
 
   const session: SessionHolder = { id: resume };
-  let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session);
+  let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session, opts);
+  // Şemasız yedeğe düşüldüyse structured zaten beklenmez — onarım turu denenmez
+  let schemaless = false;
 
   if (result === SCHEMA_FAILED) {
+    schemaless = true;
     const note = `${agent.name}: şemaya uygun çıktı üretilemedi (error_max_structured_output_retries) — şemasız yeniden deneniyor`;
     console.warn(`\n⚠ ${note}`);
     bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
     // Şemasız deneme TAZE oturumla yapılır: şema turlarıyla dolmuş oturumu
     // sürdürmek yerine aynı prompt baştan koşar (mevcut davranış korunuyor)
     const fresh: SessionHolder = { id: resume };
-    result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh);
+    result = await executeWithRetry(agent, prompt, cwd, cfg, bus, false, abortController, fresh, opts);
     if (result === SCHEMA_FAILED) {
       throw new Error(`${agent.name} hata ile durdu: error_max_structured_output_retries (şemasız denemede de)`);
+    }
+  }
+
+  // Sessiz bozulma: koşu başarılı ama structured yok (bkz. REPAIR_PROMPT). Aynı
+  // oturum bir kez daha, şemayla ve kısa bir onarım prompt'uyla sürdürülür.
+  if (agent.outputSchema && !schemaless && result.structured === undefined && result.sessionId) {
+    const note = `${agent.name}: yapılandırılmış çıktı gelmedi — aynı oturumda şemayla onarım turu isteniyor`;
+    console.warn(`\n⚠ ${note}`);
+    bus.emit({ type: "agent_text", agent: agent.key, text: `⚠ ${note}` });
+    const repairSession: SessionHolder = { id: result.sessionId };
+    const repaired = await executeWithRetry(agent, REPAIR_PROMPT, cwd, cfg, bus, true, abortController, repairSession, opts);
+    if (repaired !== SCHEMA_FAILED) {
+      const metrics = mergeMetrics(result.metrics, repaired.metrics);
+      if (repaired.structured !== undefined) {
+        result = { ...repaired, metrics };
+      } else {
+        result = { ...result, metrics }; // onarım da metinle döndü — ilk metin daha bilgili
+      }
     }
   }
 

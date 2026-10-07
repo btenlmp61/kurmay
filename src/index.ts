@@ -2,12 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { loadAgents } from "./agents.js";
+import { fmtDate, parseRunAt } from "./approval.js";
 import { loadAppConfig } from "./config.js";
 import { EventBus } from "./events.js";
+import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { startUiServer, type UiServer } from "./server.js";
 import { SessionStore } from "./sessions.js";
-import { isParallelNode, type AgentDefinition, type AppConfig } from "./types.js";
+import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
   task: string;
@@ -15,11 +17,14 @@ function parseArgs(argv: string[]): {
   cwdFlag?: string;
   portFlag?: number;
   noUi: boolean;
+  /** --at: görevin başlama zamanı ("+30m", "+2h", "2026-07-10 14:00") */
+  atFlag?: string;
 } {
   let configPath = "config.json";
   let cwdFlag: string | undefined;
   let portFlag: number | undefined;
   let noUi = false;
+  let atFlag: string | undefined;
   const taskParts: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -27,10 +32,20 @@ function parseArgs(argv: string[]): {
     else if (argv[i] === "--cwd") cwdFlag = argv[++i];
     else if (argv[i] === "--port") portFlag = Number(argv[++i]);
     else if (argv[i] === "--no-ui") noUi = true;
+    else if (argv[i] === "--at") atFlag = argv[++i];
     else taskParts.push(argv[i]);
   }
 
-  return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi };
+  return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi, atFlag };
+}
+
+/**
+ * Koşu başına config kopyası: panelden canlı değişen alanlar (model, düğümlerin
+ * `disabled`'ı) o an çalışan koşuyu ORTASINDA etkilemesin, sıradaki görevde
+ * geçerli olsun. Workflow da kopyalanır çünkü `disabled` onun içinde.
+ */
+function snapshotConfig(cfg: AppConfig): AppConfig {
+  return { ...cfg, workflow: structuredClone(cfg.workflow) };
 }
 
 /** Tek bir görevi baştan sona koşturur; olaylar bus'a, kayıt runs/'a gider */
@@ -43,6 +58,8 @@ async function executeRun(
   runsDir: string,
   sessionStore: { entrySessionId?: string },
   server?: UiServer,
+  /** Verilirse akış bu zamana kadar bekler (zamanlanmış görev) */
+  startAt?: number,
 ): Promise<void> {
   // Resume'lu koşuda panel geçmişini temizleme — konuşma birikiyormuş gibi görünsün
   const resumed = !!sessionStore.entrySessionId;
@@ -59,12 +76,15 @@ async function executeRun(
     entry: cfg.workflow.entry,
     maxCycles: cfg.workflow.maxCycles,
     agents: [...agents.keys()],
-    parallelGroups: Object.fromEntries(
-      Object.entries(cfg.workflow.agents)
-        .filter(([, n]) => isParallelNode(n))
-        .map(([key, n]) => [key, (n as { branches: string[] }).branches]),
-    ),
     resumed,
+    fanouts: Object.fromEntries(
+      Object.entries(cfg.workflow.agents)
+        .filter(([, n]) => isFanoutNode(n))
+        .map(([key, n]) => [key, (n as { agent: string }).agent]),
+    ),
+    disabled: Object.entries(cfg.workflow.agents)
+      .filter(([, n]) => n.disabled)
+      .map(([key]) => key),
   });
 
   // Koşu başına iptal denetçisi: panelden POST /cancel bunu abort eder
@@ -72,7 +92,7 @@ async function executeRun(
   server?.setRunAborter(abortController);
 
   try {
-    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore);
+    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore, startAt);
   } catch (err) {
     bus.emit({ type: "workflow_failed", error: err instanceof Error ? err.message : String(err) });
     throw err;
@@ -84,7 +104,11 @@ async function executeRun(
 }
 
 async function main() {
-  const { task, configPath, cwdFlag, portFlag, noUi } = parseArgs(process.argv.slice(2));
+  const { task, configPath, cwdFlag, portFlag, noUi, atFlag } = parseArgs(process.argv.slice(2));
+  const startAt = atFlag ? parseRunAt(atFlag) : undefined;
+  if (atFlag && startAt === undefined) {
+    throw new Error(`--at anlaşılamadı: "${atFlag}" (ör. +30m, +2h, +1d, "2026-07-10 14:00")`);
+  }
 
   const cfg = loadAppConfig(configPath);
   const resolvedConfigPath = path.resolve(configPath);
@@ -96,13 +120,20 @@ async function main() {
   // "let": panelden değiştirilebilir (bkz. setTargetDir) — bir sonraki görev yeni
   // değeri kullanır, config.json'a da yazılır (sürekli dosyayı elle açmamak için).
   let cwd = path.resolve(cwdFlag ?? cfg.targetDir ?? process.cwd());
-  if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
-    throw new Error(`Hedef proje dizini bulunamadı: ${cwd}`);
+  const dirOk = (d: string) => fs.existsSync(d) && fs.statSync(d).isDirectory();
+  if (!dirOk(cwd)) {
+    // Tek görev modunda çalışacak yer yok — dur. Sunucu modunda ise servis açılsın:
+    // panel uyarı gösterir, kullanıcı dizini üst çubuktan değiştirene kadar görev başlamaz
+    if (task || noUi) throw new Error(`Hedef proje dizini bulunamadı: ${cwd}`);
+    console.warn(
+      `⚠ Hedef proje dizini bulunamadı: ${cwd}\n` +
+        "  Panel yine de açılıyor — üst çubuktaki dizine tıklayıp geçerli bir dizin seç (o zamana kadar görev başlatılamaz).",
+    );
   }
 
   if (!task && noUi) {
     console.error(
-      'Kullanım: npm start -- "görev" [--config config.json] [--cwd dizin] [--port 4141] [--no-ui]\n' +
+      'Kullanım: npm start -- "görev" [--config config.json] [--cwd dizin] [--port 4141] [--no-ui] [--at +30m]\n' +
         "Görev verilmezse sunucu modu açılır ve görev panelden beklenir (--no-ui ile birlikte kullanılamaz).",
     );
     process.exit(1);
@@ -117,7 +148,7 @@ async function main() {
 
   // Sunucu modunda panelden görev kabulü: aynı anda tek koşu
   let running = false;
-  let wakeWithTask: ((v: { task: string; resumeSessionId?: string }) => void) | null = null;
+  let wakeWithTask: ((v: { task: string; resumeSessionId?: string; runAt?: number }) => void) | null = null;
 
   let server: UiServer | undefined;
   if (!noUi) {
@@ -188,14 +219,76 @@ async function main() {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
+      getModels: async () => {
+        const current = cfg.model ?? "";
+        if (!cfg.modelsUrl) {
+          return { current, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
+        }
+        try {
+          return { current, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
+        } catch (e) {
+          return { current, models: [], error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      setModel: (model) => {
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as Record<string, unknown>;
+          parsed.model = model; // "" = sağlayıcı varsayılanı (loadAppConfig tanımsız sayar)
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath); // ör. ollama'da model zorunlu — boş geçilemez
+          // Sıradaki görev bu modeli kullanır; çalışan koşu kendi kopyasıyla devam eder
+          if (model) cfg.model = model;
+          else delete cfg.model;
+          return { ok: true, model };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      getWorkflow: () => ({
+        entry: cfg.workflow.entry,
+        nodes: mainPath(cfg.workflow).map((key) => {
+          const n = cfg.workflow.agents[key];
+          return {
+            key,
+            type: n.type ?? "agent",
+            disabled: !!n.disabled,
+            ...(isFanoutNode(n) ? { agent: n.agent } : {}),
+          };
+        }),
+      }),
+      setNodeDisabled: (key, disabled) => {
+        if (!cfg.workflow.agents[key]) return { ok: false, error: `düğüm bulunamadı: ${key}` };
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as AppConfig;
+          const node = parsed.workflow?.agents?.[key];
+          if (!node) return { ok: false, error: `düğüm config dosyasında yok: ${key}` };
+          if (disabled) node.disabled = true;
+          else delete node.disabled;
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath); // yapı doğrulaması
+          // Sıradaki görev görür; çalışan koşu kendi workflow kopyasıyla devam eder
+          if (disabled) cfg.workflow.agents[key].disabled = true;
+          else delete cfg.workflow.agents[key].disabled;
+          return { ok: true };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
-        : (t, resumeSessionId) => {
+        : (t, resumeSessionId, runAt) => {
             if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
+            if (!dirOk(cwd)) {
+              return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
+            }
             running = true;
             const wake = wakeWithTask;
             wakeWithTask = null;
-            wake({ task: t, resumeSessionId });
+            wake({ task: t, resumeSessionId, runAt });
             return { ok: true };
           },
     });
@@ -210,7 +303,8 @@ async function main() {
     // Tek görev modu: çalıştır ve çık (yeni oturum)
     const sessionStore = { entrySessionId: undefined as string | undefined };
     try {
-      await executeRun(task, cfg, agents, cwd, bus, runsDir, sessionStore, server);
+      if (startAt) console.log(`⏰ Görev ${fmtDate(startAt)} için zamanlandı`);
+      await executeRun(task, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, startAt);
     } finally {
       if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
@@ -221,15 +315,19 @@ async function main() {
   // Sunucu modu: panelden görev bekle, bitince yenisini bekle
   console.log("⏳ Görev bekleniyor — panelden girebilirsin.");
   while (true) {
-    const { task: nextTask, resumeSessionId } = await new Promise<{ task: string; resumeSessionId?: string }>(
-      (resolve) => {
-        wakeWithTask = resolve;
-      },
-    );
+    const { task: nextTask, resumeSessionId, runAt } = await new Promise<{
+      task: string;
+      resumeSessionId?: string;
+      runAt?: number;
+    }>((resolve) => {
+      wakeWithTask = resolve;
+    });
     // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
     const sessionStore = { entrySessionId: resumeSessionId };
     try {
-      await executeRun(nextTask, cfg, agents, cwd, bus, runsDir, sessionStore, server);
+      // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
+      // runAt: panelden zamanlanmış görev — akış o saate kadar bekler (geri sayım kartı)
+      await executeRun(nextTask, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, runAt);
     } catch (err) {
       // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
       console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);

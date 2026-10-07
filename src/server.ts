@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt, type ApprovalResult, type ScheduleOutcome, type WebApprovalChannel } from "./approval.js";
 import type { EventBus } from "./events.js";
+import type { ModelInfo } from "./models.js";
 
 export interface UiServer {
   url: string;
@@ -16,7 +17,7 @@ export interface UiServer {
 export interface UiServerOptions {
   /** Panelden görev gönderimi (POST /task). resumeSessionId verilirse o architect
    *  oturumu sürdürülür, yoksa yeni oturum. Kabul edilmezse error döndür. */
-  onTask?: (task: string, resumeSessionId?: string) => { ok: boolean; error?: string };
+  onTask?: (task: string, resumeSessionId?: string, runAt?: number) => { ok: boolean; error?: string };
   /** İsimli architect oturumları listesi (GET /sessions) */
   getSessions?: () => unknown[];
   /** Bir oturumu katalogdan siler (POST /session-delete); silindiyse true */
@@ -31,6 +32,15 @@ export interface UiServerOptions {
   getTargetDir?: () => string;
   /** Hedef dizini değiştirir: doğrular, çalışan sürece uygular, config.json'a yazar */
   setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
+  /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
+   *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
+  getModels?: () => Promise<{ current: string; models: ModelInfo[]; error?: string }>;
+  /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
+  setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
+  /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
+  getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
+  /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
+  setNodeDisabled?: (key: string, disabled: boolean) => { ok: boolean; error?: string };
 }
 
 /**
@@ -42,9 +52,14 @@ export interface UiServerOptions {
  *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
  *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
  *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
- *   POST /task      { task: string } — panelden yeni görev başlatır (sunucu modu)
- *   GET  /target-dir  şu an kullanılan hedef proje dizinini döner
+ *   POST /task      { task, resumeSessionId?, runAt? } — panelden yeni görev başlatır; runAt
+ *                   verilirse akış o zamana kadar bekler (sunucu modu)
+ *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
+ *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
+ *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
+ *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
+ *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  */
 export function startUiServer(
   bus: EventBus,
@@ -210,7 +225,15 @@ export function startUiServer(
 
     if (req.method === "GET" && req.url === "/target-dir") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ dir: options.getTargetDir?.() ?? "" }));
+      // exists her istekte bakılır: dizin sonradan oluşturulursa uyarı kendiliğinden kalkar
+      const dir = options.getTargetDir?.() ?? "";
+      let exists = false;
+      try {
+        exists = !!dir && fs.statSync(dir).isDirectory();
+      } catch {
+        /* yok */
+      }
+      res.end(JSON.stringify({ dir, exists }));
       return;
     }
 
@@ -232,6 +255,68 @@ export function startUiServer(
           return;
         }
         const r = options.setTargetDir ? options.setTargetDir(dir) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/models") {
+      const json = (payload: unknown) => {
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(payload));
+      };
+      if (!options.getModels) {
+        json({ current: "", models: [], error: "kapalı" });
+        return;
+      }
+      options.getModels().then(json, (e: unknown) =>
+        json({ current: "", models: [], error: e instanceof Error ? e.message : String(e) }),
+      );
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/model") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let model = "";
+        try {
+          model = String((JSON.parse(body) as { model?: unknown }).model ?? "").trim();
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          return;
+        }
+        const r = options.setModel ? options.setModel(model) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/workflow") {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(options.getWorkflow?.() ?? { entry: "", nodes: [] }));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/node-disabled") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let key = "";
+        let disabled = false;
+        try {
+          const parsed = JSON.parse(body) as { key?: unknown; disabled?: unknown };
+          key = String(parsed.key ?? "");
+          disabled = parsed.disabled === true;
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          return;
+        }
+        const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });
@@ -286,7 +371,7 @@ export function startUiServer(
           return;
         }
         try {
-          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown };
+          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown; runAt?: unknown };
           const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
           if (!task) {
             json(400, { ok: false, error: "görev boş olamaz" });
@@ -296,7 +381,17 @@ export function startUiServer(
             typeof parsed.resumeSessionId === "string" && parsed.resumeSessionId
               ? parsed.resumeSessionId
               : undefined;
-          const result = options.onTask(task, resumeSessionId);
+          // runAt: ileri bir başlangıç zamanı (epoch ms ya da "+30m"/"2026-07-10 14:00" metni)
+          let runAt: number | undefined;
+          if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) runAt = parsed.runAt;
+          else if (typeof parsed.runAt === "string" && parsed.runAt.trim()) {
+            runAt = parseRunAt(parsed.runAt);
+            if (runAt === undefined) {
+              json(400, { ok: false, error: `başlangıç zamanı anlaşılamadı: ${parsed.runAt}` });
+              return;
+            }
+          }
+          const result = options.onTask(task, resumeSessionId, runAt);
           json(result.ok ? 202 : 409, result);
         } catch {
           json(400, { ok: false, error: "geçersiz JSON" });

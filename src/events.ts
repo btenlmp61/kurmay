@@ -1,4 +1,4 @@
-import type { AgentMetrics, BranchOutcome, ReviewVerdict } from "./types.js";
+import type { AgentMetrics, ReviewVerdict } from "./types.js";
 
 export type OrchestratorEvent =
   | {
@@ -9,13 +9,15 @@ export type OrchestratorEvent =
       entry: string;
       maxCycles: number;
       agents: string[];
-      /** Paralel düğüm adı → dalları. Panel bu dalları tek bir grup hücresinde
-       *  yan yana çizsin diye BAŞTA gönderilir; yoksa koşu başlayana kadar
-       *  sıralıymış gibi görünürlerdi. */
-      parallelGroups?: Record<string, string[]>;
       /** true ise entry ajan önceki oturumu sürdürüyor — panel akışı temizlenmez */
       resumed?: boolean;
+      /** Devre dışı düğümler — panel hatta soluk/üstü çizili gösterir */
+      disabled?: string[];
+      /** Fanout düğümü → çoğalttığı ajan. Kopyalar fanout_started'da belli olur */
+      fanouts?: Record<string, string>;
     }
+  /** Devre dışı düğüm koşturulmadan geçildi; to = devam edilen düğüm (null = akış bitti) */
+  | { type: "node_skipped"; node: string; to: string | null }
   | { type: "agent_started"; agent: string }
   | { type: "agent_text"; agent: string; text: string }
   | {
@@ -57,19 +59,19 @@ export type OrchestratorEvent =
       summary: string;
     }
   | { type: "cycle"; n: number; max: number; to: string }
-  // Paralel inceleme: dallar eş zamanlı başlar. Dal başına agent_started/
-  // agent_finished/verdict olayları ZATEN "agent" alanı taşıyor — panel durumu
-  // onlarla tutar; bu ikisi yalnızca grubu ve birleşmiş sonucu bildirir.
-  | { type: "parallel_started"; node: string; branches: string[] }
+  // Repo başına dağıtım: ajanın kopyaları (key = "<ajan>@<repo>") başlar; kopya
+  // başına agent_started/agent_finished olayları bu anahtarlarla gelir
   | {
-      type: "parallel_finished";
+      type: "fanout_started";
       node: string;
-      /** Tüm dallar onayladı VE hiçbiri hata vermediyse true */
-      approved: boolean;
-      branches: BranchOutcome[];
-      /** Dalların tahmini maliyet toplamı (USD) — ölçüm için */
-      costUsd?: number;
+      agent: string;
+      workers: Array<{ key: string; repo: string }>;
+      /** 0 = sınırsız */
+      maxConcurrency: number;
+      /** Red/build turunda yalnızca geri bildirimde adı geçen repolar yeniden koşar */
+      partial: boolean;
     }
+  | { type: "fanout_finished"; node: string; repos: string[]; failed: Array<{ repo: string; error: string }> }
   | { type: "build_started"; order: string[] }
   | { type: "build_module_started"; module: string; command: string }
   | { type: "build_output"; module: string; text: string }

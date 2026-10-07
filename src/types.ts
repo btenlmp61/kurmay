@@ -56,6 +56,10 @@ export interface HookConfig {
 export interface AgentNodeConfig {
   /** Düğüm türü — ajan düğümü (varsayılan). Komut düğümleri "command" kullanır. */
   type?: "agent";
+  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
+   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
+   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
+  disabled?: boolean;
   /** Ajanın system prompt'unu içeren md dosyası (config dosyasının dizinine göre) */
   file: string;
   /** Bu ajanın kullanabileceği Claude Code araçları */
@@ -104,6 +108,10 @@ export interface AgentNodeConfig {
  */
 export interface CommandNodeConfig {
   type: "command";
+  /** true ise düğüm DEVRE DIŞI: akış bu düğüme gelince onu koşturmadan "geçer"
+   *  kenarından devam eder (bkz. passThroughTarget). Panelden/editörden canlı
+   *  açılıp kapatılabilir; sıradaki görevde geçerli olur. */
+  disabled?: boolean;
   /** Değişen servis repolarında çalıştırılacak varsayılan build komutu */
   command: string;
   /** Ortak parent (örn. common-events). Değişmişse diğerlerinden ÖNCE build edilir. */
@@ -120,50 +128,88 @@ export interface CommandNodeConfig {
 }
 
 /**
- * Paralel inceleme düğümü — LLM değil, bir fan-out/fan-in kapısı. "branches"taki
- * ajanlar EŞ ZAMANLI koşar (her biri kendi query'si, kendi bağlamı, kendi modeli),
- * sonra kararları kodda deterministik olarak birleşir: hepsi onayladıysa onApprove,
- * aksi halde onReject (sorunlar dal adıyla etiketli geri bildirim olur).
+ * Repo başına dağıtım düğümü — LLM değil, bir fan-out/fan-in kapısı. Architect'in
+ * `file_plan`'ı repolara bölünür (dosyanın targetDir altındaki en üst klasörü =
+ * repo, build.ts ile aynı kural) ve "agent" düğümünün her repo için AYRI bir
+ * kopyası koşar; kaç kopya olacağına KOD karar verir (plan kaç repoya dokunuyorsa).
+ * Sonuçlar tek bir çıktıda birleşir ve akış "next"e geçer.
  *
- * Neden ajanın Agent aracına (SDK subagent) bırakılmadı: orada kaç alt-ajanın ne
- * zaman koşacağına MODEL karar verir; burada graf kodda sabit ve config editöründe
- * görünür/düzenlenebilir kalır.
+ * Her kopya yalnızca kendi repo dilimini görür ve Write/Edit'i o repo dışına
+ * hook ile ENGELLENİR — aynı dizinde eş zamanlı çalıştıkları için. (Bash yine
+ * de yazabilir; persona + kapsam talimatı ona karşı.)
  *
- * Dallar salt-okunur olmalı — aynı dizinde eş zamanlı koştukları için yazma
- * araçları yükleme zamanında reddedilir (bkz. agents.ts).
+ * Neden SDK subagent değil: orada kaç alt-ajanın koşacağına model karar verir.
  */
-export interface ParallelNodeConfig {
-  type: "parallel";
-  /** Eş zamanlı koşacak ajan düğümlerinin adları (en az 1) */
-  branches: string[];
-  /** Tüm dallar onayladığında gidilecek düğüm (null = akış biter) */
-  onApprove: string | null;
-  /** Herhangi bir dal reddettiğinde/inceleyemediğinde gidilecek düğüm */
-  onReject: string;
+export interface FanoutNodeConfig {
+  type: "fanout";
+  /** true ise DAĞITIM kapalı: ajan bölünmemiş planla TEK kopya koşar, sonra "next".
+   *  (Diğer düğümlerden farklı: atlanmaz — işi yapan ajan zaten bu düğümün içinde.
+   *  Ajanın kendisini atlamak için işçi düğümü kapat.) */
+  disabled?: boolean;
+  /** Repo başına çoğaltılacak ajan düğümü (ör. "developer"). Kendi kenarı olamaz. */
+  agent: string;
+  /** Aynı anda en fazla kaç kopya koşar. Yerel model sunucusu istekleri sırayla
+   *  işliyorsa paralellik HIZ KAZANDIRMAZ, kuyruk ve zaman aşımı riski getirir —
+   *  sunucunun eş zamanlı kapasitesine göre ayarla. 0/yok = sınırsız. */
+  maxConcurrency?: number;
+  /** Ortak/parent repo klasörü (ör. common-events): plana dahilse diğerlerinden
+   *  ÖNCE tek başına koşar — servisler güncel sözleşmeye göre kod yazsın. */
+  parent?: string;
+  /** Tüm kopyalar bitince gidilecek düğüm (null = akış biter) */
+  next: string | null;
 }
 
-export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | ParallelNodeConfig;
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | FanoutNodeConfig;
 
 export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
   return (node as CommandNodeConfig).type === "command";
 }
 
-export function isParallelNode(node: WorkflowNode): node is ParallelNodeConfig {
-  return (node as ParallelNodeConfig).type === "parallel";
+export function isFanoutNode(node: WorkflowNode): node is FanoutNodeConfig {
+  return (node as FanoutNodeConfig).type === "fanout";
 }
 
-/** Paralel düğümde tek bir dalın sonucu — panel ve geri bildirim için. */
-export interface BranchOutcome {
-  branch: string;
-  /** Dal hata verdiyse false; "inceleyemedi" onay SAYILMAZ */
-  ok: boolean;
-  approved: boolean;
-  summary: string;
-  issues: ReviewVerdict["issues"];
-  /** Dalın tahmini maliyeti (USD) — toplanıp parallel_finished'te yayınlanır */
-  costUsd?: number;
-  /** ok=false ise hata mesajı */
-  error?: string;
+/** LLM olmayan kapı düğümleri (komut/fanout) — persona/araç listesi yok */
+export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | FanoutNodeConfig {
+  return isCommandNode(node) || isFanoutNode(node);
+}
+
+/**
+ * Akışın ANA yolu: entry'den başlayıp ileri (başarı/koşullu) kenarlar boyunca
+ * BFS sırası. Geri dönüş kenarları (red, build hatası) ve fanout işçileri
+ * (fanout'un içinde koşar) dahil değil. Panelin görev kartı düğüm çiplerini
+ * bu sırayla gösterir.
+ */
+export function mainPath(workflow: WorkflowConfig): string[] {
+  const order: string[] = [];
+  const queue = [workflow.entry];
+  while (queue.length) {
+    const key = queue.shift()!;
+    const node = workflow.agents[key];
+    if (!node || order.includes(key)) continue;
+    order.push(key);
+    const forward: Array<string | null | undefined> = isCommandNode(node)
+      ? [node.onSuccess]
+      : isFanoutNode(node)
+        ? [node.next]
+        : [node.next, node.verdict?.onApprove, ...Object.values(node.routes?.cases ?? {}), node.routes?.default];
+    for (const t of forward) if (t && !order.includes(t)) queue.push(t);
+  }
+  return order;
+}
+
+/**
+ * Devre dışı düğümün "geçer" kenarı — akış onu koşturmadan buradan devam eder.
+ * Hep BAŞARI yönü seçilir (düğüm hiç itiraz etmemiş gibi): komut → onSuccess,
+ * fanout → next, verdict → onApprove, routes → default, next → next.
+ * null = akış biter.
+ */
+export function passThroughTarget(node: WorkflowNode): string | null {
+  if (isCommandNode(node)) return node.onSuccess;
+  if (isFanoutNode(node)) return node.next;
+  if (node.verdict) return node.verdict.onApprove;
+  if (node.routes) return node.routes.default ?? null;
+  return node.next ?? null;
 }
 
 export interface WorkflowConfig {
@@ -232,6 +278,9 @@ export interface ProviderConfig {
   apiKey?: string;
   /** Ajanların varsayılan modeli. Anthropic'te boşsa Claude Code varsayılanı */
   model?: string;
+  /** Panelde model seçimi için listenin çekileceği adres (GET). "apiKey" başlıkta
+   *  gönderilir (Authorization: Bearer + x-api-key). Boşsa panelde seçici kapalı */
+  modelsUrl?: string;
   /** Karar çıkarma (verdict) adımında kullanılacak model; yoksa "model" kullanılır */
   verdictModel?: string;
   /** Geliştirmenin yapılacağı hedef proje dizini (CLI --cwd bayrağı bunu ezer) */
