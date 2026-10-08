@@ -4,11 +4,11 @@ import process from "node:process";
 import { loadAgents } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
 import { loadAppConfig, modelMissing } from "./config.js";
-import { EventBus } from "./events.js";
 import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
+import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
 import { startUiServer, type UiServer } from "./server.js";
-import { SessionStore } from "./sessions.js";
+import { SessionStore, type SessionEntry } from "./sessions.js";
 import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
@@ -48,58 +48,67 @@ function snapshotConfig(cfg: AppConfig): AppConfig {
   return { ...cfg, workflow: structuredClone(cfg.workflow) };
 }
 
-/** Tek bir görevi baştan sona koşturur; olaylar bus'a, kayıt runs/'a gider */
-async function executeRun(
-  task: string,
-  cfg: AppConfig,
-  agents: Map<string, AgentDefinition>,
-  cwd: string,
-  bus: EventBus,
-  runsDir: string,
-  sessionStore: { entrySessionId?: string },
-  server?: UiServer,
+/**
+ * Bir oturumda tek bir görevi baştan sona koşturur; olaylar oturumun kanalına,
+ * kayıt runs/'a gider. Oturumun ilk görevi değilse architect konuşması sürdürülür
+ * (resume) ve panel önceki görevleri ekranda tutar. runtime.startRun ilk await'ten
+ * ÖNCE çağrılır — oturum anında "meşgul" olur, çift başlatma olamaz.
+ */
+async function executeRun(o: {
+  task: string;
+  cfg: AppConfig;
+  agents: Map<string, AgentDefinition>;
+  cwd: string;
+  runtime: SessionRuntime;
+  runsDir: string;
+  sessions: SessionStore;
+  entry: SessionEntry;
+  onDone: () => void;
   /** Verilirse akış bu zamana kadar bekler (zamanlanmış görev) */
-  startAt?: number,
-): Promise<void> {
-  // Resume'lu koşuda panel geçmişini temizleme — konuşma birikiyormuş gibi görünsün
-  const resumed = !!sessionStore.entrySessionId;
-  if (!resumed) bus.reset();
-  const runLog = path.join(runsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
+  startAt?: number;
+}): Promise<void> {
+  const { task, cfg, agents, cwd, runtime, entry } = o;
+  const bus = runtime.bus;
+  const abortController = runtime.startRun(task, cwd);
+  // Oturumda önceki görevler varsa panel akışı temizlemez, araya ayraç koyar
+  const resumed = bus.history.length > 0 || !!entry.sdkSessionId;
+  const logName = `${new Date().toISOString().replace(/[:.]/g, "-")}-${entry.id.slice(0, 8)}.jsonl`;
+  const runLog = path.join(o.runsDir, logName);
+  o.sessions.addRunLog(entry.id, logName, task);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
+  // entrySessionId: architect'in SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
+  const sessionStore = { entrySessionId: entry.sdkSessionId };
 
-  console.log(`\n🎯 Görev: ${task}`);
-  bus.emit({
-    type: "workflow_started",
-    task,
-    provider: cfg.provider,
-    targetDir: cwd,
-    entry: cfg.workflow.entry,
-    maxCycles: cfg.workflow.maxCycles,
-    agents: [...agents.keys()],
-    resumed,
-    fanouts: Object.fromEntries(
-      Object.entries(cfg.workflow.agents)
-        .filter(([, n]) => isFanoutNode(n))
-        .map(([key, n]) => [key, (n as { agent: string }).agent]),
-    ),
-    disabled: Object.entries(cfg.workflow.agents)
-      .filter(([, n]) => n.disabled)
-      .map(([key]) => key),
-  });
-
-  // Koşu başına iptal denetçisi: panelden POST /cancel bunu abort eder
-  const abortController = new AbortController();
-  server?.setRunAborter(abortController);
-
+  console.log(`\n🎯 [${entry.name}] Görev: ${task}`);
   try {
-    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, server?.webApproval, sessionStore, startAt);
+    bus.emit({
+      type: "workflow_started",
+      task,
+      provider: cfg.provider,
+      targetDir: cwd,
+      entry: cfg.workflow.entry,
+      maxCycles: cfg.workflow.maxCycles,
+      agents: [...agents.keys()],
+      resumed,
+      fanouts: Object.fromEntries(
+        Object.entries(cfg.workflow.agents)
+          .filter(([, n]) => isFanoutNode(n))
+          .map(([key, n]) => [key, (n as { agent: string }).agent]),
+      ),
+      disabled: Object.entries(cfg.workflow.agents)
+        .filter(([, n]) => n.disabled)
+        .map(([key]) => key),
+    });
+    await runWorkflow(cfg.workflow, agents, task, cwd, cfg, bus, abortController, runtime.web, sessionStore, o.startAt);
   } catch (err) {
     bus.emit({ type: "workflow_failed", error: err instanceof Error ? err.message : String(err) });
     throw err;
   } finally {
-    server?.setRunAborter(null);
+    runtime.endRun();
     unsubscribe();
-    console.log(`🗒  Koşu kaydı: ${runLog}`);
+    o.sessions.finishRun(entry.id, sessionStore.entrySessionId, runtime.status);
+    o.onDone();
+    console.log(`🗒  [${entry.name}] Koşu kaydı: ${runLog}`);
   }
 }
 
@@ -146,22 +155,71 @@ async function main() {
     process.exit(1);
   }
 
-  const bus = new EventBus();
   const runsDir = path.join(configRoot, "runs");
   fs.mkdirSync(runsDir, { recursive: true });
 
-  // İsimli architect oturumlarının kalıcı kataloğu (runs/sessions.json)
+  // Oturum kataloğu (runs/sessions.json) + oturum başına çalışma zamanları. Sunucu
+  // modunda onaylar yalnızca panelden (exclusive): birden çok oturum aynı anda
+  // soru sorabilir, terminal cevabının hangi oturuma gittiği belirsiz olurdu.
   const sessions = new SessionStore(runsDir);
+  const runtimes = new RuntimeRegistry(runsDir, !task);
+  const maxParallel = cfg.maxParallelRuns ?? 3;
 
-  // Sunucu modunda panelden görev kabulü: aynı anda tek koşu
-  let running = false;
-  let wakeWithTask: ((v: { task: string; resumeSessionId?: string; runAt?: number }) => void) | null = null;
+  /** Panelin sol çubuğu için oturum listesi + canlı durumlar */
+  const sessionList = () =>
+    sessions.all().map((e) => {
+      const rt = runtimes.peek(e.id);
+      return {
+        id: e.id,
+        name: e.name,
+        createdAt: e.createdAt,
+        updatedAt: e.updatedAt,
+        status: rt?.status ?? e.lastStatus ?? "idle",
+        busy: rt?.busy ?? false,
+        task: rt?.task ?? e.lastTask,
+        cwd: rt?.cwd,
+        runs: e.runLogs?.length ?? 0,
+      };
+    });
+
+  /** Bir oturumda görev başlatır (oturum yoksa açar); arka planda koşar */
+  const launch = (task: string, entry: SessionEntry | undefined, runAt?: number) => {
+    const e = entry ?? sessions.create(task);
+    const runtime = runtimes.get(e.id, e.runLogs);
+    const run = executeRun({
+      task,
+      // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
+      cfg: snapshotConfig(cfg),
+      agents,
+      cwd,
+      runtime,
+      runsDir,
+      sessions,
+      entry: e,
+      onDone: () => runtimes.notify(),
+      startAt: runAt,
+    });
+    runtimes.notify();
+    return { entry: e, run };
+  };
 
   let server: UiServer | undefined;
   if (!noUi) {
-    server = await startUiServer(bus, portFlag ?? cfg.uiPort ?? 4141, {
-      getSessions: () => sessions.all(),
-      deleteSession: (id) => sessions.remove(id),
+    server = await startUiServer(portFlag ?? cfg.uiPort ?? 4141, {
+      runtimes,
+      getSessions: sessionList,
+      openSession: (id) => {
+        const e = sessions.get(id);
+        return e ? runtimes.get(e.id, e.runLogs) : undefined;
+      },
+      // Çalışan oturum silinmez (koşusu yetim kalırdı)
+      deleteSession: (id) => {
+        if (runtimes.peek(id)?.busy) return false;
+        runtimes.delete(id);
+        const ok = sessions.remove(id);
+        runtimes.notify();
+        return ok;
+      },
       getConfigData: () => {
         const raw = fs.readFileSync(resolvedConfigPath, "utf8");
         const ls = (sub: string) => {
@@ -288,19 +346,37 @@ async function main() {
       },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
-        : (t, resumeSessionId, runAt) => {
-            if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
+        : (t, sessionId, runAt) => {
             if (modelMissing(cfg)) {
               return { ok: false, error: "Model seçilmedi — üst çubuktaki model listesinden bir model seç" };
             }
             if (!dirOk(cwd)) {
               return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
             }
-            running = true;
-            const wake = wakeWithTask;
-            wakeWithTask = null;
-            wake({ task: t, resumeSessionId, runAt });
-            return { ok: true };
+            const entry = sessionId ? sessions.get(sessionId) : undefined;
+            if (sessionId && !entry) return { ok: false, error: "oturum bulunamadı" };
+            if (entry && runtimes.get(entry.id, entry.runLogs).busy) {
+              return { ok: false, error: "Bu oturumda zaten bir görev çalışıyor — bitmesini bekle ya da yeni oturum aç" };
+            }
+            const busy = runtimes.busy();
+            if (busy.length >= maxParallel) {
+              return {
+                ok: false,
+                error: `Aynı anda en fazla ${maxParallel} görev çalışabilir (config: maxParallelRuns) — biri bitince tekrar dene`,
+              };
+            }
+            // Aynı dizine iki akış aynı anda yazarsa birbirini ezer — engellemiyoruz
+            // (salt okunur bilgi soruları zararsız) ama açıkça uyarıyoruz
+            const clash = busy.find((r) => r.cwd === cwd);
+            const { entry: e, run } = launch(t, entry, runAt);
+            run.catch((err) => console.error(`💥 [${e.name}] Koşu hatası:`, err instanceof Error ? err.message : err));
+            return {
+              ok: true,
+              session: e.id,
+              ...(clash
+                ? { warning: `Aynı hedef dizinde (${cwd}) çalışan başka bir oturum var — dosyaları birbirini ezebilir` }
+                : {}),
+            };
           },
     });
     console.log(`🖥  İzleme paneli: ${server.url}`);
@@ -311,44 +387,18 @@ async function main() {
   console.log(`🗺  Akış: ${[...agents.keys()].join(" → ")} (entry: ${cfg.workflow.entry})`);
 
   if (task) {
-    // Tek görev modu: çalıştır ve çık (yeni oturum)
-    const sessionStore = { entrySessionId: undefined as string | undefined };
+    // Tek görev modu: yeni oturumda çalıştır ve çık (terminal onayı da açık)
     try {
       if (startAt) console.log(`⏰ Görev ${fmtDate(startAt)} için zamanlandı`);
-      await executeRun(task, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, startAt);
+      await launch(task, undefined, startAt).run;
     } finally {
-      if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, task);
       server?.close();
     }
     return;
   }
 
-  // Sunucu modu: panelden görev bekle, bitince yenisini bekle
-  console.log("⏳ Görev bekleniyor — panelden girebilirsin.");
-  while (true) {
-    const { task: nextTask, resumeSessionId, runAt } = await new Promise<{
-      task: string;
-      resumeSessionId?: string;
-      runAt?: number;
-    }>((resolve) => {
-      wakeWithTask = resolve;
-    });
-    // resumeSessionId verildiyse o architect oturumu sürdürülür; yoksa yeni oturum
-    const sessionStore = { entrySessionId: resumeSessionId };
-    try {
-      // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
-      // runAt: panelden zamanlanmış görev — akış o saate kadar bekler (geri sayım kartı)
-      await executeRun(nextTask, snapshotConfig(cfg), agents, cwd, bus, runsDir, sessionStore, server, runAt);
-    } catch (err) {
-      // Sunucu modunda tek koşunun hatası servisi düşürmez; panel workflow_failed gördü
-      console.error("💥 Koşu hatası:", err instanceof Error ? err.message : err);
-    } finally {
-      running = false;
-      // architect bir oturum ürettiyse katalogla (yeni id ise ismiyle eklenir)
-      if (sessionStore.entrySessionId) sessions.record(sessionStore.entrySessionId, nextTask);
-    }
-    console.log("\n⏳ Yeni görev bekleniyor — panelden girebilirsin.");
-  }
+  // Sunucu modu: görevler panelden gelir, her biri kendi oturumunda bağımsız koşar
+  console.log(`⏳ Görev bekleniyor — panelden girebilirsin (aynı anda en fazla ${maxParallel}).`);
 }
 
 main().catch((err) => {

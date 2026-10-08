@@ -25,6 +25,10 @@ export type ScheduleOutcome = "fired" | "run_now" | "cancelled";
 
 /** Web panelinden onay + zamanlama denetimi bekleme kanalı (server.ts sağlar) */
 export interface WebApprovalChannel {
+  /** true ise onay/zamanlama YALNIZCA panelden: terminal (stdin) yarışa girmez.
+   *  Sunucu modunda birden çok oturum aynı anda soru sorabilir; stdin'den gelen
+   *  cevabın hangi oturuma ait olduğu belirsiz olurdu. */
+  exclusive?: boolean;
   wait(): Promise<ApprovalResult>;
   cancel(): void;
   /** Zamanlanmış bekleme sırasında panelden "şimdi çalıştır/iptal" bekler */
@@ -120,11 +124,14 @@ export async function askUserApproval(
   const never = new Promise<never>(() => {});
   const ac = new AbortController();
 
-  const candidates: Promise<{ result: ApprovalResult; source: "terminal" | "web" }>[] = [
-    askTerminal(agentName, ac.signal, endsFlow)
-      .then((result) => ({ result, source: "terminal" as const }))
-      .catch(() => never),
-  ];
+  const candidates: Promise<{ result: ApprovalResult; source: "terminal" | "web" }>[] = [];
+  if (!web?.exclusive) {
+    candidates.push(
+      askTerminal(agentName, ac.signal, endsFlow)
+        .then((result) => ({ result, source: "terminal" as const }))
+        .catch(() => never),
+    );
+  }
   if (web) {
     candidates.push(
       web
@@ -210,10 +217,14 @@ export async function waitForScheduledTime(
       outcome: "fired" as const,
       source: "timer" as const,
     })),
-    askTerminalSchedule(runAt, ac.signal)
-      .then((outcome) => ({ outcome, source: "terminal" as const }))
-      .catch(() => never),
   ];
+  if (!web?.exclusive) {
+    candidates.push(
+      askTerminalSchedule(runAt, ac.signal)
+        .then((outcome) => ({ outcome, source: "terminal" as const }))
+        .catch(() => never),
+    );
+  }
   if (web) {
     candidates.push(
       web

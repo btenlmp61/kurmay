@@ -38,6 +38,16 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .sess-del { border:none; background:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:6px; opacity:0; min-height:auto; }
 .sess:hover .sess-del { opacity:1; }
 .sess-del:hover { color:var(--red); background:var(--redBg); }
+/* Oturum durumu rozeti — lobi akışından canlı gelir */
+.sess .st { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; margin-right:6px; }
+.sess .st::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.st.running { color:var(--blue); }
+.st.running::before { animation:stPulse 1.2s ease-in-out infinite; }
+.st.approval, .st.scheduled { color:var(--amber); }
+.st.finished { color:var(--teal); }
+.st.failed, .st.cancelled { color:var(--red); }
+.st.idle { color:var(--muted); }
+@keyframes stPulse { 50% { opacity:.25; } }
 /* Üst şerit — M3 "top app bar": diğer kartlardan daha koyu bir yüzey tonu ve
    daha belirgin gölge ile ayrışır, sayfanın geri kalanıyla aynı düz kart
    olmaktan çıkar. Başlık de headline ölçeğinde — önceki sürümde 15px'lik
@@ -213,10 +223,10 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <body>
 
 <div class="layout">
-<aside class="sidebar collapsed" id="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
     <span class="label">Oturumlar</span>
-    <button id="btnSidebar" title="Aç / kapat">☰</button>
+    <button id="btnSidebar" title="Aç / kapat">⟨</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
     <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni oturum</div>
@@ -242,7 +252,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 </div>
 
 <div class="card hidden" id="taskCard">
-  <div class="label">Yeni görev</div>
+  <div class="label" id="taskCardTitle">Yeni görev</div>
   <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
     <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
     <button class="primary" id="btnStart">Başlat</button>
@@ -779,8 +789,6 @@ function handle(e) {
       $("answerCard").classList.add("hidden");
       $("task").textContent = e.task;
       $("provider").textContent = e.provider;
-      currentDir = e.targetDir;
-      showDirDisplay(currentDir);
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
       if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
       $("verdictCard").classList.add("hidden");
@@ -795,7 +803,7 @@ function handle(e) {
       setStatus("çalışıyor", "run");
       renderPipeline();
       if (e.resumed) addLog(e.ts, "──────── aynı oturumda yeni görev ────────", "muted");
-      addLog(e.ts, "iş akışı başladı");
+      addLog(e.ts, `iş akışı başladı · 📁 ${esc(e.targetDir)}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -1142,6 +1150,7 @@ async function sendApproval(approved) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      session: viewSessionId,
       approved,
       comment: approved ? undefined : comment,
       runAt,
@@ -1165,7 +1174,7 @@ async function sendSchedule(action) {
   await fetch("/schedule", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ session: viewSessionId, action }),
   });
 }
 $("btnRunNow").addEventListener("click", () => sendSchedule("run"));
@@ -1174,59 +1183,169 @@ $("btnCancelSchedule").addEventListener("click", () => sendSchedule("cancel"));
 async function sendCancel() {
   $("btnCancel").disabled = true;
   try {
-    await fetch("/cancel", { method: "POST" });
+    await fetch("/cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session: viewSessionId }),
+    });
   } finally {
     $("btnCancel").disabled = false;
   }
 }
 $("btnCancel").addEventListener("click", sendCancel);
 
-// ── Oturum listesi (sol kenar çubuğu) ──────────────────────────────
-let selectedSessionId = "";   // "" = yeni oturum
-let sessionNames = {};        // id -> isim (taskCtx için)
+// ── Oturumlar (sol kenar çubuğu) ───────────────────────────────────
+// Her oturum ayrı bir iş parçacığıdır: aynı anda birden fazlası koşabilir. Liste
+// /lobby SSE'sinden canlı gelir; seçilen oturumun olayları (geçmiş + canlı)
+// /events?session=… üzerinden akar ve tüm panel o oturumu gösterir.
+let viewSessionId = "";       // izlenen oturum ("" = yeni oturum taslağı)
+let sessionsById = {};        // id -> lobi kaydı {name,status,busy,task,...}
+let lobbyLoaded = false;
+let replaying = false;        // geçmiş yeniden oynatılırken yan etkiler (fetch/odak) bastırılır
+let viewBusy = false;         // izlenen oturumda görev var mı (koşuyor/onay/zamanlama)
+let es = null;
+
+const sessionStatusLabels = {
+  idle: "boşta", running: "çalışıyor", approval: "onay bekliyor", scheduled: "zamanlandı",
+  finished: "bitti", failed: "hata", cancelled: "iptal",
+};
 
 function updateTaskCtx() {
-  const el = $("taskCtx");
-  if (!el) return;
-  el.textContent = selectedSessionId
-    ? `↩ Sürdürülecek oturum: ${sessionNames[selectedSessionId] || selectedSessionId}`
-    : "＋ Yeni oturum başlatılacak";
+  const s = sessionsById[viewSessionId];
+  $("taskCardTitle").textContent = s ? "Bu oturumda yeni görev" : "Yeni görev";
+  $("taskCtx").textContent = s
+    ? `↩ Oturum sürdürülecek: ${s.name} (architect önceki konuşmayı hatırlar)`
+    : "＋ Yeni oturum açılacak — diğer oturumlar koşmaya devam eder";
 }
-function selectSession(id) {
-  selectedSessionId = id || "";
+
+// Panelin oturuma ait her şeyini sıfırlar (akış, hat, kartlar, sayaçlar)
+function resetView() {
+  agents = []; states = {}; groups = {}; fanoutMeta = {};
+  finished = false; scheduleCancelled = false; approvalEndsFlow = false;
+  stopCountdown();
+  stopPipelineTicker();
+  resetBuild();
+  $("stream").innerHTML = "";
+  $("pipeline").innerHTML = "";
+  for (const id of ["approval", "schedule", "verdictCard", "answerCard", "btnCancel", "taskCard"]) {
+    $(id).classList.add("hidden");
+  }
+  $("cycle").textContent = "";
+  $("provider").textContent = "";
+}
+
+function renderSessions() {
+  const list = Object.values(sessionsById).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  $("sessionList").innerHTML = list.map((s) => {
+    const st = s.status || "idle";
+    return `<div class="sess" data-id="${esc(s.id)}"><div class="sess-main"><div class="nm" title="${esc(s.task || s.name)}">${esc(s.name)}</div>` +
+      `<div class="meta"><span class="st ${st}">${sessionStatusLabels[st] || st}</span>${fmt(Date.parse(s.updatedAt))}</div></div>` +
+      (s.busy ? "" : `<button class="sess-del" data-del="${esc(s.id)}" title="Oturumu listeden sil">×</button>`) + `</div>`;
+  }).join("");
   document.querySelectorAll("#sidebarBody .sess").forEach((n) =>
-    n.classList.toggle("active", (n.dataset.id || "") === selectedSessionId));
+    n.classList.toggle("active", (n.dataset.id || "") === viewSessionId));
+  // Sekme başlığında onay bekleyen oturum sayısı — başka sekmedeyken de fark edilsin
+  const bekleyen = list.filter((s) => s.status === "approval").length;
+  document.title = bekleyen ? `(${bekleyen}) yaver — onay bekliyor` : "yaver";
+}
+
+// İzlenen oturum boştaysa (görev tutmuyorsa) görev kartı açılır, koşuyorsa gizlenir
+function syncTaskCard() {
+  if (viewBusy) $("taskCard").classList.add("hidden");
+  else showTaskCard();
+}
+
+function openSession(id) {
+  if (es) { es.close(); es = null; }
+  viewSessionId = id || "";
+  try { history.replaceState(null, "", viewSessionId ? "#" + viewSessionId : location.pathname); } catch {}
+  resetView();
+  renderSessions();
   updateTaskCtx();
+  if (!viewSessionId) {
+    viewBusy = false;
+    $("task").textContent = "yeni oturum";
+    setStatus("hazır", "ok");
+    showTaskCard();
+    return;
+  }
+  const s = sessionsById[viewSessionId];
+  $("task").textContent = s ? s.name : "yükleniyor…";
+  setStatus("yükleniyor", "run");
+  replaying = true;
+  es = new EventSource("/events?session=" + encodeURIComponent(viewSessionId));
+  // Yeniden bağlanınca sunucu geçmişi baştan gönderir — çift kayıt olmasın
+  es.onopen = () => { replaying = true; resetView(); };
+  es.onmessage = (m) => handle(JSON.parse(m.data));
+  es.addEventListener("ready", (m) => {
+    replaying = false;
+    const r = JSON.parse(m.data);
+    viewBusy = r.busy;
+    if (!r.busy) {
+      // Yarıda kalmış koşu (servis kapanmıştı): çalışıyor görünmesin
+      stopPipelineTicker();
+      for (const a of Object.keys(states)) if (states[a] === "running") states[a] = "pending";
+      if (agents.length) renderPipeline();
+      for (const id of ["approval", "schedule", "btnCancel"]) $(id).classList.add("hidden");
+      stopCountdown();
+      if (!finished) {
+        const yok = !agents.length;
+        setStatus(yok ? "hazır" : (sessionStatusLabels[r.status] || r.status), yok ? "ok" : "err");
+      }
+    }
+    syncTaskCard();
+    const st = $("stream");
+    st.scrollTop = st.scrollHeight;
+  });
+  es.onerror = () => {
+    if (es && es.readyState === EventSource.CLOSED) setStatus("oturum bulunamadı", "err");
+    else setStatus("bağlantı koptu", "err");
+  };
 }
-async function loadSessions() {
-  let list = [];
-  try { list = await (await fetch("/sessions")).json(); } catch {}
-  sessionNames = {};
-  list.forEach((s) => (sessionNames[s.id] = s.name));
-  $("sessionList").innerHTML = list.map((s) =>
-    `<div class="sess" data-id="${esc(s.id)}"><div class="sess-main"><div class="nm">${esc(s.name)}</div><div class="meta">${fmt(Date.parse(s.updatedAt))}</div></div><button class="sess-del" data-del="${esc(s.id)}" title="Oturumu listeden sil">×</button></div>`
-  ).join("");
-  if (selectedSessionId && !sessionNames[selectedSessionId]) selectedSessionId = "";
-  selectSession(selectedSessionId);
-}
+
 async function removeSession(id) {
-  const name = sessionNames[id] || id;
-  if (!confirm(`"${name}" oturumu silinsin mi?\n(Sadece listeden kaldırılır; konuşma diskte kalır.)`)) return;
-  try { await fetch("/session-delete", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ id }) }); } catch {}
-  if (selectedSessionId === id) selectedSessionId = "";
-  loadSessions();
+  const name = sessionsById[id]?.name || id;
+  if (!confirm(`"${name}" oturumu silinsin mi?\n(Sadece listeden kaldırılır; konuşma ve koşu kayıtları diskte kalır.)`)) return;
+  let ok = false;
+  try {
+    const res = await fetch("/session-delete", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ id }) });
+    ok = (await res.json()).ok;
+  } catch {}
+  if (!ok) { alert("Oturum silinemedi — koşan bir oturum silinmez, önce durdur."); return; }
+  if (viewSessionId === id) openSession("");
 }
 $("sidebarBody").addEventListener("click", (ev) => {
   const delBtn = ev.target.closest(".sess-del");
   if (delBtn) { removeSession(delBtn.dataset.del); return; }
   const el = ev.target.closest(".sess");
-  if (el) selectSession(el.dataset.id || "");
+  if (el && (el.dataset.id || "") !== viewSessionId) openSession(el.dataset.id || "");
 });
 $("btnSidebar").addEventListener("click", () => {
   const collapsed = $("sidebar").classList.toggle("collapsed");
   $("btnSidebar").textContent = collapsed ? "☰" : "⟨";
 });
-loadSessions();
+
+// Lobi: oturum listesi + durumlar, her değişiklikte tam liste
+const lobby = new EventSource("/lobby");
+lobby.onmessage = (m) => {
+  sessionsById = {};
+  for (const s of JSON.parse(m.data)) sessionsById[s.id] = s;
+  if (!lobbyLoaded) {
+    lobbyLoaded = true;
+    // İlk açılış: adresteki oturum > koşan en yeni oturum (CLI görevi dahil) > yeni oturum
+    const fromHash = decodeURIComponent(location.hash.slice(1));
+    const busy = Object.values(sessionsById).filter((s) => s.busy)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    openSession(sessionsById[fromHash] ? fromHash : busy ? busy.id : "");
+    return;
+  }
+  // İzlenen oturum başka sekmeden silindiyse taslağa dön
+  if (viewSessionId && !sessionsById[viewSessionId]) { openSession(""); return; }
+  const cur = sessionsById[viewSessionId];
+  if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
+  renderSessions();
+  updateTaskCtx();
+};
 
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
 // tıkla → metin kutusu, Enter kaydeder (sunucuda doğrulanır + config.json'a yazılır)
@@ -1406,6 +1525,7 @@ $("flowChips").addEventListener("click", async (ev) => {
 });
 
 function showTaskCard() {
+  if (replaying || viewBusy) return; // durum "ready"/lobiden gelince karar verilir
   $("taskCard").classList.remove("hidden");
   $("taskError").textContent = "";
   loadTargetDir(); // dizin bu arada oluşturulmuş olabilir — uyarıyı tazele
@@ -1413,8 +1533,6 @@ function showTaskCard() {
   updateTaskCtx();
   autoGrow($("taskInput"));
   $("taskInput").focus();
-  // Koşu bittiyse yeni oturum katalogda görünene dek kısa bir gecikmeyle tazele
-  setTimeout(loadSessions, 400);
 }
 
 async function startTask() {
@@ -1431,10 +1549,18 @@ async function startTask() {
   const res = await fetch("/task", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ task, resumeSessionId: selectedSessionId || undefined, runAt }),
+    body: JSON.stringify({ task, session: viewSessionId || undefined, runAt }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.ok) {
+    // Görev arka planda koşar; panel o oturuma geçer, diğer oturumlar sürer
+    viewBusy = true;
+    $("taskCard").classList.add("hidden");
+    if (data.session && data.session !== viewSessionId) {
+      sessionsById[data.session] ??= { id: data.session, name: task, updatedAt: new Date().toISOString(), status: "running", busy: true };
+      openSession(data.session);
+    }
+    if (data.warning) addLog(Date.now(), "⚠ " + esc(data.warning), "warn");
     $("taskInput").value = "";
     autoGrow($("taskInput"));
     $("taskError").textContent = "";
@@ -1464,19 +1590,6 @@ for (const id of ["taskInput", "rejectComment"]) {
   autoGrow(el);
 }
 
-let sawAnyEvent = false;
-const es = new EventSource("/events");
-es.onmessage = (m) => { sawAnyEvent = true; handle(JSON.parse(m.data)); };
-es.onopen = () => {
-  // Sunucu modunda henüz koşu yoksa görev girişini göster
-  setTimeout(() => {
-    if (!sawAnyEvent) { $("task").textContent = "görev bekleniyor"; setStatus("hazır", "ok"); showTaskCard(); }
-  }, 400);
-};
-es.onerror = () => {
-  if (finished) { es.close(); $("taskCard").classList.add("hidden"); return; }
-  setStatus("bağlantı koptu", "err");
-};
 </script>
 </body>
 </html>
