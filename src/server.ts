@@ -34,7 +34,7 @@ export interface UiServerOptions {
   setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
   /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
-  getModels?: () => Promise<{ current: string; models: ModelInfo[]; error?: string }>;
+  getModels?: () => Promise<{ current: string; required?: boolean; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
   setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */

@@ -57,8 +57,12 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 /* justify-content:center — fanout grubu yan hücrelerden uzun olduğunda sıralı
    düğümler de onun boyuna gerilir; metin tepede kalmasın diye dikey ortalanır. */
 .node { flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
-.node .nm { font-weight:700; font-size:14px; }
-.node .sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.node .nm { font-weight:700; font-size:15.5px; }
+/* Hattaki ana kutular sabit bir yükseklikte: paralel inceleme grubu kalkınca
+   kutular yalnızca içerik kadar kalıp ezik görünüyordu. Grup içindeki kopya
+   kutuları (fanout) bu kurala girmez — üst üste dizilirler. */
+.pipe > .node:not(.group) { min-height:96px; }
+.node .sub { font-size:12.5px; color:var(--muted); margin-top:4px; }
 .node.running { background:var(--blueBg); border-color:var(--blue); }
 .node.running .nm, .node.running .sub { color:var(--md-on-primary-container); }
 .node.done { background:var(--tealBg); border-color:var(--teal); }
@@ -259,6 +263,10 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
       <option value="custom">Belirli tarih/saat…</option>
     </select>
     <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
+  </div>
+  <div class="notice hidden" id="modelWarn" style="margin:10px 0 0;align-items:center">
+    <span>⚠</span>
+    <span style="flex:1">Model seçilmedi — görev başlatmak için üst çubuktaki listeden bir model seç.</span>
   </div>
   <div class="flow" id="flowChips"></div>
   <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -1230,8 +1238,16 @@ function applyDirState() {
   $("dir").title = dirMissing ? "Bu dizin bulunamadı — değiştirmek için tıkla" : "Değiştirmek için tıkla";
   $("dirWarn").classList.toggle("hidden", !dirMissing);
   $("dirWarnPath").textContent = currentDir;
-  $("btnStart").disabled = dirMissing;
-  $("btnStart").title = dirMissing ? "Önce geçerli bir hedef dizin seç" : "";
+  updateStartGate();
+}
+// Başlat yalnızca hedef dizin VAR ve (gerekiyorsa) model SEÇİLİ iken açık
+let modelRequired = false;
+function updateStartGate() {
+  const modelYok = modelRequired && !currentModel;
+  $("modelWarn").classList.toggle("hidden", !modelYok);
+  $("btnStart").disabled = dirMissing || modelYok;
+  $("btnStart").title = dirMissing ? "Önce geçerli bir hedef dizin seç"
+    : modelYok ? "Önce üst çubuktan bir model seç" : "";
 }
 function showDirDisplay(text) {
   $("dir").textContent = dirMissing ? `⚠ ${text} (bulunamadı)` : text;
@@ -1293,7 +1309,10 @@ $("btnDirFix").addEventListener("click", showDirEditor);
 let currentModel = "";
 function fillModelSelect(models, error) {
   const sel = $("modelSel");
-  const opts = [`<option value="">model: varsayılan</option>`];
+  // Ollama'da "varsayılan" model yok — boş seçenek "seçilmedi" uyarısı olur
+  const opts = [modelRequired
+    ? `<option value="">⚠ model seçilmedi</option>`
+    : `<option value="">model: varsayılan</option>`];
   const ids = new Set(models.map((m) => m.id));
   // Config'teki model listede yoksa da görünsün (API düşük/eski kayıt)
   if (currentModel && !ids.has(currentModel)) {
@@ -1305,14 +1324,18 @@ function fillModelSelect(models, error) {
   }
   sel.innerHTML = opts.join("");
   sel.value = currentModel;
-  sel.title = error ? `Model listesi alınamadı: ${error}` : "Model — sıradaki görevde kullanılır";
-  sel.style.borderColor = error ? "var(--red)" : "";
+  const eksik = modelRequired && !currentModel;
+  sel.title = error ? `Model listesi alınamadı: ${error}`
+    : eksik ? "Model seçilmedi — görev başlatmak için bir model seç" : "Model — sıradaki görevde kullanılır";
+  sel.style.borderColor = error || eksik ? "var(--red)" : "";
 }
 async function loadModels() {
   try {
     const data = await (await fetch("/models")).json();
     currentModel = data.current || "";
+    modelRequired = !!data.required;
     fillModelSelect(data.models || [], data.error);
+    updateStartGate();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
   }
@@ -1328,6 +1351,8 @@ $("modelSel").addEventListener("change", async () => {
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
       currentModel = model;
+      updateStartGate();
+      $("modelSel").style.borderColor = modelRequired && !model ? "var(--red)" : "";
       addLog(new Date().toISOString(), `🧠 model değiştirildi: ${esc(model || "varsayılan")} — sıradaki görevde geçerli`, "ok");
     } else {
       alert(data.error || "model kaydedilemedi");
@@ -1396,6 +1421,7 @@ async function startTask() {
   const task = $("taskInput").value.trim();
   if (!task) return;
   if (dirMissing) { $("taskError").textContent = "Hedef dizin bulunamadı — önce geçerli bir dizin seç"; return; }
+  if (modelRequired && !currentModel) { $("taskError").textContent = "Model seçilmedi — üst çubuktan bir model seç"; return; }
   // Zamanlanmış görev: architect dahil tüm akış seçilen saatte başlar
   const runAt = readRunAt("taskWhenPreset", "taskWhenCustom");
   if ($("taskWhenPreset").value !== "0" && runAt === undefined) {
