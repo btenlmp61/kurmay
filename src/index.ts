@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { loadAgents } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
-import { loadAppConfig } from "./config.js";
+import { loadAppConfig, modelMissing } from "./config.js";
 import { EventBus } from "./events.js";
 import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
@@ -131,6 +131,13 @@ async function main() {
     );
   }
 
+  if (modelMissing(cfg)) {
+    // Dizin uyarısıyla aynı desen: tek görev modunda dur, sunucu modunda aç ve uyar
+    const msg = 'provider "ollama" için model seçilmedi (örn. "qwen3-coder:30b")';
+    if (task || noUi) throw new Error(`config: ${msg}`);
+    console.warn(`⚠ ${msg}\n  Panel yine de açılıyor — üst çubuktaki model listesinden seç (o zamana kadar görev başlatılamaz).`);
+  }
+
   if (!task && noUi) {
     console.error(
       'Kullanım: npm start -- "görev" [--config config.json] [--cwd dizin] [--port 4141] [--no-ui] [--at +30m]\n' +
@@ -221,13 +228,14 @@ async function main() {
       },
       getModels: async () => {
         const current = cfg.model ?? "";
+        const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
         if (!cfg.modelsUrl) {
-          return { current, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
+          return { current, required, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
         }
         try {
-          return { current, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
+          return { current, required, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
         } catch (e) {
-          return { current, models: [], error: e instanceof Error ? e.message : String(e) };
+          return { current, required, models: [], error: e instanceof Error ? e.message : String(e) };
         }
       },
       setModel: (model) => {
@@ -236,7 +244,7 @@ async function main() {
           const parsed = JSON.parse(prev) as Record<string, unknown>;
           parsed.model = model; // "" = sağlayıcı varsayılanı (loadAppConfig tanımsız sayar)
           fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
-          loadAppConfig(resolvedConfigPath); // ör. ollama'da model zorunlu — boş geçilemez
+          loadAppConfig(resolvedConfigPath); // yapı doğrulaması (boş model kabul — görev başlarken kontrol edilir)
           // Sıradaki görev bu modeli kullanır; çalışan koşu kendi kopyasıyla devam eder
           if (model) cfg.model = model;
           else delete cfg.model;
@@ -282,6 +290,9 @@ async function main() {
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, resumeSessionId, runAt) => {
             if (running || !wakeWithTask) return { ok: false, error: "şu an bir görev çalışıyor" };
+            if (modelMissing(cfg)) {
+              return { ok: false, error: "Model seçilmedi — üst çubuktaki model listesinden bir model seç" };
+            }
             if (!dirOk(cwd)) {
               return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
             }

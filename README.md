@@ -88,7 +88,6 @@ HTTP arayüzü: `GET /` panel, `GET /events` SSE, `POST /approval` onay, `POST /
   "baseUrl": "",
   "apiKey": "",
   "model": "",
-  "verdictModel": "",
   "targetDir": ".",
   "workflow": { "entry": "architect", "maxCycles": 5, "agents": { ... } }
 }
@@ -102,7 +101,6 @@ Boş (`""`) bırakılan alan "tanımsız" sayılır ve sağlayıcının varsayı
 | `baseUrl` | API adresi. Anthropic'te boş bırak; Ollama'da boşsa `http://localhost:11434` |
 | `apiKey` | Token. Anthropic'te boşsa Claude Code oturumu kullanılır; doluysa structured output şema garantisi devreye girer. Ollama doğrulamaz, boş bırakılabilir |
 | `model` | Ajanların varsayılan modeli. Anthropic'te boşsa Claude Code varsayılanı; **Ollama'da zorunlu** (örn. `qwen3-coder:30b`) |
-| `verdictModel` | Karar çıkarma adımının modeli (boşsa `model`) |
 | `targetDir` | Geliştirmenin yapılacağı hedef proje dizini (`--cwd` bayrağı bunu ezer) |
 | `mcpServers` | MCP sunucu tanımları (Claude Code `.mcp.json` formatı) — aşağıda |
 | `workflow` | İş akışı grafı — aşağıda |

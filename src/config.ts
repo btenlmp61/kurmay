@@ -16,7 +16,7 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   // Boş bırakılan ("") alanlar tanımsız sayılır — config şablonunda alanların
   // görünür kalması için boş string'e izin veriyoruz
-  for (const key of ["baseUrl", "apiKey", "model", "modelsUrl", "verdictModel", "targetDir"] as const) {
+  for (const key of ["baseUrl", "apiKey", "model", "modelsUrl", "targetDir"] as const) {
     if (cfg[key] === "") delete cfg[key];
   }
 
@@ -27,9 +27,8 @@ export function loadAppConfig(configPath: string): AppConfig {
   if (cfg.provider === "ollama") {
     if (!cfg.baseUrl) cfg.baseUrl = "http://localhost:11434";
     if (!cfg.apiKey) cfg.apiKey = "ollama"; // Ollama değeri umursamaz ama boş bırakılamaz
-    if (!cfg.model) {
-      throw new Error('config: provider "ollama" için "model" zorunlu (örn. "qwen3-coder:30b")');
-    }
+    // Model boş olabilir: sunucu modunda panelden sonradan seçilir (modelMissing).
+    // Koşu ancak model seçilince başlar — orada kontrol ediliyor, burada değil.
   }
 
   // Sınırlar sayı olmalı — hatalı değer env'e "NaN" olarak sızmasın
@@ -98,6 +97,15 @@ export function loadAppConfig(configPath: string): AppConfig {
   }
 
   return cfg;
+}
+
+/**
+ * Koşu için model eksik mi? Ollama'da model zorunlu (Claude Code'un varsayılan
+ * model adı Ollama'da yoktur). Config'te boş bırakılabilir — panelden seçilene
+ * kadar görev başlatılmaz.
+ */
+export function modelMissing(cfg: ProviderConfig): boolean {
+  return cfg.provider === "ollama" && !cfg.model;
 }
 
 /**
