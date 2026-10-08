@@ -51,6 +51,10 @@ export function loadAppConfig(configPath: string): AppConfig {
     }
   }
 
+  if (cfg.maxParallelRuns !== undefined && (!Number.isInteger(cfg.maxParallelRuns) || cfg.maxParallelRuns < 1)) {
+    throw new Error(`config: "maxParallelRuns" 1 veya daha büyük bir tam sayı olmalı (verilen: ${JSON.stringify(cfg.maxParallelRuns)})`);
+  }
+
   if (!cfg.workflow?.entry || !cfg.workflow.agents) {
     throw new Error('config: "workflow" bölümü eksik ("entry" ve "agents" alanları zorunlu)');
   }

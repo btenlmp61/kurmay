@@ -2,24 +2,29 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseRunAt, type ApprovalResult, type ScheduleOutcome, type WebApprovalChannel } from "./approval.js";
-import type { EventBus } from "./events.js";
+import { parseRunAt } from "./approval.js";
 import type { ModelInfo } from "./models.js";
+import type { RuntimeRegistry, SessionRuntime } from "./runtime.js";
 
 export interface UiServer {
   url: string;
-  webApproval: WebApprovalChannel;
-  /** Çalışan koşunun AbortController'ını kaydeder (POST /cancel bunu abort eder) */
-  setRunAborter(ac: AbortController | null): void;
   close(): void;
 }
 
 export interface UiServerOptions {
-  /** Panelden görev gönderimi (POST /task). resumeSessionId verilirse o architect
-   *  oturumu sürdürülür, yoksa yeni oturum. Kabul edilmezse error döndür. */
-  onTask?: (task: string, resumeSessionId?: string, runAt?: number) => { ok: boolean; error?: string };
-  /** İsimli architect oturumları listesi (GET /sessions) */
-  getSessions?: () => unknown[];
+  /** Oturum çalışma zamanları — olay akışı, onay/zamanlama/iptal oturum başına */
+  runtimes: RuntimeRegistry;
+  /** Panelden görev (POST /task). session verilirse o oturumda devam (architect
+   *  konuşması sürdürülür), yoksa yeni oturum açılır. Kabul edilirse oturum id'si döner. */
+  onTask?: (
+    task: string,
+    session?: string,
+    runAt?: number,
+  ) => { ok: boolean; error?: string; session?: string; warning?: string };
+  /** Oturum listesi + canlı durumları (GET /sessions ve /lobby SSE) */
+  getSessions: () => unknown[];
+  /** Oturum biliniyorsa runtime'ını verir (geçmişi diskten yükleyerek); yoksa undefined */
+  openSession: (id: string) => SessionRuntime | undefined;
   /** Bir oturumu katalogdan siler (POST /session-delete); silindiyse true */
   deleteSession?: (id: string) => boolean;
   /** Config editörü verisi: ham config.json + kullanılabilir kural/beceri/ajan-md adları */
@@ -49,11 +54,13 @@ export interface UiServerOptions {
  *   GET  /          panel sayfası (ui/index.html)
  *   GET  /theme.css paylaşılan Material 3 tema (ui/theme.css)
  *   GET  /logo.svg  marka logosu — favicon + üst şerit (ui/logo.svg)
- *   GET  /events    SSE akışı: önce koşu geçmişi tekrar oynatılır, sonra canlı
- *   POST /approval  { approved: boolean, comment?: string, runAt?: string } — bekleyen onayı çözer
- *   POST /schedule  { action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
- *   POST /task      { task, resumeSessionId?, runAt? } — panelden yeni görev başlatır; runAt
- *                   verilirse akış o zamana kadar bekler (sunucu modu)
+ *   GET  /events?session=ID  SSE: o oturumun geçmişi (diskteki kayıtlar dahil) + canlı akışı
+ *   GET  /lobby     SSE: oturum listesi + durumları, her değişiklikte tam liste
+ *   POST /approval  { session, approved, comment?, runAt? } — o oturumun bekleyen onayını çözer
+ *   POST /schedule  { session, action: "run" | "cancel" } — bekleyen zamanlamayı erken çalıştırır/iptal eder
+ *   POST /cancel    { session } — o oturumun koşusunu durdurur
+ *   POST /task      { task, session?, runAt? } — görev başlatır (session yoksa yeni oturum);
+ *                   oturumlar birbirinden bağımsız, aynı anda koşabilir
  *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
  *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
@@ -61,22 +68,45 @@ export interface UiServerOptions {
  *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  */
-export function startUiServer(
-  bus: EventBus,
-  port: number,
-  options: UiServerOptions = {},
-): Promise<UiServer> {
+export function startUiServer(port: number, options: UiServerOptions): Promise<UiServer> {
   const uiDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
   const themeCssPath = path.join(uiDir, "theme.css");
   const logoPath = path.join(uiDir, "logo.svg");
   const sseClients = new Set<http.ServerResponse>();
-  let pendingApproval: ((r: ApprovalResult) => void) | null = null;
-  let pendingSchedule: ((o: Extract<ScheduleOutcome, "run_now" | "cancelled">) => void) | null = null;
-  let runAborter: AbortController | null = null;
+  const json = (res: http.ServerResponse, code: number, payload: unknown) => {
+    res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(payload));
+  };
+  /** SSE yanıtını açar: hemen ilk bayt + 25 sn kalp atışı; kapanınca temizlik */
+  const openSse = (req: http.IncomingMessage, res: http.ServerResponse, onClose: () => void) => {
+    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+    res.write(": bagli\n\n");
+    const heartbeat = setInterval(() => res.write(": ping\n\n"), 25000);
+    sseClients.add(res);
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      onClose();
+      sseClients.delete(res);
+    });
+  };
+  /** Gövdeyi JSON nesnesi olarak okur; bozuksa null */
+  const readJson = (req: http.IncomingMessage, cb: (body: Record<string, unknown> | null) => void) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const v = JSON.parse(body) as unknown;
+        cb(v && typeof v === "object" ? (v as Record<string, unknown>) : null);
+      } catch {
+        cb(null);
+      }
+    });
+  };
 
   const server = http.createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(fs.readFileSync(uiPath));
@@ -95,85 +125,62 @@ export function startUiServer(
       return;
     }
 
-    if (req.method === "GET" && req.url === "/events") {
-      res.writeHead(200, {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-      });
-      // Geçmiş boşken de bağlantı hemen kurulsun diye ilk baytı şimdi gönder
-      // (SSE yorum satırı) ve düzenli kalp atışıyla hattı canlı tut
-      res.write(": bagli\n\n");
-      const heartbeat = setInterval(() => res.write(": ping\n\n"), 25000);
-      for (const e of bus.history) res.write(`data: ${JSON.stringify(e)}\n\n`);
-      const unsubscribe = bus.subscribe((e) => res.write(`data: ${JSON.stringify(e)}\n\n`));
-      sseClients.add(res);
-      req.on("close", () => {
-        clearInterval(heartbeat);
-        unsubscribe();
-        sseClients.delete(res);
-      });
+    // Oturumun olay akışı: önce geçmiş (servis yeniden başladıysa diskten), sonra canlı
+    if (req.method === "GET" && url.pathname === "/events") {
+      const rt = options.openSession(url.searchParams.get("session") ?? "");
+      if (!rt) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      let unsubscribe = () => {};
+      openSse(req, res, () => unsubscribe());
+      for (const e of rt.bus.history) res.write(`data: ${JSON.stringify(e)}\n\n`);
+      // Geçmiş bitti: panel yeniden oynatmayı burada kapatır, oturumun anlık durumunu uygular
+      res.write(`event: ready\ndata: ${JSON.stringify({ status: rt.status, busy: rt.busy })}\n\n`);
+      unsubscribe = rt.bus.subscribe((e) => res.write(`data: ${JSON.stringify(e)}\n\n`));
+      return;
+    }
+
+    // Lobi: oturum listesi + durumları; her değişiklikte tam liste (küçük, sade)
+    if (req.method === "GET" && url.pathname === "/lobby") {
+      const send = () => res.write(`data: ${JSON.stringify(options.getSessions())}\n\n`);
+      let off = () => {};
+      openSse(req, res, () => off());
+      send();
+      off = options.runtimes.onLobby(send);
       return;
     }
 
     if (req.method === "POST" && req.url === "/approval") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        if (!pendingApproval) {
-          res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "bekleyen onay yok" }));
-          return;
+      readJson(req, (parsed) => {
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        const rt = options.runtimes.peek(String(parsed.session ?? ""));
+        const comment =
+          typeof parsed.comment === "string" && parsed.comment.trim() ? parsed.comment.trim() : undefined;
+        // runAt panelden ISO metin (datetime-local) ya da epoch ms gelebilir
+        let runAt: number | undefined;
+        if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) runAt = parsed.runAt;
+        else if (typeof parsed.runAt === "string") runAt = parseRunAt(parsed.runAt);
+        if (!rt?.resolveApproval({ approved: Boolean(parsed.approved), comment, runAt })) {
+          return json(res, 409, { ok: false, error: "bu oturumda bekleyen onay yok" });
         }
-        try {
-          const parsed = JSON.parse(body) as { approved?: unknown; comment?: unknown; runAt?: unknown };
-          const comment =
-            typeof parsed.comment === "string" && parsed.comment.trim()
-              ? parsed.comment.trim()
-              : undefined;
-          // runAt panelden ISO metin (datetime-local) ya da epoch ms gelebilir
-          let runAt: number | undefined;
-          if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) {
-            runAt = parsed.runAt;
-          } else if (typeof parsed.runAt === "string") {
-            runAt = parseRunAt(parsed.runAt);
-          }
-          pendingApproval({ approved: Boolean(parsed.approved), comment, runAt });
-          pendingApproval = null;
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: true }));
-        } catch {
-          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
-        }
+        json(res, 200, { ok: true });
       });
       return;
     }
 
     if (req.method === "POST" && req.url === "/schedule") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        if (!pendingSchedule) {
-          res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "bekleyen zamanlama yok" }));
-          return;
+      readJson(req, (parsed) => {
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (parsed.action !== "run" && parsed.action !== "cancel") {
+          return json(res, 400, { ok: false, error: "action 'run' veya 'cancel' olmalı" });
         }
-        try {
-          const parsed = JSON.parse(body) as { action?: unknown };
-          if (parsed.action !== "run" && parsed.action !== "cancel") {
-            res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ ok: false, error: "action 'run' veya 'cancel' olmalı" }));
-            return;
-          }
-          pendingSchedule(parsed.action === "run" ? "run_now" : "cancelled");
-          pendingSchedule = null;
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: true }));
-        } catch {
-          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+        const rt = options.runtimes.peek(String(parsed.session ?? ""));
+        if (!rt?.resolveSchedule(parsed.action === "run" ? "run_now" : "cancelled")) {
+          return json(res, 409, { ok: false, error: "bu oturumda bekleyen zamanlama yok" });
         }
+        json(res, 200, { ok: true });
       });
       return;
     }
@@ -325,7 +332,7 @@ export function startUiServer(
 
     if (req.method === "GET" && req.url === "/sessions") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(options.getSessions?.() ?? []));
+      res.end(JSON.stringify(options.getSessions()));
       return;
     }
 
@@ -347,55 +354,37 @@ export function startUiServer(
     }
 
     if (req.method === "POST" && req.url === "/cancel") {
-      if (!runAborter || runAborter.signal.aborted) {
-        res.writeHead(409, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ ok: false, error: "çalışan görev yok" }));
-        return;
-      }
-      runAborter.abort();
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ ok: true }));
+      readJson(req, (parsed) => {
+        const rt = options.runtimes.peek(String(parsed?.session ?? ""));
+        if (!rt?.cancel()) return json(res, 409, { ok: false, error: "bu oturumda çalışan görev yok" });
+        json(res, 200, { ok: true });
+      });
       return;
     }
 
     if (req.method === "POST" && req.url === "/task") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        const json = (code: number, payload: unknown) => {
-          res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify(payload));
-        };
+      readJson(req, (parsed) => {
         if (!options.onTask) {
-          json(409, { ok: false, error: "bu koşu görevini CLI'dan aldı; panelden görev vermek için sunucu modunda başlat (görev argümanı olmadan)" });
-          return;
+          return json(res, 409, {
+            ok: false,
+            error: "bu koşu görevini CLI'dan aldı; panelden görev vermek için sunucu modunda başlat (görev argümanı olmadan)",
+          });
         }
-        try {
-          const parsed = JSON.parse(body) as { task?: unknown; resumeSessionId?: unknown; runAt?: unknown };
-          const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
-          if (!task) {
-            json(400, { ok: false, error: "görev boş olamaz" });
-            return;
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
+        if (!task) return json(res, 400, { ok: false, error: "görev boş olamaz" });
+        const session = typeof parsed.session === "string" && parsed.session ? parsed.session : undefined;
+        // runAt: ileri bir başlangıç zamanı (epoch ms ya da "+30m"/"2026-07-10 14:00" metni)
+        let runAt: number | undefined;
+        if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) runAt = parsed.runAt;
+        else if (typeof parsed.runAt === "string" && parsed.runAt.trim()) {
+          runAt = parseRunAt(parsed.runAt);
+          if (runAt === undefined) {
+            return json(res, 400, { ok: false, error: `başlangıç zamanı anlaşılamadı: ${parsed.runAt}` });
           }
-          const resumeSessionId =
-            typeof parsed.resumeSessionId === "string" && parsed.resumeSessionId
-              ? parsed.resumeSessionId
-              : undefined;
-          // runAt: ileri bir başlangıç zamanı (epoch ms ya da "+30m"/"2026-07-10 14:00" metni)
-          let runAt: number | undefined;
-          if (typeof parsed.runAt === "number" && Number.isFinite(parsed.runAt)) runAt = parsed.runAt;
-          else if (typeof parsed.runAt === "string" && parsed.runAt.trim()) {
-            runAt = parseRunAt(parsed.runAt);
-            if (runAt === undefined) {
-              json(400, { ok: false, error: `başlangıç zamanı anlaşılamadı: ${parsed.runAt}` });
-              return;
-            }
-          }
-          const result = options.onTask(task, resumeSessionId, runAt);
-          json(result.ok ? 202 : 409, result);
-        } catch {
-          json(400, { ok: false, error: "geçersiz JSON" });
         }
+        const result = options.onTask(task, session, runAt);
+        json(res, result.ok ? 202 : 409, result);
       });
       return;
     }
@@ -404,32 +393,11 @@ export function startUiServer(
     res.end();
   });
 
-  const webApproval: WebApprovalChannel = {
-    wait: () =>
-      new Promise<ApprovalResult>((resolve) => {
-        pendingApproval = resolve;
-      }),
-    cancel: () => {
-      pendingApproval = null;
-    },
-    waitSchedule: () =>
-      new Promise((resolve) => {
-        pendingSchedule = resolve;
-      }),
-    cancelSchedule: () => {
-      pendingSchedule = null;
-    },
-  };
-
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, () => {
       resolve({
         url: `http://localhost:${port}`,
-        webApproval,
-        setRunAborter: (ac) => {
-          runAborter = ac;
-        },
         close: () => {
           for (const client of sseClients) client.end();
           server.close();

@@ -297,6 +297,10 @@ export interface AppConfig extends ProviderConfig {
   workflow: WorkflowConfig;
   /** İzleme paneli portu (varsayılan 4141; CLI --port bayrağı bunu ezer) */
   uiPort?: number;
+  /** Sunucu modunda aynı anda koşabilecek görev (oturum) sayısı (varsayılan 3).
+   *  Zamanlanmış bekleyen görev de sayılır. Yerel model sunucusu istekleri
+   *  sırayla işliyorsa yüksek değer hız kazandırmaz, kuyruk/zaman aşımı getirir. */
+  maxParallelRuns?: number;
 }
 
 export interface AgentDefinition {
