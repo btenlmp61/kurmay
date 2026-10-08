@@ -326,11 +326,35 @@ export async function runAgent(
 ): Promise<AgentRunResult> {
   console.log(`\n━━━ ▶ ${agent.name} çalışıyor${resume ? " (oturum sürdürülüyor)" : ""} ━━━`);
   bus.emit({ type: "agent_started", agent: agent.key });
+  // Bağlantı kopmalarını say — çıktı gelmezse kart "kaç kez koptu" yazabilsin
+  let retries = 0;
+  const unsubscribe = bus.subscribe((e) => {
+    if (e.type === "agent_retrying" && e.agent === agent.key) retries++;
+  });
+  try {
+    return await runAgentInner(agent, prompt, cwd, cfg, bus, abortController, resume, opts, () => retries);
+  } finally {
+    unsubscribe();
+  }
+}
 
+async function runAgentInner(
+  agent: AgentDefinition,
+  prompt: string,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  abortController: AbortController,
+  resume: string | undefined,
+  opts: RunAgentOptions,
+  retries: () => number,
+): Promise<AgentRunResult> {
   const session: SessionHolder = { id: resume };
   let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session, opts);
   // Şemasız yedeğe düşüldüyse structured zaten beklenmez — onarım turu denenmez
   let schemaless = false;
+  // Onarım turunun sonucu (structured yine gelmezse kartta sebep olarak yazılır)
+  let repairOutcome: "repair_text" | "repair_failed" | undefined;
 
   if (result === SCHEMA_FAILED) {
     schemaless = true;
@@ -360,8 +384,21 @@ export async function runAgent(
         result = { ...repaired, metrics };
       } else {
         result = { ...result, metrics }; // onarım da metinle döndü — ilk metin daha bilgili
+        repairOutcome = "repair_text";
       }
+    } else {
+      repairOutcome = "repair_failed";
     }
+  }
+
+  if (agent.outputSchema && result.structured === undefined) {
+    result = {
+      ...result,
+      miss: {
+        reason: schemaless ? "schemaless" : (repairOutcome ?? "no_session"),
+        retries: retries(),
+      },
+    };
   }
 
   if (agent.outputSchema && result.structured === undefined) {

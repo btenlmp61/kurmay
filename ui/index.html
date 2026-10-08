@@ -537,7 +537,6 @@ function fmtMetrics(m) {
     `${tok(m.inputTokens)} girdi / ${tok(m.outputTokens)} çıktı`,
   ];
   if (m.cacheReadTokens) parts.push(`${tok(m.cacheReadTokens)} önbellek`);
-  if (m.costUsd > 0) parts.push("$" + m.costUsd.toFixed(4));
   return parts.join(" · ");
 }
 
@@ -546,10 +545,34 @@ function fmtMetrics(m) {
  * kaybetmiyor — koşu kayıtlarına göre vakaların bir kısmında model şemayı
  * dolduruyor ama içini boş bırakıyor; bu ikisini ayırt ettirir.
  */
-function outputNotice(structured, diff) {
+// Yapılandırılmış çıktı gelmediyse hangi yoldan düşüldüğü (runAgent → miss.reason)
+const MISS_TEXTS = {
+  repair_text:
+    "Model StructuredOutput aracını çağırmadan metinle bitirdi; aynı oturumda istenen onarım turunda da yine metinle döndü. " +
+    "Yerel modelde sık sebep bağlam penceresinin küçük olması: prompt'un başındaki araç tanımı kesiliyor " +
+    "(Ollama sunucu logunda <code>truncating input prompt</code> ara; çözüm <code>OLLAMA_CONTEXT_LENGTH</code> / <code>num_ctx</code>).",
+  repair_failed:
+    "Model StructuredOutput aracını çağırmadan metinle bitirdi; istenen onarım turu da şemaya uygun çıktı üretemeden hatayla bitti.",
+  no_session:
+    "Model StructuredOutput aracını çağırmadan metinle bitirdi; oturum kimliği alınamadığı için onarım turu denenemedi.",
+  schemaless:
+    "Model şemaya uygun çıktıyı üretemedi (şema denemeleri tükendi); ajan şemasız yeniden koşturuldu, bu yüzden yalnızca düz metin var.",
+};
+
+function missText(miss) {
+  if (!miss) return "Yapılandırılmış çıktı gelmedi (şema bozulmuş).";
+  let t = `Yapılandırılmış çıktı gelmedi. ${MISS_TEXTS[miss.reason] || ""}`;
+  if (miss.retries > 0) {
+    t += ` Bu koşuda bağlantı <b>${miss.retries} kez</b> koptu ve oturum sürdürülerek yeniden denendi — ` +
+      "kopma sonrası prompt tekrar gönderildiği için model şaşırmış olabilir.";
+  }
+  return t;
+}
+
+function outputNotice(structured, diff, miss) {
   const kutu = (html) => `<div class="notice"><span>⚠</span><span>${html}</span></div>`;
   if (structured === undefined || structured === null) {
-    return kutu("Yapılandırılmış çıktı gelmedi (şema bozulmuş) — aşağıda ajanın ham metni var.");
+    return kutu(`${missText(miss)} Aşağıda ajanın ham metni var.`);
   }
   const files = structured.file_plan || structured.changes;
   if (!Array.isArray(files) || files.length === 0) {
@@ -961,7 +984,7 @@ function handleEvent(e) {
       $("when").classList.toggle("hidden", !!e.endsFlow);
       const diff = renderDiff(e.structured, true);
       // endsFlow'da boş file_plan BEKLENEN durum — "somut değişiklik yok" uyarısı yanıltırdı
-      const uyari = e.endsFlow && e.structured ? "" : outputNotice(e.structured, diff);
+      const uyari = e.endsFlow && e.structured ? "" : outputNotice(e.structured, diff, e.miss);
       const lead = e.structured && e.structured.summary
         ? `<p class="lead">${esc(e.structured.summary)}</p>`
         : "";

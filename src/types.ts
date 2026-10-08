@@ -344,9 +344,25 @@ export interface AgentMetrics {
 }
 
 /** Bir ajan koşusunun sonucu: serbest metin + varsa şemaya uyan JSON */
+/**
+ * Yapılandırılmış çıktı neden gelmedi — panel onay kartı genel "şema bozulmuş"
+ * yerine hangi yoldan düşüldüğünü yazar.
+ * - repair_text: model aracı çağırmadan metinle bitti, onarım turunda da metinle döndü
+ * - repair_failed: onarım turu şemaya uygun çıktı üretemeden hatayla bitti
+ * - no_session: oturum kimliği alınamadı, onarım turu denenemedi
+ * - schemaless: şema denemeleri tükendi, ajan şemasız yeniden koşturuldu
+ */
+export interface StructuredMiss {
+  reason: "repair_text" | "repair_failed" | "no_session" | "schemaless";
+  /** Bu ajan koşusunda bağlantı kopması sonrası yapılan yeniden deneme sayısı */
+  retries: number;
+}
+
 export interface AgentRunResult {
   text: string;
   structured?: unknown;
+  /** Şema beklenip structured gelmediyse sebebi */
+  miss?: StructuredMiss;
   /** SDK oturum kimliği — resume (oturumu sürdürme) için saklanır */
   sessionId?: string;
   /** Süre/tur/token ölçümü; SDK vermezse tanımsız kalır */

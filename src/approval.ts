@@ -1,7 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import type { EventBus } from "./events.js";
-import { RunCancelledError } from "./types.js";
+import { RunCancelledError, type StructuredMiss } from "./types.js";
 
 /** run sinyali abort edilirse RunCancelledError ile reddeden promise (yarışlara eklenir) */
 function cancelPromise(runSignal?: AbortSignal): Promise<never> {
@@ -116,8 +116,9 @@ export async function askUserApproval(
   structured?: unknown,
   runSignal?: AbortSignal,
   endsFlow = false,
+  miss?: StructuredMiss,
 ): Promise<ApprovalResult> {
-  bus.emit({ type: "approval_required", agent: agentName, output, structured, endsFlow });
+  bus.emit({ type: "approval_required", agent: agentName, output, structured, endsFlow, miss });
 
   // Kaybeden taraf sessizce beklemede kalsın diye hatalar asla-çözülmeyen
   // bir promise'e çevrilir (kapalı stdin, abort vb. yarışı düşürmesin)

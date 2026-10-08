@@ -476,7 +476,16 @@ export async function runWorkflow(
     //    değişiklik talebi, planla") — böylece developer'a boş planla gidilmez.
     const endsFlow = routeTarget === null;
     if (agent.config.requiresUserApproval) {
-      const approval = await askUserApproval(agent.name, outputView(result), bus, web, result.structured, abortController.signal, endsFlow);
+      const approval = await askUserApproval(
+        agent.name,
+        outputView(result),
+        bus,
+        web,
+        result.structured,
+        abortController.signal,
+        endsFlow,
+        result.miss,
+      );
       if (!approval.approved) {
         ctx.feedback = approval.comment || "Kullanıcı çıktıyı reddetti, gözden geçir.";
         console.log(`\n↩ ${agent.name} kullanıcı geri bildirimiyle yeniden çalıştırılıyor`);
