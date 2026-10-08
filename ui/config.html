@@ -630,7 +630,7 @@ $("ndAddBtn").addEventListener("click", async ()=>{
     node = { type:"command", command:"mvn clean install -q", onSuccess:null, onFailure: cfg.workflow.entry };
   } else if ($("ndType").value === "fanout"){
     // Varsayılan işçi: developer (yoksa dallanmayan ilk ajan) — eklenir eklenmez sarılır
-    node = { type:"fanout", agent:"", maxConcurrency:2, next:null };
+    node = { type:"fanout", agent:"", maxConcurrency:3, next:null };
     nodes()[key] = node;
     const aday = ["developer", ...keys()].find((k)=> nodes()[k] && !isGate(nodes()[k]) && !nodes()[k].verdict
       && !nodes()[k].routes && !fanoutOwner(k));

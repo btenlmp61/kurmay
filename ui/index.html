@@ -192,6 +192,17 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 .fchip:disabled { cursor:wait; }
 /* Devre dışı düğüm: akış onu koşturmadan geçer — soluk, kesik kenar, üstü çizili */
 .node.disabled { opacity:.5; border-style:dashed; background:transparent; }
+/* Ajan kayıt süzgeci: hattaki kutuya tıkla → akışta yalnızca o ajanın satırları */
+.pipe .node[data-agent], .node.group > .glabel[data-group] { cursor:pointer; }
+.pipe .node[data-agent]:hover { border-color:var(--md-primary); }
+.node.focus { box-shadow:0 0 0 2px var(--md-primary); }
+.node.group > .glabel[data-group]:hover { color:var(--md-primary); }
+#stream .flt-out { display:none; }
+.logfilter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:-4px 0 10px; padding:6px 6px 6px 14px; border-radius:var(--md-shape-full); background:var(--blueBg); color:var(--md-on-primary-container); font-size:12.5px; }
+.logfilter b { font-family:ui-monospace,Consolas,monospace; }
+.logfilter button { margin-left:auto; min-height:auto; padding:3px 12px; font-size:12px; }
+/* Fanout kopyasının satır etiketi — iç içe akan repo kayıtları ayırt edilsin */
+.atag { display:inline-block; margin-right:6px; padding:0 7px; border-radius:var(--md-shape-full); border:1px solid currentColor; color:var(--c); font-size:10.5px; line-height:1.6; }
 .node.disabled .nm { text-decoration:line-through; }
 /* Bilgi cevabı (architect route=done): Markdown biçimlendirilmiş okuma kartı.
    Düz metin yığını yerine başlık/liste/tablo/kod — okuma yorgunluğunu azaltır. */
@@ -336,6 +347,10 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <div class="grid">
   <div class="card">
     <div class="label">Olay akışı</div>
+    <div class="logfilter hidden" id="logFilter">
+      <span id="logFilterText"></span>
+      <button id="btnLogAll">Tümünü göster</button>
+    </div>
     <div id="stream"></div>
   </div>
   <div class="card hidden" id="verdictCard">
@@ -707,7 +722,8 @@ function nodeCell(a) {
   }
   // Fanout kopyası "developer@repoA": hücrede repo adı yeter, grup etiketi ajanı söylüyor
   const ad = a.includes("@") ? a.slice(a.indexOf("@") + 1) : a;
-  return `<div class="node ${st}" title="${esc(a)}"><div class="nm">${esc(ad)}</div><div class="sub">${sub}</div></div>`;
+  const odak = logFilter && logFilter.has(a) ? " focus" : "";
+  return `<div class="node ${st}${odak}" data-agent="${esc(a)}" title="${esc(a)} — tıkla: yalnızca bu ajanın kayıtları"><div class="nm">${esc(ad)}</div><div class="sub">${sub}</div></div>`;
 }
 
 function renderPipeline() {
@@ -727,7 +743,7 @@ function renderPipeline() {
     const inner = groups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
     const fm = fanoutMeta[g] || { agent: g, max: 0 };
     const etiket = `${esc(fm.agent)} · repo başına${fm.max ? ` · en fazla ${fm.max}` : ""}`;
-    cells.push(`<div class="node group"><div class="glabel">${etiket}</div>${inner}</div>`);
+    cells.push(`<div class="node group"><div class="glabel" data-group="${esc(g)}" title="Tıkla: tüm repo kopyalarının kayıtları">${etiket}</div>${inner}</div>`);
   }
   $("pipeline").innerHTML = cells.join('<div class="arrow">→</div>');
 }
@@ -766,16 +782,81 @@ function resetBuild() {
   $("buildLog").textContent = "";
 }
 
-function addLog(ts, html, cls) {
-  const div = document.createElement("div");
-  if (cls) div.className = cls;
-  div.innerHTML = `<span class="t">${time(ts)}</span>${html}`;
+// İşlenen olayın ajanı (handle sırasında); akışa düşen her satır bununla etiketlenir
+let logAgent = "";
+// Akış süzgeci: null = hepsi, yoksa yalnızca bu ajan anahtarlarının satırları
+let logFilter = null;
+let logFilterCount = 0;
+
+const TAG_COLORS = ["var(--blue)", "var(--teal)", "var(--amber)", "var(--md-secondary)"];
+// Fanout kopyası ("developer@repoA") satırlarının başına renkli repo etiketi
+function agentTag(agent) {
+  const at = agent.indexOf("@");
+  if (at < 0) return "";
+  const repo = agent.slice(at + 1);
+  let h = 0;
+  for (const ch of repo) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `<span class="atag" style="--c:${TAG_COLORS[h % TAG_COLORS.length]}" title="${esc(agent)}">${esc(repo)}</span>`;
+}
+
+// Satırı akışa ekler; süzgeç açıksa ve satır o ajana ait değilse gizli eklenir
+function appendStream(el) {
+  el.dataset.agent = logAgent;
   const s = $("stream");
-  s.appendChild(div);
+  s.appendChild(el);
+  if (logFilter && !logFilter.has(logAgent)) {
+    el.classList.add("flt-out");
+    return;
+  }
+  if (logFilter) { logFilterCount++; renderLogFilterBar(); }
   s.scrollTop = s.scrollHeight;
 }
 
+function addLog(ts, html, cls) {
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.innerHTML = `<span class="t">${time(ts)}</span>${agentTag(logAgent)}${html}`;
+  appendStream(div);
+}
+
+function renderLogFilterBar() {
+  const bar = $("logFilter");
+  bar.classList.toggle("hidden", !logFilter);
+  if (!logFilter) return;
+  const adlar = [...logFilter].map(esc).join(", ");
+  $("logFilterText").innerHTML = `Yalnızca <b>${adlar}</b> · ${logFilterCount} kayıt`;
+}
+
+// keys: gösterilecek ajan anahtarları; aynı süzgece tekrar tıklamak kapatır
+function setLogFilter(keys) {
+  const ayni = logFilter && keys && keys.length === logFilter.size && keys.every((k) => logFilter.has(k));
+  logFilter = !keys || ayni ? null : new Set(keys);
+  logFilterCount = 0;
+  for (const el of $("stream").children) {
+    const gizli = !!logFilter && !logFilter.has(el.dataset.agent || "");
+    el.classList.toggle("flt-out", gizli);
+    if (logFilter && !gizli) logFilterCount++;
+  }
+  renderLogFilterBar();
+  if (agents.length) renderPipeline();
+  const s = $("stream");
+  s.scrollTop = s.scrollHeight;
+}
+$("btnLogAll").addEventListener("click", () => setLogFilter(null));
+// Hattaki ajan kutusu → o ajan; fanout grup başlığı → grubun tüm repo kopyaları
+$("pipeline").addEventListener("click", (ev) => {
+  const g = ev.target.closest(".glabel[data-group]");
+  if (g) { setLogFilter(groups[g.dataset.group] || []); return; }
+  const n = ev.target.closest(".node[data-agent]");
+  if (n) setLogFilter([n.dataset.agent]);
+});
+
 function handle(e) {
+  logAgent = e.agent || "";
+  try { handleEvent(e); } finally { logAgent = ""; }
+}
+
+function handleEvent(e) {
   switch (e.type) {
     case "workflow_started":
       agents = e.agents;
@@ -790,6 +871,7 @@ function handle(e) {
       $("task").textContent = e.task;
       $("provider").textContent = e.provider;
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
+      if (logFilter) setLogFilter(null); // önceki koşunun süzgeci yeni koşuda yanıltır
       if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
       $("verdictCard").classList.add("hidden");
       $("approval").classList.add("hidden");
@@ -861,10 +943,8 @@ function handle(e) {
         const inner = diff ? diff
           : hasAnswer(e.structured) ? `<div class="md" style="font:var(--md-type-body-md);margin:6px 0">${renderMarkdown(e.structured.answer)}</div>`
           : `<pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
-        d.innerHTML = `<summary>${esc(e.agent)} yapılandırılmış çıktısı</summary>${inner}`;
-        const s = $("stream");
-        s.appendChild(d);
-        s.scrollTop = s.scrollHeight;
+        d.innerHTML = `<summary>${agentTag(e.agent)}${esc(e.agent)} yapılandırılmış çıktısı</summary>${inner}`;
+        appendStream(d);
       }
       break;
     case "approval_required": {
@@ -1221,6 +1301,8 @@ function updateTaskCtx() {
 // Panelin oturuma ait her şeyini sıfırlar (akış, hat, kartlar, sayaçlar)
 function resetView() {
   agents = []; states = {}; groups = {}; fanoutMeta = {};
+  logFilter = null; logFilterCount = 0;
+  renderLogFilterBar();
   finished = false; scheduleCancelled = false; approvalEndsFlow = false;
   stopCountdown();
   stopPipelineTicker();
