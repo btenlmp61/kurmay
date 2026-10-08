@@ -52,7 +52,7 @@ async function extractWithStructuredOutput(
   const client = new Anthropic({ apiKey, ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}) });
   const response = await client.messages.parse(
     {
-      model: cfg.verdictModel ?? cfg.model ?? "claude-opus-4-8",
+      model: cfg.model ?? "claude-opus-4-8",
       max_tokens: 2048,
       thinking: { type: "adaptive" },
       messages: [{ role: "user", content: buildExtractionPrompt(reviewText) }],
@@ -78,7 +78,7 @@ async function extractWithAgentSdk(
   abortController?: AbortController,
 ): Promise<ReviewVerdict> {
   const env = buildAgentEnv(cfg);
-  const model = cfg.verdictModel ?? cfg.model;
+  const model = cfg.model;
 
   for await (const message of query({
     prompt: buildExtractionPrompt(reviewText),

@@ -281,8 +281,6 @@ export interface ProviderConfig {
   /** Panelde model seçimi için listenin çekileceği adres (GET). "apiKey" başlıkta
    *  gönderilir (Authorization: Bearer + x-api-key). Boşsa panelde seçici kapalı */
   modelsUrl?: string;
-  /** Karar çıkarma (verdict) adımında kullanılacak model; yoksa "model" kullanılır */
-  verdictModel?: string;
   /** Geliştirmenin yapılacağı hedef proje dizini (CLI --cwd bayrağı bunu ezer) */
   targetDir?: string;
   /** MCP sunucuları. Bir ajanın bu sunucuların araçlarını kullanabilmesi için
