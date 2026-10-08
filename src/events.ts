@@ -1,4 +1,4 @@
-import type { AgentMetrics, ReviewVerdict } from "./types.js";
+import type { AgentMetrics, ReviewVerdict, StructuredMiss } from "./types.js";
 
 export type OrchestratorEvent =
   | {
@@ -43,7 +43,15 @@ export type OrchestratorEvent =
     }
   // endsFlow: rota akışı bitiriyor (ör. architect route=done) — onaylanırsa
   // sonraki adım yok, reddedilirse aynı ajan gerekçeyle yeniden koşar
-  | { type: "approval_required"; agent: string; output: string; structured?: unknown; endsFlow?: boolean }
+  | {
+      type: "approval_required";
+      agent: string;
+      output: string;
+      structured?: unknown;
+      endsFlow?: boolean;
+      /** structured yoksa neden — kart bunu açıkça yazar */
+      miss?: StructuredMiss;
+    }
   | {
       type: "approval_resolved";
       agent: string;
