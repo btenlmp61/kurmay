@@ -14,10 +14,10 @@
     var t;
     try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
     // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
-    if (t === "dark") t = "teskilat";
+    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
     if (t === "light") t = "evrak";
-    if (t !== "teskilat" && t !== "evrak" && t !== "radar") {
-      t = matchMedia("(prefers-color-scheme: dark)").matches ? "teskilat" : "evrak";
+    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
     }
     document.documentElement.dataset.theme = t;
   } catch (e) {}
@@ -207,18 +207,18 @@ body { overflow:hidden; }
 .grid { display:contents; }
 
 /* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
-/* Teşkilat: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
-[data-theme="teskilat"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
-[data-theme="teskilat"] .chat-head { border-top:3px solid var(--md-primary); }
-[data-theme="teskilat"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
-[data-theme="teskilat"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
-[data-theme="teskilat"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
-[data-theme="teskilat"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
-[data-theme="teskilat"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
-[data-theme="teskilat"] :is(.label, .rbox h4) { letter-spacing:.14em; }
-[data-theme="teskilat"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
-[data-theme="teskilat"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
-[data-theme="teskilat"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
+/* Lacivert: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
+[data-theme="lacivert"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
+[data-theme="lacivert"] .chat-head { border-top:3px solid var(--md-primary); }
+[data-theme="lacivert"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
+[data-theme="lacivert"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
+[data-theme="lacivert"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
+[data-theme="lacivert"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
+[data-theme="lacivert"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
+[data-theme="lacivert"] :is(.label, .rbox h4) { letter-spacing:.14em; }
+[data-theme="lacivert"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
+[data-theme="lacivert"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
+[data-theme="lacivert"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
 
 /* Gizli Evrak: manila kâğıt, daktilo, bordo mürekkep; dosya sekmeleri, "GİZLİ" şeridi, onay mührü */
 [data-theme="evrak"] .main { background:var(--chatBg); }
@@ -511,7 +511,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <div class="rail-tools">
     <a href="/config">⚙ Teşkilat şeması</a>
     <div class="tswitch" role="radiogroup" aria-label="Tema">
-      <button class="tsw" data-t="teskilat" aria-label="Teşkilat"></button>
+      <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
       <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
       <button class="tsw" data-t="radar" aria-label="Radar"></button>
     </div>

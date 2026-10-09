@@ -14,10 +14,10 @@
     var t;
     try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
     // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
-    if (t === "dark") t = "teskilat";
+    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
     if (t === "light") t = "evrak";
-    if (t !== "teskilat" && t !== "evrak" && t !== "radar") {
-      t = matchMedia("(prefers-color-scheme: dark)").matches ? "teskilat" : "evrak";
+    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
     }
     document.documentElement.dataset.theme = t;
   } catch (e) {}
@@ -85,7 +85,7 @@ input[type=text], input[type=number], select { width:100%; }
   <span id="msg"></span>
   <button class="primary" id="btnSave" disabled>Kaydet</button>
   <div class="tswitch" role="radiogroup" aria-label="Tema">
-    <button class="tsw" data-t="teskilat" aria-label="Teşkilat"></button>
+    <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
     <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
     <button class="tsw" data-t="radar" aria-label="Radar"></button>
   </div>
