@@ -1,4 +1,8 @@
-# Kurmay
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Kurmay
 
 > **Ad değişikliği (2026-10-09):** proje eskiden **yaver** idi. Panelde, `package.json`'da, README'de, docker-compose'da (`kurmay` servisi/konteyneri) ve launch.json'da artık **Kurmay**. GitHub reposu (`yigitalptrpn/yaver`) ve kullanıcının disk klasörü (`D:/work/yaver`) DEĞİŞMEDİ — config.json'daki hook yolu bu yüzden hâlâ `D:/work/yaver/...`; klasör yeniden adlandırılırsa o yol da güncellenmeli (yoksa analist'in yazma engeli sessizce kalkar). Tema tercihi `kurmay-theme` anahtarında, eski `yaver-theme` de okunur.
 >
@@ -19,7 +23,11 @@ npm start -- "görev"     # tek görev modu: çalıştırır ve çıkar
 npm run serve            # sunucu modu: panel açılır, görevler panelden girilir, servis açık kalır
 npm run serve -- --port 4242   # ikinci servis: farklı port (araya `--` ŞART, aşağıya bak)
 npm run typecheck        # tsc --noEmit
+npm start -- "görev" --at +30m        # görevi zamanla (+2h, +1d, "2026-07-10 14:00")
+docker compose up --build             # .env'den PORT/TARGET_DIR/ANTHROPIC_*; hedef /workspace/target'a bağlanır
 ```
+
+`start` ve `serve` AYNI script'tir (`tsx src/index.ts`, derleme adımı yok): bayrak olmayan argüman varsa tek görev, yoksa sunucu modu. **Test paketi ve linter YOK** — tek otomatik kontrol `npm run typecheck`. Aşağıdaki "sahte API ile doğrulandı" notlarındaki sahte Anthropic API sunucusu ve Playwright betikleri repoya girmedi; gerekirse yeniden yazılır (`env -i` tuzağı için "Kritik bilinenler"e bak).
 
 Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`. Örnek configler: `config.microservices.example.json` (build düğümlü, çok-repo), `config.hooks.example.json` (hook'lu).
 
@@ -82,6 +90,9 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 | `src/models.ts` | Model listesi: config'teki `modelsUrl`'e GET, `apiKey` başlıkta (`Authorization: Bearer` + `x-api-key`). Yanıt biçimleri: `{data:[{id,display_name?}]}` (OpenAI/Anthropic), `{models:[{name}]}` (Ollama), düz dizi |
 | `ui/index.html` | İzleme paneli — **"ekip sohbeti" tasarımı (2026-10-09)**: 3 sütun (sol oturumlar / orta sohbet / sağ koşu özeti `.rail`: repo ilerlemesi, değişen dosyalar `trackFile` (Write/Edit/MultiEdit, `tool_used.added/removed` +N −M), model seçici, hedef dizin, süre, token). Ajan mesajları avatarlı balon (`bubbleOf`/`bubbleTool`: araç kapsülü 📖✏️🔎, Bash `tool_used.command` → mini terminal), görev sağda `.me` balonu, sistem olayları ortada `.sys` kapsül; kartlar (`#cards`: cevap/onay/zamanlama/karar/build) sohbetin altında avatarlı; görev kartı alttaki yazma kutusu; ajan hattı başlıkta ekip kapsülleri (`roleOf`: analist=Analist ◎, saha=Saha Timi </> + kuş kod adı, teftis=Teftiş ✓ — üstteki "Panelde görünen adlar"). Görünüm 3 TEMA (aşağıda "Temalar"). Önceki: sol **oturum sidebar'ı** (canlı durum rozetli, seç→o oturumu izle/sürdür, × sil; **varsayılan açık**; ayrıntı "Çoklu oturum"), ajan hattı (**çalışan ajanda canlı süre sayacı**), olay akışı (**ajan süzgeci**: hattaki kutuya tıkla → akışta yalnızca o ajanın satırları, fanout grup başlığı → tüm repo kopyaları, tekrar tıkla/"Tümünü göster" → kapat; her satır `data-agent` taşır — `handle` sarmalayıcısı olayın `agent` alanını `logAgent`'a koyar, `addLog`/`appendStream` onu kullanır; fanout kopyası satırlarında renkli repo etiketi `.atag`), onay+diff kartı (**before/after yan yana**, değişen kelimeler `markChanged` ile vurgulu, **hunk başına yorum** → red gerekçesine toplanır, **boş/kısmi çıktıda `outputNotice` uyarısı** — "panel mi kaybetti, model mi boş gönderdi" ayrımı), **zamanlama kartı+geri sayım**, **build kartı**, **Durdur**, üstte **hedef dizin** (tıkla→düzenle, `/target-dir`), ⚙ Config bağlantısı. Görev ve red gerekçesi alanları **auto-grow textarea** (Enter gönderir, Shift+Enter satır açar). Kütüphanesiz, koyu-mod |
 | `ui/config.html` | **Config editörü** (`/config`): SVG iş-akışı grafı + düğüm özellik/kenar düzenleme + düğüm ekle/sil + doğrulamalı kaydetme |
+| `src/index.ts` | Giriş noktası: argüman ayrıştırma (`--config/--cwd/--port/--no-ui/--at`, geri kalan = görev metni), targetDir önceliği, tek görev / sunucu modu seçimi |
+| `src/types.ts` | Config + workflow düğüm tipleri, `passThroughTarget`, `AgentMetrics`, `StructuredMiss` |
+| `ui/theme.css` | Tema başına renk/yazı tipi/rol rengi değişkenleri (panel + ayar sayfası ortak, `GET /theme.css`) |
 | `src/config.ts` / `src/agents.ts` | Config yükleme+doğrulama; graf düğümlerini/kuralları/becerileri yükler, kenarları doğrular |
 | `.claude/launch.json` | Preview: `kurmay-serve` (port 4141) |
 | `runs/*.jsonl`, `runs/sessions.json` | Koşu olay kaydı + oturum kataloğu (ikisi de .gitignore'da) |
@@ -159,7 +170,6 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 
 ## Açık işler (kaldığımız yer — 2026-07-24)
 
-- **Working tree KİRLİ — maliyet/panel oturumu commit edilmedi**: şema küçültme (saha `hunks` kaldırıldı, analist `technical_decisions`/`steps`/`risks` kaldırıldı, `before` → çapa), `limits` (config→env), **ölçüm** (`AgentMetrics`), panel (geniş yerleşim, oturum sidebar'ı varsayılan kapalı, before/after yan yana + `markChanged` kelime vurgusu). **2026-07-24 eklenenler**: auto-grow textarea (görev + red gerekçesi) ve **hunk başına yorum → red gerekçesine birleştirme** (sadece `ui/index.html`). Son commit hâlâ `fb0bbdf md updated.`
 - **HANGİ CONFIG?** Repodaki üç config'in de `provider=anthropic`, `baseUrl=""` — hiçbiri yerele yönlenmiyor. Kullanıcı Qwen ile çalıştığını söylüyor → ya `--config` ile repo dışı bir dosya, ya ortamdan `ANTHROPIC_BASE_URL`. **`limits` `config.json`'a yazıldı; gerçekte kullanılan config o değilse ayar ulaşmıyor.** Doğrulanmadı.
 - **Bu oturumun kazançları ÖLÇÜLMEDİ** — şema küçültme ve `limits` tahminle yapıldı; `structuredOutputRetries:2` ve `apiTimeoutMs:30dk` makul başlangıç, kanıt değil. Artık ölçüm var: ilk gerçek koşuda bak.
 - **Aktif `config.json`**: analist(routes) → **saha-timi (fanout: saha repo başına, en fazla 3)** → **teftis (verdict: onay → biter, red → saha-timi)**; `jetbrains-index-mcp-server` (mcpServers) + `arama` kuralı (semantik arama tercihi, Grep/Glob fallback); **build düğümü YOK**. **Paralel inceleme (`type:"parallel"`, security/tests/style dalları) ve `stage` (`git add -A`) düğümü KALDIRILDI** (2026-10-07, kullanılamadı) — tek `teftis` geri geldi. Eski bir configte `"type":"parallel"` kalırsa `loadAppConfig` açık hata verir (tanınan tipler: agent | command | fanout).
