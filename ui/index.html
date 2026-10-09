@@ -207,6 +207,9 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 /* Bilgi cevabı (architect route=done): Markdown biçimlendirilmiş okuma kartı.
    Düz metin yığını yerine başlık/liste/tablo/kod — okuma yorgunluğunu azaltır. */
 #answerCard { border-color:var(--teal); }
+/* Şema gelmediğinde ajanın metni: düz <pre> yerine Markdown okuma kutusu */
+.rawmd { max-width:none; max-height:clamp(320px, 60vh, 900px); overflow-y:auto; padding:14px 18px; margin:10px 0;
+  border:1px solid var(--border); border-radius:var(--md-shape-md); background:var(--md-surface-container-low); }
 .md { font-size:14.5px; line-height:1.65; max-width:900px; }
 .md > :first-child { margin-top:0; }
 .md h2, .md h3, .md h4, .md h5 { margin:18px 0 6px; line-height:1.3; }
@@ -572,7 +575,7 @@ function missText(miss) {
 function outputNotice(structured, diff, miss) {
   const kutu = (html) => `<div class="notice"><span>⚠</span><span>${html}</span></div>`;
   if (structured === undefined || structured === null) {
-    return kutu(`${missText(miss)} Aşağıda ajanın ham metni var.`);
+    return kutu(`${missText(miss)} Aşağıda ajanın metin çıktısı var.`);
   }
   const files = structured.file_plan || structured.changes;
   if (!Array.isArray(files) || files.length === 0) {
@@ -586,6 +589,45 @@ function outputNotice(structured, diff, miss) {
     return kutu("Değişiklik parçaları kodsuz geldi (<code>before</code>/<code>after</code> boş) — sadece konum ve gerekçe var.");
   }
   return "";
+}
+
+/**
+ * Şema gelmediğinde ajanın metninden plan kurtarmayı dener: yerel modeller
+ * StructuredOutput aracı yerine JSON'u düz metne (çoğu zaman ```json bloğuna)
+ * yazabiliyor. Bulunursa nesne döner — YALNIZCA gösterim için; akış bu planı
+ * yapılandırılmış çıktı olarak almadı (rota/dağıtım metinle ilerler).
+ */
+function salvageJson(text) {
+  if (typeof text !== "string" || !text.includes("{")) return undefined;
+  const adaylar = [];
+  for (const m of text.matchAll(/```(?:json)?[ \t]*\n([\s\S]*?)```/gi)) adaylar.push(m[1]);
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (b > a) adaylar.push(text.slice(a, b + 1));
+  for (const c of adaylar) {
+    try {
+      const v = JSON.parse(c);
+      if (v && typeof v === "object" && !Array.isArray(v)) return v;
+    } catch { /* JSON değil, sıradaki aday */ }
+  }
+  return undefined;
+}
+
+// Şema gelmediğinde onay kartının gövdesi: metinden plan çıkarsa diff, yoksa Markdown
+function rawOutputHtml(text) {
+  const plan = salvageJson(text);
+  if (plan) {
+    const diff = renderDiff(plan, true);
+    const lead = typeof plan.summary === "string" && plan.summary ? `<p class="lead">${esc(plan.summary)}</p>` : "";
+    const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metne JSON olarak yazmış — ` +
+      `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (developer'a metin olarak gider, repo dağıtımı yapılmaz).</p>`;
+    if (diff) return not + lead + diff + rawTextDetails(text);
+    if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>` + rawTextDetails(text);
+  }
+  return `<div class="md rawmd">${renderMarkdown(text || "")}</div>` + rawTextDetails(text);
+}
+
+function rawTextDetails(text) {
+  return `<details class="rawjson"><summary>Ham metin</summary><pre>${esc(text || "")}</pre></details>`;
 }
 
 function rawJsonDetails(structured) {
@@ -999,7 +1041,7 @@ function handleEvent(e) {
         // Şema geldi ama içi boş: ham metin JSON'un kendisi olurdu — özet + ham JSON yeter
         $("approvalText").innerHTML = uyari + lead + rawJsonDetails(e.structured);
       } else {
-        $("approvalText").innerHTML = uyari + `<pre>${esc(trunc(e.output, 4000))}</pre>`;
+        $("approvalText").innerHTML = uyari + rawOutputHtml(e.output);
       }
       updateRejectLabel();
       resetWhen();
