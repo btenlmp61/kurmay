@@ -241,19 +241,34 @@ body { overflow:hidden; }
 [data-theme="evrak"] #approval { position:relative; }
 [data-theme="evrak"] #approval::after { content:"ONAY BEKLİYOR"; position:absolute; top:20px; right:26px; transform:rotate(-8deg); pointer-events:none;
   border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85;
-  animation:muhur-vur .62s cubic-bezier(.55,0,.6,1) both; }
-/* Mühür vurma: kart açılınca (display:none'dan çıkınca animasyon baştan başlar) mühür havadan
-   büyük ve soluk gelir, kâğıda çarpar (ezilir + mürekkep yayılır), hafifçe geri seker; kart da
-   darbeyle sarsılır. Hareket azaltma tercihinde mühür doğrudan yerinde görünür. */
-@keyframes muhur-vur {
-  0%   { opacity:0;   transform:translate(-18px,-26px) rotate(-22deg) scale(3.2); filter:blur(3px); }
-  52%  { opacity:.95; transform:rotate(-7deg) scale(.86); filter:blur(0); text-shadow:0 0 1px var(--md-error);
-         box-shadow:0 0 0 2px rgba(161,27,27,.18), 0 0 14px rgba(161,27,27,.25); }
-  68%  { transform:rotate(-8.5deg) scale(1.07); }
-  84%  { transform:rotate(-7.8deg) scale(.98); box-shadow:0 0 0 0 rgba(161,27,27,0); }
-  100% { opacity:.85; transform:rotate(-8deg) scale(1); }
+  animation:muhur-iz .4s .62s ease-out both; }
+/* Mühür sahnesi (kart açılınca display:none'dan çıkar, animasyonlar baştan oynar):
+   1) sağ üstten mührü tutan el girer, yazının üstünde havada durur, 2) bastırır
+   (≈0,62 sn) — yazı tam o anda mürekkep izi olarak belirir, kart darbeyle sarsılır,
+   3) el mührü kaldırıp geldiği yöne çıkar. El: ::before'da satır içi SVG (dosya yok).
+   Konum: mühür lastiğinin alt-orta noktası yazının alt-ortasına denk gelir (yazı ≈186×29). */
+[data-theme="evrak"] #approval::before { content:""; position:absolute; z-index:2; pointer-events:none;
+  top:-133px; right:19px; width:200px; height:200px; transform-origin:100px 176px;
+  background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'> <path d='M118 66 L214 -24 L240 6 L140 90 Z' fill='%233B4A6B' stroke='%23232C40' stroke-width='2'/> <path d='M116 64 L128 52 L152 78 L140 90 Z' fill='%23E9E2D0' stroke='%239C9480' stroke-width='2'/> <rect x='12' y='146' width='176' height='24' rx='4' fill='%23A9713A' stroke='%236E4520' stroke-width='2'/> <rect x='18' y='151' width='164' height='4' rx='2' fill='%23C79157'/> <rect x='8' y='170' width='184' height='12' rx='2' fill='%238B1E1E' stroke='%235E1010' stroke-width='1.5'/> <rect x='89' y='100' width='22' height='48' fill='%23C08A50' stroke='%236E4520' stroke-width='2'/> <ellipse cx='100' cy='92' rx='30' ry='18' fill='%23B5793F' stroke='%236E4520' stroke-width='2'/> <path d='M68 74 Q68 50 96 47 L124 49 Q142 52 141 72 L139 94 Q120 106 100 106 Q76 106 68 96 Z' fill='%23F1C27D' stroke='%23B98352' stroke-width='2.2'/> <path d='M77 97 Q82 106 91 101 M93 103 Q99 109 107 103 M109 103 Q115 108 122 101 M124 99 Q131 102 135 93' fill='none' stroke='%23B98352' stroke-width='2' stroke-linecap='round'/> <path d='M70 70 Q55 76 59 90 Q64 99 77 91' fill='%23F1C27D' stroke='%23B98352' stroke-width='2.2'/> </svg>") no-repeat center/contain;
+  filter:drop-shadow(-6px 10px 6px rgba(60,40,10,.25));
+  animation:muhur-el 1.5s cubic-bezier(.45,.05,.35,1) both; }
+@keyframes muhur-el {
+  0%   { opacity:0; transform:translate(260px,-200px) rotate(14deg); }
+  8%   { opacity:1; }
+  34%  { transform:translate(0,-46px) rotate(-8deg); }
+  41%  { transform:translate(0,0) rotate(-8deg) scale(1,.97); filter:drop-shadow(-2px 3px 2px rgba(60,40,10,.3)); }
+  54%  { transform:translate(0,0) rotate(-8deg) scale(1); filter:drop-shadow(-2px 3px 2px rgba(60,40,10,.3)); }
+  68%  { transform:translate(0,-52px) rotate(-8deg); }
+  92%  { opacity:1; }
+  100% { opacity:0; transform:translate(280px,-220px) rotate(16deg); }
 }
-[data-theme="evrak"] #approval:not(.hidden) { animation:muhur-sars .32s .3s ease-out both; }
+/* Yazı: baskı anında mürekkep izi — hafif taşkın/bulanık başlar, kâğıda oturur */
+@keyframes muhur-iz {
+  0%   { opacity:0; transform:rotate(-8deg) scale(1.05); filter:blur(1.2px); }
+  25%  { opacity:.95; text-shadow:0 0 1px var(--md-error); box-shadow:0 0 0 1px rgba(161,27,27,.25), 0 0 10px rgba(161,27,27,.18); }
+  100% { opacity:.85; transform:rotate(-8deg) scale(1); filter:blur(0); }
+}
+[data-theme="evrak"] #approval:not(.hidden) { animation:muhur-sars .32s .6s ease-out both; }
 @keyframes muhur-sars {
   0%   { transform:translate(0,0); }
   20%  { transform:translate(-2px,3px) rotate(-.25deg); }
@@ -263,6 +278,7 @@ body { overflow:hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-theme="evrak"] #approval::after, [data-theme="evrak"] #approval:not(.hidden) { animation:none; }
+  [data-theme="evrak"] #approval::before { display:none; }
 }
 [data-theme="evrak"] #stream > .me { background:var(--md-surface-container-lowest); color:var(--text); border:1px solid var(--md-outline-variant);
   border-left:4px solid var(--md-primary); border-radius:2px; box-shadow:none; }
