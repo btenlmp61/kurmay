@@ -123,7 +123,7 @@ body { overflow:hidden; }
 .chat { flex:1; overflow-y:auto; padding:22px 24px 12px; min-height:0; scroll-behavior:smooth; }
 #stream { display:flex; flex-direction:column; gap:14px; overflow-wrap:anywhere; }
 #stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
-.msg { display:flex; gap:12px; max-width:min(920px, 94%); align-items:flex-start; }
+.msg { display:flex; gap:12px; max-width:94%; align-items:flex-start; } /* geniş ekranda sütunu doldursun (sabit üst sınır 32" monitörde yarıda bırakıyordu) */
 .bub { flex:1; min-width:0; background:var(--bubble); border:1px solid var(--border); border-radius:6px 20px 20px 20px; padding:11px 16px 12px; box-shadow:0 2px 12px color-mix(in srgb, var(--md-primary) 6%, transparent); }
 .bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px var(--font-ui); margin-bottom:3px; }
 .bub .who small { font:400 11.5px var(--font-ui); color:var(--muted); }
@@ -156,7 +156,7 @@ body { overflow:hidden; }
 
 /* — Sohbet içindeki kartlar (cevap, onay, zamanlama, karar, build): mesaj gibi avatarlı — */
 #cards { display:flex; flex-direction:column; gap:14px; margin-top:14px; }
-#cards > .card { margin:0; max-width:min(980px, 100%); border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
+#cards > .card { margin:0; max-width:100%; border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
 #cards > .card.hidden { display:none; }
 .card-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .card-head .label { margin:0; }
