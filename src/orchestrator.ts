@@ -38,7 +38,7 @@ interface RunContext {
    *  birleşik çıktıya taşınır. */
   fanout: Map<string, Map<string, AgentRunResult>>;
   /** Bu koşuda devre dışı olduğu için atlanan düğümler — sonraki ajanlar
-   *  onlardan çıktı gelmeyeceğini bilsin (ör. architect kapalıysa plan yok) */
+   *  onlardan çıktı gelmeyeceğini bilsin (ör. analist kapalıysa plan yok) */
   skipped: string[];
 }
 
@@ -117,7 +117,7 @@ function repoOfPath(file: string, cwd: string): string | null {
   return parts.length > 1 ? parts[0] : ".";
 }
 
-/** En son file_plan taşıyan çıktı (architect planı) — fanout bunu repolara böler */
+/** En son file_plan taşıyan çıktı (analist planı) — dağıtım bunu mıntıkalara böler */
 function findPlan(ctx: RunContext): { key: string; plan: unknown[] } | null {
   let found: { key: string; plan: unknown[] } | null = null;
   for (const [key, entry] of ctx.outputs) {
@@ -165,7 +165,7 @@ async function runLimited<T, R>(
 
 /**
  * Kopyaların sonuçlarını tek çıktıda birleştirir (sonraki düğümler — inceleme,
- * build — tek bir developer çıktısı görür). Diziler birleşir, metin alanları repo
+ * build — tek bir saha çıktısı görür). Diziler birleşir, metin alanları repo
  * etiketiyle satır satır toplanır. changes[].file yolları targetDir'e göre
  * normalize edilir; yapılandırılmış çıktısı gelmeyen repo için bir işaretçi
  * eklenir — yoksa build düğümü o repoyu hiç derlemezdi.
@@ -280,12 +280,12 @@ async function runFanout(
       result: { ...src.result, structured: { ...(src.result.structured as object), file_plan: groups.get(repo) } },
     });
     const scopeNote = repo === "."
-      ? `# Kapsamın\nBu görev repo başına bölündü; sana düşen kısım hedef dizinin KÖKÜNDEKİ dosyalar ` +
-        `(yukarıdaki plan yalnızca onları içeriyor). Repo klasörlerine (${others(repo).join(", ")}) dokunma — ` +
-        `onlar başka geliştiricilere atandı.`
-      : `# Kapsamın\nBu görev repo başına bölündü; sana düşen repo: "${repo}" (yukarıdaki plan yalnızca bu ` +
-        `repoya ait kısım). Yalnızca bu klasördeki dosyaları değiştir — yazma araçların bu klasörün dışına ` +
-        `engellenmiştir. Diğer repolar (${others(repo).join(", ")}) aynı anda başka geliştiricilere atandı; ` +
+      ? `# Mıntıkan\nBu görev mıntıka (repo) başına bölündü; sana düşen kısım hedef dizinin KÖKÜNDEKİ dosyalar ` +
+        `(merkez mıntıka; yukarıdaki plan yalnızca onları içeriyor). Mıntıka klasörlerine (${others(repo).join(", ")}) dokunma — ` +
+        `onlar başka saha ajanlarına atandı.`
+      : `# Mıntıkan\nBu görev mıntıka (repo) başına bölündü; sana düşen mıntıka: "${repo}" (yukarıdaki plan yalnızca bu ` +
+        `mıntıkaya ait kısım). Yalnızca bu klasördeki dosyaları değiştir — yazma araçların bu klasörün dışına ` +
+        `engellenmiştir. Diğer mıntıkalar (${others(repo).join(", ")}) aynı anda başka saha ajanlarına atandı; ` +
         `onlara dokunma, okuman serbest. Çıktındaki dosya yollarını hedef dizine göre ver (ör. "${repo}/src/...").`;
     const prompt = buildPrompt(agent, { ...ctx, outputs }) + "\n\n" + scopeNote;
     return runAgent(clone, prompt, cwd, cfg, bus, abortController, undefined, {
@@ -443,7 +443,7 @@ export async function runWorkflow(
     }
 
     const agent: AgentDefinition = agents.get(current)!;
-    // Yalnızca entry ajan (architect) oturum sürdürür; diğerleri her koşuda taze
+    // Yalnızca entry ajan (analist) oturum sürdürür; diğerleri her koşuda taze
     const isEntry = agent.key === workflow.entry;
     const result = await runAgent(
       agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController,
@@ -463,7 +463,7 @@ export async function runWorkflow(
     if (agent.config.routes) {
       const { target, value } = resolveRoute(agent.config.routes, result.structured);
       routeTarget = target;
-      const note = `${agent.name} rotası: ${value ?? "(belirsiz)"} → ${target ?? "akış biter (developer çağrılmaz)"}`;
+      const note = `${agent.name} rotası: ${value ?? "(belirsiz)"} → ${target ?? "akış biter (saha timi çağrılmaz)"}`;
       console.log(`\n🧭 ${note}`);
       bus.emit({ type: "agent_text", agent: agent.key, text: `🧭 ${note}` });
     }
@@ -473,7 +473,7 @@ export async function runWorkflow(
     //    Rota akışı bitirecekse (routeTarget === null) onay ATLANMAZ: aksi halde
     //    ajan "gerek yok" deyip akışı sessizce bitirir, kullanıcıya söz düşmezdi.
     //    Onay = bitir; red = gerekçeyle aynı ajanı yeniden koştur (ör. "bu bir
-    //    değişiklik talebi, planla") — böylece developer'a boş planla gidilmez.
+    //    değişiklik talebi, planla") — böylece saha timine boş planla gidilmez.
     const endsFlow = routeTarget === null;
     if (agent.config.requiresUserApproval) {
       const approval = await askUserApproval(
@@ -544,7 +544,7 @@ export async function runWorkflow(
           }
           bus.emit({
             type: "workflow_failed",
-            error: `Maksimum döngü sayısına (${workflow.maxCycles}) ulaşıldı; reviewer onayı alınamadı`,
+            error: `Maksimum döngü sayısına (${workflow.maxCycles}) ulaşıldı; teftiş onayı alınamadı`,
           });
           return;
         }

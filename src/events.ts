@@ -54,7 +54,7 @@ export type OrchestratorEvent =
       /** Süre/tur/token ölçümü — panelde ajan satırının altında gösterilir */
       metrics?: AgentMetrics;
     }
-  // endsFlow: rota akışı bitiriyor (ör. architect route=done) — onaylanırsa
+  // endsFlow: rota akışı bitiriyor (ör. analist route=done) — onaylanırsa
   // sonraki adım yok, reddedilirse aynı ajan gerekçeyle yeniden koşar
   | {
       type: "approval_required";

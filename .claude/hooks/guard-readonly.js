@@ -1,4 +1,4 @@
-// PreToolUse hook'u: salt-okunur ajanların (ör. architect) dosya değiştirmesini
+// PreToolUse hook'u: salt-okunur ajanların (ör. analist) dosya değiştirmesini
 // ENGELLER. `allowedTools` sert bir sandbox değil — listede olmayan araç yine de
 // çalışabiliyor; asıl kapı bu hook.
 //
@@ -22,7 +22,7 @@ process.stdin.on("end", () => {
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) {
     process.stderr.write(
       `${tool} engellendi: bu ajan salt-okunur (plan üretir, kod yazmaz). ` +
-        `Değişikliği uygulama; plana yaz, uygulamayı developer yapacak.`,
+        `Değişikliği uygulama; plana yaz, uygulamayı saha timi yapacak.`,
     );
     process.exitCode = 2;
     return;

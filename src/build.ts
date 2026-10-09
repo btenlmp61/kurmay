@@ -105,7 +105,7 @@ function runOne(
 /**
  * Build koşusu (deterministik). Değişen dosyalardan repoları otomatik çıkarır,
  * parent'ı (değişmişse) öne alır ve sırayla build eder. İlk hata koşuyu durdurur;
- * başarısız repo ve log geri döner (developer'a geri bildirim olur).
+ * başarısız repo ve log geri döner (saha ajanına geri bildirim olur).
  */
 export async function runBuild(
   node: CommandNodeConfig,

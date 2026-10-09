@@ -207,10 +207,10 @@ document.addEventListener("pointerdown", (ev) => {
 
 let cfg = null, meta = { rules:[], skills:[], agents:[] }, selected = null, dirty = false;
 
-// Görünen adlar — config anahtarları (architect, developer…) teknik kalır, ekranda Türkçe
-const NODE_NAMES = { architect:"Analist", developer:"Saha ajanı", reviewer:"Teftiş" };
+// Görünen adlar — config anahtarları (analist, saha…) teknik kalır, ekranda tam Türkçe ad
+const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
 const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım" };
-const ROUTE_VALUES = { developer:"uygulama", done:"bitir", default:"varsayılan" };
+const ROUTE_VALUES = { implement:"uygulama", done:"bitir", default:"varsayılan" };
 const FIELD_NAMES = { route:"rota" };
 const EFFORT_NAMES = { low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
 const TOOL_NAMES = { Read:"Dosya oku", Write:"Dosya yaz", Edit:"Düzenle", MultiEdit:"Çoklu düzenle", NotebookEdit:"Defter düzenle",
@@ -222,7 +222,7 @@ const valName = (v)=> ROUTE_VALUES[v] || v;
 function nodeName(k){
   if (!k) return "";
   const n = cfg && nodes()[k];
-  if (isFan(n)) return n.agent === "developer" ? "Saha Timi" : `${nodeName(n.agent) || k} ekibi`;
+  if (isFan(n)) return n.agent === "saha" ? "Saha Timi" : `${nodeName(n.agent) || k} ekibi`;
   return NODE_NAMES[k] || k;
 }
 const STD_TOOLS = ["Read","Write","Edit","Glob","Grep","Bash","WebSearch","WebFetch","ToolSearch"];
@@ -245,7 +245,7 @@ function fanoutOwner(key){
 /**
  * Ajanı fanout'un işçisi yapar ve grafı geçerli tutar: işçinin next'i fanout'a
  * taşınır, işçiye gelen tüm kenarlar (ve entry) fanout'a çevrilir. Böylece
- * "developer'ı repo başına dağıt" tek seçimle olur. Hata varsa mesaj döner.
+ * "saha ajanını mıntıka başına dağıt" tek seçimle olur. Hata varsa mesaj döner.
  */
 function adoptWorker(fk, wk){
   const f = nodes()[fk], w = nodes()[wk];
@@ -326,7 +326,7 @@ function layout(){
 function drawGraph(){
   const { pos, w, h } = layout();
   // Aynı iki düğüm arasındaki kenarları TEK kenarda birleştir (etiketleri virgülle),
-  // yoksa architect→developer gibi paralel kenarlar üst üste binip karışıyordu.
+  // yoksa analist→saha gibi paralel kenarlar üst üste binip karışıyordu.
   const groups = {};
   for (const k of keys()) for (const e of outEdges(k)){
     if (!pos[k] || !pos[e.to]) continue;
@@ -699,10 +699,10 @@ $("ndAddBtn").addEventListener("click", async ()=>{
   if ($("ndType").value === "command"){
     node = { type:"command", command:"mvn clean install -q", onSuccess:null, onFailure: cfg.workflow.entry };
   } else if ($("ndType").value === "fanout"){
-    // Varsayılan işçi: developer (yoksa dallanmayan ilk ajan) — eklenir eklenmez sarılır
+    // Varsayılan işçi: saha (yoksa dallanmayan ilk ajan) — eklenir eklenmez sarılır
     node = { type:"fanout", agent:"", maxConcurrency:3, next:null };
     nodes()[key] = node;
-    const aday = ["developer", ...keys()].find((k)=> nodes()[k] && !isGate(nodes()[k]) && !nodes()[k].verdict
+    const aday = ["saha", ...keys()].find((k)=> nodes()[k] && !isGate(nodes()[k]) && !nodes()[k].verdict
       && !nodes()[k].routes && !fanoutOwner(k));
     if (aday) adoptWorker(key, aday);
   } else {

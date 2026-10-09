@@ -50,7 +50,7 @@ function snapshotConfig(cfg: AppConfig): AppConfig {
 
 /**
  * Bir oturumda tek bir görevi baştan sona koşturur; olaylar oturumun kanalına,
- * kayıt runs/'a gider. Oturumun ilk görevi değilse architect konuşması sürdürülür
+ * kayıt runs/'a gider. Oturumun ilk görevi değilse analist konuşması sürdürülür
  * (resume) ve panel önceki görevleri ekranda tutar. runtime.startRun ilk await'ten
  * ÖNCE çağrılır — oturum anında "meşgul" olur, çift başlatma olamaz.
  */
@@ -76,7 +76,7 @@ async function executeRun(o: {
   const runLog = path.join(o.runsDir, logName);
   o.sessions.addRunLog(entry.id, logName, task);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
-  // entrySessionId: architect'in SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
+  // entrySessionId: analistin SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
   const sessionStore = { entrySessionId: entry.sdkSessionId };
 
   console.log(`\n🎯 [${entry.name}] Görev: ${task}`);

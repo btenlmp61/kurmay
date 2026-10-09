@@ -1,5 +1,5 @@
 ---
-name: developer
+name: saha
 description: Saha Timi ajanı — Analist'in harekât planını kendi mıntıkasında (repo) koda döker
 output:
   type: object

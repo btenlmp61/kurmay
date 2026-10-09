@@ -10,7 +10,7 @@ export interface SessionEntry {
   name: string;
   createdAt: string;
   updatedAt: string;
-  /** Entry ajanın (architect) SDK oturum kimliği — sonraki görev bunu resume eder */
+  /** Entry ajanın (analist) SDK oturum kimliği — sonraki görev bunu resume eder */
   sdkSessionId?: string;
   /** Oturumun koşu kayıtları (runs/ altındaki .jsonl dosya adları, eskiden yeniye) —
    *  servis yeniden başlasa da geçmiş bunlardan yüklenir */
@@ -31,7 +31,7 @@ function nameFromTask(task: string): string {
 
 /**
  * İsimli oturumların kalıcı kataloğu (runs/sessions.json). Bir oturum, aynı
- * architect konuşmasını sürdüren görevler dizisidir; konuşmanın kendisi SDK
+ * analist konuşmasını sürdüren görevler dizisidir; konuşmanın kendisi SDK
  * tarafında (~/.claude/projects/) durur, burada metaveri + koşu kayıtları tutulur.
  */
 export class SessionStore {
@@ -86,7 +86,7 @@ export class SessionStore {
     this.persist();
   }
 
-  /** Bir koşu bittiğinde: architect'in SDK oturumunu sakla (sonraki görev resume eder) */
+  /** Bir koşu bittiğinde: analistin SDK oturumunu sakla (sonraki görev resume eder) */
   finishRun(id: string, sdkSessionId: string | undefined, status: SessionStatus): void {
     const s = this.get(id);
     if (!s) return;

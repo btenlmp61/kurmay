@@ -352,7 +352,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 .fchip.off { background:transparent; border-style:dashed; border-color:var(--border); color:var(--muted); }
 .fchip.off.skip .nm { text-decoration:line-through; }
 .fchip:disabled { cursor:wait; }
-/* Bilgi cevabı (architect route=done): Markdown biçimlendirilmiş okuma kartı.
+/* Bilgi cevabı (analist route=done): Markdown biçimlendirilmiş okuma kartı.
    Düz metin yığını yerine başlık/liste/tablo/kod — okuma yorgunluğunu azaltır. */
 #answerCard { border-color:var(--teal); }
 /* Şema gelmediğinde ajanın metni: düz <pre> yerine Markdown okuma kutusu */
@@ -592,19 +592,19 @@ document.addEventListener("pointerdown", (ev) => {
 
 const stateLabels = { pending: "bekliyor", running: "çalışıyor", done: "tamamlandı", rejected: "reddetti", disabled: "devre dışı" };
 
-// Kurmay heyeti: ajan anahtarının kökü ("developer@order" → developer) rolü belirler.
+// Kurmay heyeti: ajan anahtarının kökü ("saha@order" → saha) rolü belirler.
 // Teknik adlar (config/persona) değişmez — yalnızca panelde görünen adlar bunlar.
 // Tanınmayan ajanlar (config'e eklenen yeni personalar) adlarıyla, ortak renkle görünür.
 const ROLES = {
-  architect: { ad: "Analist", ic: "◎", c: "arch" },
-  developer: { ad: "Saha Timi", ic: "</>", c: "dev" },
-  reviewer: { ad: "Teftiş", ic: "✓", c: "rev" },
+  analist: { ad: "Analist", ic: "◎", c: "arch" },
+  saha: { ad: "Saha Timi", ic: "</>", c: "dev" },
+  teftis: { ad: "Teftiş", ic: "✓", c: "rev" },
 };
 // Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
 // harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
 const CODE_NAMES = ["Atmaca", "Doğan", "Şahin", "Kartal", "Kerkenez", "Turna", "Martı", "Leylek",
   "Ebabil", "Karabatak", "Toygar", "Çaylak", "Kumru", "Saka", "Serçe", "Sığırcık"];
-let codeNames = {};           // kopya anahtarı ("developer@order") → kod adı
+let codeNames = {};           // kopya anahtarı ("saha@order") → kod adı
 function assignCodeName(key) {
   if (codeNames[key]) return codeNames[key];
   const repo = key.slice(key.indexOf("@") + 1);
@@ -623,7 +623,7 @@ const mintika = (repo) => (repo === "." ? "merkez" : repo);
 const ACTION_NAMES = { create: "yeni", created: "yeni", modify: "değişecek", modified: "değişti", delete: "silinecek", deleted: "silindi" };
 const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek" };
 const SOURCE_NAMES = { web: "panel", terminal: "terminal", timer: "zamanlayıcı" };
-const ROUTE_VALUES = { developer: "uygulama", done: "bitir" };
+const ROUTE_VALUES = { implement: "uygulama", done: "bitir", developer: "uygulama" }; // son değer: eski kayıtlar
 const TOOL_NAMES = { Read: "Dosya oku", Write: "Dosya yaz", Edit: "Düzenle", MultiEdit: "Çoklu düzenle", NotebookEdit: "Defter düzenle",
   Glob: "Dosya bul", Grep: "Metin ara", Bash: "Komut", WebSearch: "İnternette ara", WebFetch: "Sayfa getir",
   ToolSearch: "Araç bul", TodoWrite: "Yapılacaklar", Task: "Alt görev", Agent: "Alt görev" };
@@ -631,13 +631,13 @@ function toolName(t) {
   if (t.startsWith("mcp__")) return "Eklenti: " + t.split("__").slice(1).join(" · ");
   return TOOL_NAMES[t] || t;
 }
-// Düğüm anahtarı ("developer-team") → ekrandaki ad; dağıtım düğümü işçisinin takım adıyla görünür
+// Düğüm anahtarı ("saha-timi") → ekrandaki ad; dağıtım düğümü işçisinin takım adıyla görünür
 function nodeName(key) {
   if (!key) return "";
   if (fanoutMeta[key]) return roleOf(fanoutMeta[key].agent).ad;
   return roleOf(key).ad;
 }
-// Orkestratör notlarındaki teknik adları çevir: "architect rotası: developer → developer-team"
+// Orkestratör notlarındaki teknik adları çevir: "analist rotası: implement → saha-timi"
 function noteText(t) {
   const rota = /^🧭 (\S+) rotası: (.+?) → (.+)$/u.exec(t);
   if (rota) {
@@ -647,9 +647,13 @@ function noteText(t) {
   }
   return t.replace(/^⚠ ([^\s:]+):/u, (_, k) => `⚠ ${roleOf(k).ad}:`).replace(/ \(error_[a-z_]+\)/g, "");
 }
+// Yeniden adlandırmadan (2026-10-09) önceki koşu kayıtlarındaki eski anahtarlar —
+// geçmiş oturumlar açıldığında da Türkçe adlarla görünsün
+const ESKI_ANAHTAR = { architect: "analist", developer: "saha", reviewer: "teftis" };
 function roleOf(key) {
   const at = key.indexOf("@");
-  const base = at < 0 ? key : key.slice(0, at);
+  const ham = at < 0 ? key : key.slice(0, at);
+  const base = ESKI_ANAHTAR[ham] || ham;
   const r = ROLES[base] || { ad: base, ic: (base[0] || "?").toUpperCase(), c: "other" };
   return { ...r, base, repo: at < 0 ? "" : key.slice(at + 1) };
 }
@@ -726,8 +730,8 @@ function markChanged(before, after) {
   return [outA.join(""), outB.join("")];
 }
 
-// Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
-// Tanınmayan yapı (örn. reviewer kararı) için null döner.
+// Analist'in file_plan'i veya saha ajanının changes'ı diff gibi render edilir.
+// Tanınmayan yapı (örn. teftiş kararı) için null döner.
 // commentable=true (sadece onay kartı) her hunk'ın altına yorum kutusu ekler.
 function renderDiff(structured, commentable) {
   if (!structured || typeof structured !== "object") return null;
@@ -856,7 +860,7 @@ function rawOutputHtml(text) {
     const diff = renderDiff(plan, true);
     const lead = typeof plan.summary === "string" && plan.summary ? `<p class="lead">${esc(plan.summary)}</p>` : "";
     const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metnin içine yazmış — ` +
-      `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (developer'a metin olarak gider, repo dağıtımı yapılmaz).</p>`;
+      `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (saha timine metin olarak gider, mıntıka dağıtımı yapılmaz).</p>`;
     if (diff) return not + lead + diff;
     if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>`;
   }
@@ -999,7 +1003,7 @@ function renderMarkdown(md) {
   return out.join("");
 }
 
-/** Yapılandırılmış çıktıda bilgi cevabı var mı (architect route=done) */
+/** Yapılandırılmış çıktıda bilgi cevabı var mı (analist route=done) */
 function hasAnswer(structured) {
   return !!(structured && typeof structured.answer === "string" && structured.answer.trim());
 }
@@ -1054,7 +1058,7 @@ function nodeCell(a) {
   if (st === "running" && runningSince[a]) {
     sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
   }
-  // Fanout kopyası "developer@repoA": kapsülde repo adı yeter, grup etiketi ajanı söylüyor
+  // Fanout kopyası "saha@repoA": kapsülde repo adı yeter, grup etiketi ajanı söylüyor
   const r = roleOf(a);
   const ad = r.repo ? `${agentName(a)} · ${mintika(r.repo)}` : r.ad;
   const odak = logFilter && logFilter.has(a) ? " focus" : "";
@@ -1065,7 +1069,7 @@ function nodeCell(a) {
 
 function renderPipeline() {
   // Bir fanout'un repo kopyaları hatta TEK hücre olarak çıkar: ilk kopyanın yerinde
-  // grup çizilir, diğerleri atlanır. Sıra "architect → [repoA|repoB] → reviewer" okunur.
+  // grup çizilir, diğerleri atlanır. Sıra "analist → [repoA|repoB] → teftis" okunur.
   const groupOf = {};                      // kopya anahtarı → fanout düğümü
   for (const [node, members] of Object.entries(groups)) {
     for (const m of members) groupOf[m] = node;
@@ -1127,7 +1131,7 @@ let logFilter = null;
 let logFilterCount = 0;
 
 const TAG_COLORS = ["var(--blue)", "var(--teal)", "var(--amber)", "var(--md-secondary)"];
-// Fanout kopyası ("developer@repoA") satırlarının başına renkli repo etiketi
+// Fanout kopyası ("saha@repoA") satırlarının başına renkli repo etiketi
 function agentTag(agent) {
   const at = agent.indexOf("@");
   if (at < 0) return "";
@@ -1458,7 +1462,7 @@ function handleEvent(e) {
       // red ise gerekçeyle yeniden planlatır. Zamanlama burada anlamsız, gizlenir.
       $("approvalTitle").textContent = e.endsFlow
         ? `${agentName(e.agent)} kod değişikliği gerekmediğini söylüyor`
-        : `${agentName(e.agent)} ${roleOf(e.agent).base === "architect" ? "harekât planı" : "çıktısı"} onayını bekliyor`;
+        : `${agentName(e.agent)} ${roleOf(e.agent).base === "analist" ? "harekât planı" : "çıktısı"} onayını bekliyor`;
       approvalEndsFlow = !!e.endsFlow;
       $("btnApprove").textContent = e.endsFlow ? "Bitir" : "Onayla";
       $("rejectComment").placeholder = e.endsFlow
@@ -1651,8 +1655,8 @@ function toLocalInput(d) {
 }
 
 // Zaman seçici çifti (preset + datetime-local) iki yerde var: onay kartında
-// (plan onaylanınca developer ne zaman başlasın) ve görev kartında (görevin
-// kendisi — architect dahil — ne zaman başlasın). Aynı kod ikisine bağlanır.
+// (plan onaylanınca saha timi ne zaman başlasın) ve görev kartında (görevin
+// kendisi — analist dahil — ne zaman başlasın). Aynı kod ikisine bağlanır.
 // "Belirli tarih/saat…" seçilince native picker'ı göster, alt sınırı ve
 // varsayılanı (şimdi+1 saat) ayarla
 function bindWhen(presetId, customId, onChange) {
@@ -2113,7 +2117,7 @@ $("modelSel").addEventListener("change", async () => {
 loadModels();
 
 // Akış çipleri: ana yoldaki düğümler sırayla; tıklayınca kapanır/açılır. Kalıcıdır
-// (config.json'a yazılır) — ör. küçük işler için architect'i kapatıp doğrudan developer'a ver.
+// (config.json'a yazılır) — ör. küçük işler için analisti kapatıp doğrudan saha timine ver.
 async function loadFlow() {
   let wf = { nodes: [] };
   try { wf = await (await fetch("/workflow")).json(); } catch {}
@@ -2170,7 +2174,7 @@ async function startTask() {
   if (!task) return;
   if (dirMissing) { $("taskError").textContent = "Hedef dizin bulunamadı — önce geçerli bir dizin seç"; return; }
   if (modelRequired && !currentModel) { $("taskError").textContent = "Model seçilmedi — üst çubuktan bir model seç"; return; }
-  // Zamanlanmış görev: architect dahil tüm akış seçilen saatte başlar
+  // Zamanlanmış görev: analist dahil tüm akış seçilen saatte başlar
   const runAt = readRunAt("taskWhenPreset", "taskWhenCustom");
   if ($("taskWhenPreset").value !== "0" && runAt === undefined) {
     $("taskError").textContent = "Seçilen zaman geçmişte ya da geçersiz";

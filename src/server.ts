@@ -14,7 +14,7 @@ export interface UiServer {
 export interface UiServerOptions {
   /** Oturum çalışma zamanları — olay akışı, onay/zamanlama/iptal oturum başına */
   runtimes: RuntimeRegistry;
-  /** Panelden görev (POST /task). session verilirse o oturumda devam (architect
+  /** Panelden görev (POST /task). session verilirse o oturumda devam (analist
    *  konuşması sürdürülür), yoksa yeni oturum açılır. Kabul edilirse oturum id'si döner. */
   onTask?: (
     task: string,

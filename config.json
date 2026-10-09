@@ -27,11 +27,11 @@
     }
   },
   "workflow": {
-    "entry": "architect",
+    "entry": "analist",
     "maxCycles": 5,
     "agents": {
-      "architect": {
-        "file": ".claude/agents/architect.md",
+      "analist": {
+        "file": ".claude/agents/analist.md",
         "tools": [
           "Read",
           "Glob",
@@ -52,20 +52,20 @@
         "routes": {
           "field": "route",
           "cases": {
-            "developer": "developer-team",
+            "implement": "saha-timi",
             "done": null
           },
-          "default": "developer-team"
+          "default": "saha-timi"
         }
       },
-      "developer-team": {
+      "saha-timi": {
         "type": "fanout",
-        "agent": "developer",
+        "agent": "saha",
         "maxConcurrency": 3,
-        "next": "reviewer"
+        "next": "teftis"
       },
-      "developer": {
-        "file": ".claude/agents/developer.md",
+      "saha": {
+        "file": ".claude/agents/saha.md",
         "tools": [
           "Read",
           "Write",
@@ -83,8 +83,8 @@
           "test-yazimi"
         ]
       },
-      "reviewer": {
-        "file": ".claude/agents/reviewer.md",
+      "teftis": {
+        "file": ".claude/agents/teftis.md",
         "tools": [
           "Read",
           "Glob",
@@ -98,7 +98,7 @@
         ],
         "verdict": {
           "onApprove": null,
-          "onReject": "developer-team"
+          "onReject": "saha-timi"
         }
       }
     }
