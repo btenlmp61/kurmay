@@ -55,11 +55,11 @@ export function loadAppConfig(configPath: string): AppConfig {
     }
   }
 
-  if (
-    cfg.disabledSkills !== undefined &&
-    (!Array.isArray(cfg.disabledSkills) || cfg.disabledSkills.some((s) => typeof s !== "string"))
-  ) {
-    throw new Error(`config: "disabledSkills" beceri adlarından oluşan bir liste olmalı (verilen: ${JSON.stringify(cfg.disabledSkills)})`);
+  for (const [key, ne] of [["disabledSkills", "beceri"], ["disabledRules", "kural"]] as const) {
+    const list = cfg[key];
+    if (list !== undefined && (!Array.isArray(list) || list.some((s) => typeof s !== "string"))) {
+      throw new Error(`config: "${key}" ${ne} adlarından oluşan bir liste olmalı (verilen: ${JSON.stringify(list)})`);
+    }
   }
   for (const [name, server] of Object.entries(cfg.mcpServers ?? {})) {
     if (server.disabled !== undefined && typeof server.disabled !== "boolean") {

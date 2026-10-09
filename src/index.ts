@@ -40,9 +40,9 @@ function parseArgs(argv: string[]): {
   return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi, atFlag };
 }
 
-/** Aç/Kapat sayfasında kapatılan beceri ve MCP sunucuları — loadAgents prompt'a almaz */
-function offOf(cfg: AppConfig): { skills: string[]; mcpServers: string[] } {
-  return { skills: cfg.disabledSkills ?? [], mcpServers: disabledMcpServers(cfg) };
+/** Aç/Kapat sayfasında kapatılan kural, beceri ve MCP sunucuları — loadAgents prompt'a almaz */
+function offOf(cfg: AppConfig): { skills: string[]; rules: string[]; mcpServers: string[] } {
+  return { skills: cfg.disabledSkills ?? [], rules: cfg.disabledRules ?? [], mcpServers: disabledMcpServers(cfg) };
 }
 
 /**
@@ -261,6 +261,13 @@ async function main() {
     // Diskteki beceri klasörleri + düğümlerde adı geçip diskte olmayanlar
     const skillNames = new Set(lsClaude("skills").filter((e) => e.isDirectory()).map((e) => e.name));
     for (const [, n] of agentNodes) for (const s of (n as { skills?: string[] }).skills ?? []) skillNames.add(s);
+    // Kurallar: diskteki .claude/rules/*.md + düğümlerde adı geçip diskte olmayanlar
+    const ruleNames = new Set(
+      lsClaude("rules")
+        .filter((e) => e.isFile() && e.name.endsWith(".md"))
+        .map((e) => e.name.replace(/\.md$/, "")),
+    );
+    for (const [, n] of agentNodes) for (const r of (n as { rules?: string[] }).rules ?? []) ruleNames.add(r);
     return {
       entry: cfg.workflow.entry,
       agents: Object.entries(nodes).map(([key, n]) => ({
@@ -271,6 +278,26 @@ async function main() {
         ...(isFanoutNode(n) ? { worker: n.agent } : {}),
         ...(workerOf.has(key) ? { fanout: workerOf.get(key) } : {}),
       })),
+      rules: [...ruleNames].sort().map((name) => {
+        // Kural dosyasında başlık/açıklama yok — ilk dolu satırı özet olarak göster
+        let first: string | undefined;
+        try {
+          const text = fs.readFileSync(path.join(configRoot, ".claude", "rules", `${name}.md`), "utf8");
+          first = text
+            .split(/\r?\n/)
+            .map((l) => l.replace(/^\s*(?:[-*+]|\d+\.|#+)\s*/, "").trim())
+            .find((l) => l && l !== "---");
+        } catch {
+          /* dosya yok */
+        }
+        return {
+          name,
+          description: first ? (first.length > 160 ? first.slice(0, 157) + "…" : first) : "",
+          missing: first === undefined,
+          disabled: off.rules.includes(name),
+          usedBy: agentNodes.filter(([, n]) => (n as { rules?: string[] }).rules?.includes(name)).map(([k]) => k),
+        };
+      }),
       skills: [...skillNames].sort().map((name) => {
         const info = skillInfo(name, configRoot);
         return {
@@ -292,7 +319,7 @@ async function main() {
   };
 
   /**
-   * Aç/Kapat: ajan düğümü (disabled), beceri (disabledSkills) ya da MCP sunucusu
+   * Aç/Kapat: ajan düğümü (disabled), kural (disabledRules), beceri (disabledSkills) ya da MCP sunucusu
    * (mcpServers.<ad>.disabled). config.json'a yazılır; beceri/eklentide ajan
    * prompt'ları yeniden derlenir. Sıradaki görev görür, çalışan koşu etkilenmez.
    */
@@ -307,14 +334,18 @@ async function main() {
       // Bellekteki config'in yeni hali — yerinde değiştirilmez: çalışan koşunun
       // kopyası ({...cfg}) eski dizi/nesneyi tutmaya devam etsin
       let nextSkills = cfg.disabledSkills;
+      let nextRules = cfg.disabledRules;
       let nextMcp = cfg.mcpServers;
-      if (kind === "skill") {
-        const set = new Set(parsed.disabledSkills ?? []);
+      if (kind === "skill" || kind === "rule") {
+        // Kural ve beceri aynı desen: üst düzey ad listesi, boşalınca alan silinir
+        const field = kind === "skill" ? "disabledSkills" : "disabledRules";
+        const set = new Set(parsed[field] ?? []);
         if (disabled) set.add(name);
         else set.delete(name);
-        if (set.size > 0) parsed.disabledSkills = [...set];
-        else delete parsed.disabledSkills;
-        nextSkills = parsed.disabledSkills;
+        if (set.size > 0) parsed[field] = [...set];
+        else delete parsed[field];
+        if (kind === "skill") nextSkills = parsed[field];
+        else nextRules = parsed[field];
       } else {
         const server = parsed.mcpServers?.[name];
         if (!server) return { ok: false, error: `eklenti ayar dosyasında yok: ${name}` };
@@ -325,8 +356,13 @@ async function main() {
       }
       fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
       loadAppConfig(resolvedConfigPath); // yapı doğrulaması
-      const nextAgents = loadAgents(cfg.workflow, configRoot, offOf({ ...cfg, disabledSkills: nextSkills, mcpServers: nextMcp }));
+      const nextAgents = loadAgents(
+        cfg.workflow,
+        configRoot,
+        offOf({ ...cfg, disabledSkills: nextSkills, disabledRules: nextRules, mcpServers: nextMcp }),
+      );
       cfg.disabledSkills = nextSkills;
+      cfg.disabledRules = nextRules;
       cfg.mcpServers = nextMcp;
       agents = nextAgents; // sıradaki görev yeni prompt'larla başlar
       return { ok: true };

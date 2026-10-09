@@ -148,6 +148,12 @@ function render() {
     if (a.key === data.entry) tags.push(`<span class="tag">başlangıç</span>`);
     return row({ kind: "agent", name: a.key, title: nodeName(a.key), sub: a.description, icon, color, tags, on: !a.disabled });
   });
+  const ruleRows = (data.rules || []).map((r) => row({
+    kind: "rule", name: r.name, title: r.name, icon: "§", color: "var(--red)",
+    sub: [r.description, usedByText(r.usedBy)].filter(Boolean).join(" · "),
+    tags: r.missing ? [`<span class="tag warn">dosyası yok</span>`] : [],
+    on: !r.disabled,
+  }));
   const skillRows = data.skills.map((s) => row({
     kind: "skill", name: s.name, title: s.name, icon: "📘", color: "var(--amber)",
     sub: [s.description, usedByText(s.usedBy)].filter(Boolean).join(" · "),
@@ -162,6 +168,9 @@ function render() {
     section("Ajanlar", agentRows,
       "Kapalı ajan akışta atlanır, akış onun ardından gelen adımla sürer. Saha Timi kapalıysa hiçbir mıntıkada kod yazılmaz.",
       "Akışta ajan yok.") +
+    section("Kurallar", ruleRows,
+      "Kurallar ajanın talimatına her zaman eklenen kısıtlardır. Kapalı kural, ajanın ayarlarında listelenmiş olsa bile hiçbir ajana verilmez.",
+      "Henüz kural yok.") +
     section("Beceriler", skillRows,
       "Kapalı beceri, ajanın ayarlarında listelenmiş olsa bile hiçbir ajana sunulmaz.",
       "Henüz beceri yok.") +

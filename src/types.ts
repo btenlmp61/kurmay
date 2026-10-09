@@ -307,6 +307,9 @@ export interface ProviderConfig {
   /** Kapalı beceriler (.claude/skills/<ad>): hiçbir ajanın prompt'una girmez, ajan
    *  düğümünde listelenmiş olsa bile. Aç/Kapat sayfasından canlı değiştirilir. */
   disabledSkills?: string[];
+  /** Kapalı kurallar (.claude/rules/<ad>.md): hiçbir ajanın prompt'una girmez, ajan
+   *  düğümünde listelenmiş olsa bile. Aç/Kapat sayfasından canlı değiştirilir. */
+  disabledRules?: string[];
   /** Maliyet/süre sınırları (opsiyonel) — yavaş yerel modeller için */
   limits?: LimitsConfig;
   /** Bağlantı koptuğunda yeniden deneme (opsiyonel) — verilmezse sınırsız denenir */

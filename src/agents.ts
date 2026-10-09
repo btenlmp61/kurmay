@@ -155,8 +155,8 @@ const ESKI_PERSONA: Record<string, string> = {
 export function loadAgents(
   workflow: WorkflowConfig,
   projectRoot: string,
-  /** Aç/Kapat sayfasında kapatılan beceriler ve MCP sunucuları — prompt'a girmez */
-  off: { skills?: readonly string[]; mcpServers?: readonly string[] } = {},
+  /** Aç/Kapat sayfasında kapatılan kurallar, beceriler ve MCP sunucuları — prompt'a girmez */
+  off: { skills?: readonly string[]; rules?: readonly string[]; mcpServers?: readonly string[] } = {},
 ): Map<string, AgentDefinition> {
   const agents = new Map<string, AgentDefinition>();
 
@@ -213,7 +213,9 @@ export function loadAgents(
     const { data, content } = matter(fs.readFileSync(mdPath, "utf8"));
     validateEdges(key, config, workflow, workerOf.get(key) ?? null);
 
-    const rules = (config.rules ?? []).map((name) => loadRule(name, projectRoot, key));
+    const rules = (config.rules ?? [])
+      .filter((name) => !off.rules?.includes(name))
+      .map((name) => loadRule(name, projectRoot, key));
     const skills = (config.skills ?? [])
       .filter((name) => !off.skills?.includes(name))
       .map((name) => loadSkill(name, projectRoot, key));

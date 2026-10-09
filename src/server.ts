@@ -51,8 +51,8 @@ function browseDir(requested: string, fallback: string) {
   }
 }
 
-/** Aç/Kapat sayfasındaki anahtar türleri: ajan düğümü, beceri, MCP sunucusu */
-export type ToggleKind = "agent" | "skill" | "mcp";
+/** Aç/Kapat sayfasındaki anahtar türleri: ajan düğümü, kural, beceri, MCP sunucusu */
+export type ToggleKind = "agent" | "rule" | "skill" | "mcp";
 
 export interface UiServerOptions {
   /** Oturum çalışma zamanları — olay akışı, onay/zamanlama/iptal oturum başına */
@@ -127,7 +127,7 @@ export interface UiServerOptions {
  *   POST /agent-md-save   { file, body, description } | { file, raw } — doğrulayıp kaydeder (canlı)
  *   GET  /toggles       Aç/Kapat sayfası (ui/toggles.html)
  *   GET  /toggles-data  { entry, agents[], skills[], mcpServers[] } — açık/kapalı durumları
- *   POST /toggle        { kind: "agent"|"skill"|"mcp", name, disabled } — açar/kapatır (canlı + config.json)
+ *   POST /toggle        { kind: "agent"|"rule"|"skill"|"mcp", name, disabled } — açar/kapatır (canlı + config.json)
  */
 export function startUiServer(port: number, options: UiServerOptions): Promise<UiServer> {
   const uiDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
@@ -452,7 +452,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
     if (req.method === "POST" && req.url === "/toggle") {
       readJson(req, (parsed) => {
         const kind = parsed?.kind;
-        if (kind !== "agent" && kind !== "skill" && kind !== "mcp") {
+        if (kind !== "agent" && kind !== "rule" && kind !== "skill" && kind !== "mcp") {
           return json(res, 400, { ok: false, error: "geçersiz istek" });
         }
         const name = String(parsed?.name ?? "");
