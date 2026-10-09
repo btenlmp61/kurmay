@@ -5,6 +5,8 @@ export type OrchestratorEvent =
       type: "workflow_started";
       task: string;
       provider: string;
+      /** Bu koşunun modeli (oturuma özel ya da genel varsayılan; boş = sağlayıcı varsayılanı) */
+      model?: string;
       targetDir: string;
       entry: string;
       maxCycles: number;

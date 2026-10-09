@@ -85,6 +85,7 @@ async function executeRun(o: {
       type: "workflow_started",
       task,
       provider: cfg.provider,
+      model: cfg.model,
       targetDir: cwd,
       entry: cfg.workflow.entry,
       maxCycles: cfg.workflow.maxCycles,
@@ -179,17 +180,21 @@ async function main() {
         task: rt?.task ?? e.lastTask,
         cwd: rt?.cwd,
         runs: e.runLogs?.length ?? 0,
+        model: e.model,
       };
     });
 
   /** Bir oturumda görev başlatır (oturum yoksa açar); arka planda koşar */
   const launch = (task: string, entry: SessionEntry | undefined, runAt?: number) => {
-    const e = entry ?? sessions.create(task);
+    // Yeni oturum o anki genel modelle açılır; sonra panelden yalnızca kendisi için değişebilir
+    const e = entry ?? sessions.create(task, cfg.model);
+    const runCfg = snapshotConfig(cfg);
+    if (e.model) runCfg.model = e.model;
     const runtime = runtimes.get(e.id, e.runLogs);
     const run = executeRun({
       task,
       // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
-      cfg: snapshotConfig(cfg),
+      cfg: runCfg,
       agents,
       cwd,
       runtime,
@@ -296,7 +301,17 @@ async function main() {
           return { current, required, models: [], error: e instanceof Error ? e.message : String(e) };
         }
       },
-      setModel: (model) => {
+      setModel: (model, sessionId) => {
+        // Oturuma özel: config.json'a dokunmaz, yalnızca o oturumun sıradaki görevi etkilenir
+        if (sessionId) {
+          if (!sessions.get(sessionId)) return { ok: false, error: "oturum bulunamadı" };
+          if (!model && modelMissing(cfg)) {
+            return { ok: false, error: "Genel varsayılan model de seçili değil — bir model seç" };
+          }
+          sessions.setModel(sessionId, model);
+          runtimes.notify();
+          return { ok: true, model };
+        }
         const prev = fs.readFileSync(resolvedConfigPath, "utf8");
         try {
           const parsed = JSON.parse(prev) as Record<string, unknown>;
@@ -347,7 +362,8 @@ async function main() {
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, sessionId, runAt) => {
-            if (modelMissing(cfg)) {
+            const existing = sessionId ? sessions.get(sessionId) : undefined;
+            if (modelMissing({ ...cfg, model: existing?.model || cfg.model })) {
               return { ok: false, error: "Model seçilmedi — üst çubuktaki model listesinden bir model seç" };
             }
             if (!dirOk(cwd)) {

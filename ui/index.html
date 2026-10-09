@@ -950,7 +950,7 @@ function handleEvent(e) {
       setStatus("çalışıyor", "run");
       renderPipeline();
       if (e.resumed) addLog(e.ts, "──────── aynı oturumda yeni görev ────────", "muted");
-      addLog(e.ts, `iş akışı başladı · 📁 ${esc(e.targetDir)}`);
+      addLog(e.ts, `iş akışı başladı · 📁 ${esc(e.targetDir)}${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -1409,6 +1409,7 @@ function openSession(id) {
   resetView();
   renderSessions();
   updateTaskCtx();
+  applyViewModel();
   if (!viewSessionId) {
     viewBusy = false;
     $("task").textContent = "yeni oturum";
@@ -1492,6 +1493,7 @@ lobby.onmessage = (m) => {
   if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
   renderSessions();
   updateTaskCtx();
+  if (viewModel() !== currentModel) applyViewModel(); // başka sekmeden değişmiş olabilir
 };
 
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
@@ -1572,7 +1574,21 @@ $("btnDirFix").addEventListener("click", showDirEditor);
 
 // Model seçimi: liste config'teki modelsUrl'den sunucu üzerinden çekilir (API
 // anahtarı tarayıcıya hiç gelmez). Seçim config.json'a yazılır, sıradaki görev kullanır.
-let currentModel = "";
+let currentModel = "";   // izlenen oturumun (ya da taslakta genel varsayılanın) modeli
+let globalModel = "";    // yeni oturumların varsayılanı (config.json)
+let modelList = [], modelListError;
+
+// Model oturuma özeldir: oturum seçiliyse onun modeli, taslakta genel varsayılan
+function viewModel() {
+  const s = sessionsById[viewSessionId];
+  return (s && s.model) || globalModel;
+}
+function applyViewModel() {
+  currentModel = viewModel();
+  fillModelSelect(modelList, modelListError);
+  updateStartGate();
+}
+
 function fillModelSelect(models, error) {
   const sel = $("modelSel");
   // Ollama'da "varsayılan" model yok — boş seçenek "seçilmedi" uyarısı olur
@@ -1592,16 +1608,19 @@ function fillModelSelect(models, error) {
   sel.value = currentModel;
   const eksik = modelRequired && !currentModel;
   sel.title = error ? `Model listesi alınamadı: ${error}`
-    : eksik ? "Model seçilmedi — görev başlatmak için bir model seç" : "Model — sıradaki görevde kullanılır";
+    : eksik ? "Model seçilmedi — görev başlatmak için bir model seç"
+    : viewSessionId ? "Bu oturumun modeli — oturumdaki sıradaki görevde kullanılır (diğer oturumlar etkilenmez)"
+    : "Yeni oturumların varsayılan modeli";
   sel.style.borderColor = error || eksik ? "var(--red)" : "";
 }
 async function loadModels() {
   try {
     const data = await (await fetch("/models")).json();
-    currentModel = data.current || "";
+    globalModel = data.current || "";
     modelRequired = !!data.required;
-    fillModelSelect(data.models || [], data.error);
-    updateStartGate();
+    modelList = data.models || [];
+    modelListError = data.error;
+    applyViewModel();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
   }
@@ -1612,14 +1631,20 @@ $("modelSel").addEventListener("change", async () => {
     const res = await fetch("/model", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, session: viewSessionId || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
-      currentModel = model;
-      updateStartGate();
-      $("modelSel").style.borderColor = modelRequired && !model ? "var(--red)" : "";
-      addLog(new Date().toISOString(), `🧠 model değiştirildi: ${esc(model || "varsayılan")} — sıradaki görevde geçerli`, "ok");
+      const s = sessionsById[viewSessionId];
+      if (s) {
+        if (model) s.model = model; else delete s.model;
+      } else {
+        globalModel = model;
+      }
+      applyViewModel();
+      addLog(new Date().toISOString(), s
+        ? `🧠 bu oturumun modeli: ${esc(model || "genel varsayılan")} — oturumdaki sıradaki görevde geçerli`
+        : `🧠 yeni oturumların varsayılan modeli: ${esc(model || "varsayılan")}`, "ok");
     } else {
       alert(data.error || "model kaydedilemedi");
       $("modelSel").value = currentModel;

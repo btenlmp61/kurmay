@@ -41,7 +41,8 @@ export interface UiServerOptions {
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
   getModels?: () => Promise<{ current: string; required?: boolean; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
-  setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
+  /** session verilirse yalnızca o oturumun modeli, yoksa genel varsayılan (config.json) değişir */
+  setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -288,14 +289,17 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => {
         let model = "";
+        let session: string | undefined;
         try {
-          model = String((JSON.parse(body) as { model?: unknown }).model ?? "").trim();
+          const parsed = JSON.parse(body) as { model?: unknown; session?: unknown };
+          model = String(parsed.model ?? "").trim();
+          if (typeof parsed.session === "string" && parsed.session) session = parsed.session;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
           return;
         }
-        const r = options.setModel ? options.setModel(model) : { ok: false, error: "kapalı" };
+        const r = options.setModel ? options.setModel(model, session) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });

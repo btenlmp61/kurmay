@@ -18,6 +18,9 @@ export interface SessionEntry {
   /** Son koşunun görevi ve bitiş durumu — runtime belleğe alınmadan da lobide görünsün */
   lastTask?: string;
   lastStatus?: SessionStatus;
+  /** Oturumun modeli — oturum açılırken genel varsayılandan alınır, sonra panelden
+   *  yalnızca bu oturum için değiştirilebilir. Yoksa (eski kayıt) genel model geçerli. */
+  model?: string;
 }
 
 /** Görev metninden kısa bir oturum ismi türetir */
@@ -63,9 +66,10 @@ export class SessionStore {
   }
 
   /** İlk görevle yeni bir oturum açar (henüz SDK oturumu yok) */
-  create(task: string): SessionEntry {
+  create(task: string, model?: string): SessionEntry {
     const now = new Date().toISOString();
     const entry: SessionEntry = { id: randomUUID(), name: nameFromTask(task), createdAt: now, updatedAt: now, runLogs: [] };
+    if (model) entry.model = model;
     this.list.push(entry);
     this.persist();
     return entry;
@@ -90,6 +94,16 @@ export class SessionStore {
     s.lastStatus = status;
     s.updatedAt = new Date().toISOString();
     this.persist();
+  }
+
+  /** Oturumun modelini değiştirir ("" = genel varsayılana dön); sıradaki görevde geçerli */
+  setModel(id: string, model: string): boolean {
+    const s = this.get(id);
+    if (!s) return false;
+    if (model) s.model = model;
+    else delete s.model;
+    this.persist();
+    return true;
   }
 
   /** Katalogdan bir oturumu siler (SDK konuşması ve koşu kayıtları korunur); silindiyse true */
