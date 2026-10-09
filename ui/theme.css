@@ -5,12 +5,11 @@
    kendi <style> bloklarında kalır. */
 
 :root {
-  /* — M3 renk rolleri (light). Kaynak ton mavi (#185FA5, marka rengi — DEĞİŞMEDİ)
-     ama container/on-container çiftleri artık gerçek M3 ton-eşleme ile hesaplı:
-     container ≈ tone 90 (çok açık), on-container ≈ tone 10-20 (koyu, kontrastlı) —
-     önceki sürümde on-container primary'ye çok yakındı, kontrast/M3 hissi zayıftı. */
-  --md-primary:#185FA5; --md-on-primary:#ffffff;
-  --md-primary-container:#D3E4FF; --md-on-primary-container:#001D36;
+  /* — M3 renk rolleri (light). Kaynak ton menekşe ("ekip sohbeti" tasarımı —
+     eski kurumsal maviden daha sıcak, kod asistanı hissi). container ≈ tone 90
+     (çok açık), on-container ≈ tone 10-20 (koyu, kontrastlı). */
+  --md-primary:#6A4BDB; --md-on-primary:#ffffff;
+  --md-primary-container:#E8E0FF; --md-on-primary-container:#21005E;
   --md-secondary:#0F6E56; --md-on-secondary:#ffffff;
   --md-secondary-container:#B7F1DD; --md-on-secondary-container:#002014;
   --md-tertiary:#854F0B; --md-on-tertiary:#ffffff;
@@ -22,14 +21,14 @@
      (mavi, ~208°) hafif kaymış "cool" nötrler. Önceki sürüm sıcak bej/gri
      kullanıyordu (f7f6f3) ve mavi primary ile çatışıp jenerik bir "dashboard"
      hissi veriyordu; asıl "Material'a benzemiyor" şikâyetinin kaynağı buydu. */
-  --md-surface:#F6F8FC;
+  --md-surface:#F6F4FC;
   --md-surface-container-lowest:#FFFFFF;
-  --md-surface-container-low:#F0F3F9;
-  --md-surface-container:#EAEDF4;
-  --md-surface-container-high:#E4E8F0;
-  --md-surface-container-highest:#DEE2EB;
-  --md-on-surface:#1A1C1F; --md-on-surface-variant:#43474B;
-  --md-outline:#73777D; --md-outline-variant:#C3C7CE;
+  --md-surface-container-low:#F1EEFA;
+  --md-surface-container:#EBE7F6;
+  --md-surface-container-high:#E5E1F1;
+  --md-surface-container-highest:#DEDAEB;
+  --md-on-surface:#1C1A26; --md-on-surface-variant:#4A4659;
+  --md-outline:#787386; --md-outline-variant:#CBC5DA;
   --md-shadow:#000000;
 
   /* — Geriye dönük takma adlar: iki dosyanın JS'i (string/inline style
@@ -76,8 +75,8 @@
    :not() ile devre dışı kalır — manuel açık seçim OS koyu tercihini ezer. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --md-primary:#A0C9FF; --md-on-primary:#00325A;
-    --md-primary-container:#004881; --md-on-primary-container:#D3E4FF;
+    --md-primary:#CBBEFF; --md-on-primary:#33168F;
+    --md-primary-container:#4A31B8; --md-on-primary-container:#E8DEFF;
     --md-secondary:#93D5BD; --md-on-secondary:#003829;
     --md-secondary-container:#00513C; --md-on-secondary-container:#B0F1DA;
     --md-tertiary:#FFB945; --md-on-tertiary:#452B00;
@@ -85,14 +84,14 @@
     --md-error:#FFB4A9; --md-on-error:#680003;
     --md-error-container:#93000A; --md-on-error-container:#FFDAD4;
 
-    --md-surface:#111318;
-    --md-surface-container-lowest:#0C0E13;
-    --md-surface-container-low:#191C20;
-    --md-surface-container:#1D2024;
-    --md-surface-container-high:#282A2F;
-    --md-surface-container-highest:#33353A;
-    --md-on-surface:#E2E2E6; --md-on-surface-variant:#C4C6CF;
-    --md-outline:#8D9099; --md-outline-variant:#43474B;
+    --md-surface:#131218;
+    --md-surface-container-lowest:#0D0C12;
+    --md-surface-container-low:#1B1A21;
+    --md-surface-container:#211F28;
+    --md-surface-container-high:#2B2933;
+    --md-surface-container-highest:#36343E;
+    --md-on-surface:#E6E3EE; --md-on-surface-variant:#C9C4D6;
+    --md-outline:#938EA0; --md-outline-variant:#48454F;
     --md-shadow:#000000;
 
     --blue:var(--md-primary); --blueBg:var(--md-primary-container);
@@ -103,8 +102,8 @@
 }
 
 :root[data-theme="dark"] {
-  --md-primary:#A0C9FF; --md-on-primary:#00325A;
-  --md-primary-container:#004881; --md-on-primary-container:#D3E4FF;
+  --md-primary:#CBBEFF; --md-on-primary:#33168F;
+  --md-primary-container:#4A31B8; --md-on-primary-container:#E8DEFF;
   --md-secondary:#93D5BD; --md-on-secondary:#003829;
   --md-secondary-container:#00513C; --md-on-secondary-container:#B0F1DA;
   --md-tertiary:#FFB945; --md-on-tertiary:#452B00;
@@ -112,14 +111,14 @@
   --md-error:#FFB4A9; --md-on-error:#680003;
   --md-error-container:#93000A; --md-on-error-container:#FFDAD4;
 
-  --md-surface:#111318;
-  --md-surface-container-lowest:#0C0E13;
-  --md-surface-container-low:#191C20;
-  --md-surface-container:#1D2024;
-  --md-surface-container-high:#282A2F;
-  --md-surface-container-highest:#33353A;
-  --md-on-surface:#E2E2E6; --md-on-surface-variant:#C4C6CF;
-  --md-outline:#8D9099; --md-outline-variant:#43474B;
+  --md-surface:#131218;
+  --md-surface-container-lowest:#0D0C12;
+  --md-surface-container-low:#1B1A21;
+  --md-surface-container:#211F28;
+  --md-surface-container-high:#2B2933;
+  --md-surface-container-highest:#36343E;
+  --md-on-surface:#E6E3EE; --md-on-surface-variant:#C9C4D6;
+  --md-outline:#938EA0; --md-outline-variant:#48454F;
   --md-shadow:#000000;
 
   --blue:var(--md-primary); --blueBg:var(--md-primary-container);

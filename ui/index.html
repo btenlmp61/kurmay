@@ -17,30 +17,58 @@
 })();
 </script>
 <style>
-body { padding:28px; max-width:1700px; margin-inline:auto; }
-.layout { display:flex; gap:20px; align-items:flex-start; }
-.main { flex:1; min-width:0; }
-.sidebar { flex:0 0 260px; width:260px; background:var(--md-surface-container-low); border:1px solid var(--border); border-radius:var(--md-shape-lg); padding:14px; position:sticky; top:28px; max-height:calc(100vh - 56px); overflow:auto; }
-.sidebar.collapsed { flex-basis:auto; width:auto; }
-.sidebar.collapsed .sidebar-body { display:none; }
-.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
-.sidebar-head .label { margin:0; }
+/* ── "Ekip sohbeti" yerleşimi: solda oturumlar, ortada ekiple sohbet (ajan
+   mesajları + kartlar + yazma kutusu), sağda koşu özeti (repolar, değişen
+   dosyalar, oturum bilgisi). Orta sütun ekran boyu kadar, kendi içinde kayar. */
+:root {
+  /* Ajan rolleri — her ekip üyesinin kendi rengi/avatarı (mesaj, hat, sidebar) */
+  --arch:#6A4BDB; --archBg:#ECE6FF; --dev:#1F7AE0; --devBg:#E1EEFF;
+  --rev:#12925F; --revBg:#D9F5E8; --oth:#B0601F; --othBg:#FFEBDC;
+  --bubble:var(--md-surface-container-lowest); --chatBg:var(--md-surface);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --arch:#C9BBFF; --archBg:#3A2D6E; --dev:#8CC4FF; --devBg:#173A60;
+    --rev:#7FDDB2; --revBg:#174331; --oth:#FFB98C; --othBg:#4B2C15;
+    --bubble:var(--md-surface-container); --chatBg:var(--md-surface-container-lowest);
+  }
+}
+:root[data-theme="dark"] {
+  --arch:#C9BBFF; --archBg:#3A2D6E; --dev:#8CC4FF; --devBg:#173A60;
+  --rev:#7FDDB2; --revBg:#174331; --oth:#FFB98C; --othBg:#4B2C15;
+  --bubble:var(--md-surface-container); --chatBg:var(--md-surface-container-lowest);
+}
+body { overflow:hidden; }
+.layout { display:grid; grid-template-columns:272px minmax(0,1fr) 320px; height:100vh; }
+.main { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--chatBg);
+  background-image:radial-gradient(900px 420px at 85% -12%, color-mix(in srgb, var(--md-primary) 12%, transparent), transparent); }
+.mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
+
+/* — Sol: marka + yeni görev + oturumlar — */
+.sidebar { background:var(--md-surface-container-low); border-right:1px solid var(--border); padding:18px 14px; overflow:auto; }
+.sidebar.collapsed { width:auto; }
+.sidebar.collapsed .sidebar-body, .sidebar.collapsed .brand-name { display:none; }
+.layout:has(.sidebar.collapsed) { grid-template-columns:64px minmax(0,1fr) 320px; }
+.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 4px 18px; }
+.sidebar-head .brand { font:800 18px system-ui,"Segoe UI",sans-serif; }
+.sidebar-head .brand-logo { width:34px; height:34px; padding:5px; border-radius:11px; background:var(--md-surface-container-lowest); box-shadow:var(--md-elev-1); }
 .sidebar-head button { padding:2px 9px; font-size:13px; min-height:auto; }
-.sess { display:flex; align-items:center; gap:6px; padding:10px 12px; border-radius:var(--md-shape-full); cursor:pointer; border:1px solid transparent; margin-bottom:4px; position:relative; overflow:hidden; transition:background-color var(--md-motion); }
+.side-label { margin:18px 8px 8px; }
+.sess { display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:14px; cursor:pointer; margin-bottom:3px; position:relative; overflow:hidden; transition:background-color var(--md-motion), box-shadow var(--md-motion); }
 .sess:hover { background:var(--md-surface-container-high); }
-.sess.active { background:var(--blueBg); color:var(--md-on-primary-container); }
-.sess.active .meta { color:var(--md-on-primary-container); opacity:.75; }
+.sess.active { background:var(--md-surface-container-lowest); box-shadow:var(--md-elev-1); }
 .sess-main { flex:1; min-width:0; }
 .sess .nm { font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sess .meta { font-size:11.5px; color:var(--muted); }
-.sess-new { font-weight:600; color:var(--md-primary); }
-.sess-new.active { background:var(--blueBg); color:var(--md-on-primary-container); }
+.sess .meta { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.sess-new { justify-content:center; font-weight:700; color:var(--md-on-primary); background:var(--md-primary); box-shadow:var(--md-elev-2); padding:11px 12px; }
+.sess-new:hover { background:var(--md-primary); filter:brightness(1.08); }
+.sess-new.active { background:var(--md-primary); color:var(--md-on-primary); }
 .sess-del { border:none; background:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:6px; opacity:0; min-height:auto; }
 .sess:hover .sess-del { opacity:1; }
 .sess-del:hover { color:var(--red); background:var(--redBg); }
 /* Oturum durumu rozeti — lobi akışından canlı gelir */
-.sess .st { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; margin-right:6px; }
-.sess .st::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.sess .st { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; margin-right:6px; padding:1px 8px; border-radius:999px; background:color-mix(in srgb, currentColor 13%, transparent); }
+.sess .st::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
 .st.running { color:var(--blue); }
 .st.running::before { animation:stPulse 1.2s ease-in-out infinite; }
 .st.approval, .st.scheduled { color:var(--amber); }
@@ -48,81 +76,168 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .st.failed, .st.cancelled { color:var(--red); }
 .st.idle { color:var(--muted); }
 @keyframes stPulse { 50% { opacity:.25; } }
-/* Üst şerit — M3 "top app bar": diğer kartlardan daha koyu bir yüzey tonu ve
-   daha belirgin gölge ile ayrışır, sayfanın geri kalanıyla aynı düz kart
-   olmaktan çıkar. Başlık de headline ölçeğinde — önceki sürümde 15px'lik
-   gövde metni büyüklüğündeydi ve "önemsiz" görünüyordu. */
-.card.hdr { background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); }
-.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.hdr .task { font:var(--md-type-headline-sm); }
-.hdr .dir-wrap { margin-left:auto; display:flex; align-items:center; gap:6px; }
-.hdr .dir { font-size:12.5px; color:var(--muted); cursor:pointer; border-bottom:1px dashed transparent; }
-.hdr .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
-/* Hedef dizin diskte yok: kırmızı + uyarı işareti, tıklayınca düzenlenir */
-.hdr .dir.missing { color:var(--red); font-weight:600; }
-.hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
-.hdr #modelSel { font-size:12.5px; padding:4px 10px; min-height:auto; width:auto; max-width:240px; }
-.pipe { display:flex; align-items:stretch; gap:10px; }
-.pipe .arrow { align-self:center; color:var(--muted); }
-/* justify-content:center — fanout grubu yan hücrelerden uzun olduğunda sıralı
-   düğümler de onun boyuna gerilir; metin tepede kalmasın diye dikey ortalanır. */
-.node { flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
-.node .nm { font-weight:700; font-size:15.5px; }
-/* Hattaki ana kutular sabit bir yükseklikte: paralel inceleme grubu kalkınca
-   kutular yalnızca içerik kadar kalıp ezik görünüyordu. Grup içindeki kopya
-   kutuları (fanout) bu kurala girmez — üst üste dizilirler. */
-.pipe > .node:not(.group) { min-height:96px; }
-.node .sub { font-size:12.5px; color:var(--muted); margin-top:4px; }
-.node.running { background:var(--blueBg); border-color:var(--blue); }
-.node.running .nm, .node.running .sub { color:var(--md-on-primary-container); }
-.node.done { background:var(--tealBg); border-color:var(--teal); }
-.node.done .nm, .node.done .sub { color:var(--md-on-secondary-container); }
-.node.rejected { background:var(--redBg); border-color:var(--red); }
-.node.rejected .nm, .node.rejected .sub { color:var(--md-on-error-container); }
-/* Paralel grup — dallar TEK bir hattın içinde üst üste. Sıralı düğümlerle aynı
-   genişlikte bir hücre olması bilinçli: okuyan "burada üç şey aynı anda oluyor"
-   görsün, üç ayrı adım sanmasın. */
-.node.group { display:flex; flex-direction:column; gap:6px; padding:8px; background:var(--md-surface-container); }
-.node.group > .glabel { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
-.node.group > .node { flex:none; padding:8px 6px; }
-.node.group > .node .nm { font-size:13px; }
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
-/* Ana görev başlatma butonu — M3 extended FAB: her zaman görünür elevation,
-   daha büyük dokunma alanı, belirgin birincil renk. */
-#btnStart { box-shadow:var(--md-elev-3); flex:none; }
-#btnStart:hover { box-shadow:var(--md-elev-3); }
-/* Dar ekran: sidebar sabit sütun olmaktan çıkıp üstte akar, agent hattı
-   dikey adım listesine döner (yatayda 3+ kutu+ok telefon genişliğine sığmaz). */
+
+/* — Avatar: rol rengi + işaret; küçük boyu fanout kopyaları ve hat için — */
+.av { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; flex:none; font-size:15px; font-weight:700; }
+.av.sm { width:24px; height:24px; font-size:11.5px; }
+.av.arch { background:var(--archBg); color:var(--arch); }
+.av.dev { background:var(--devBg); color:var(--dev); }
+.av.rev { background:var(--revBg); color:var(--rev); }
+.av.other { background:var(--othBg); color:var(--oth); }
+/* Geliştiricinin işareti "</>" — emoji klavye yerine kod işareti */
+.av.dev { font:800 11.5px/1 ui-monospace,"Cascadia Code",Consolas,monospace; letter-spacing:-.5px; }
+.av.dev.sm { font-size:8.5px; }
+
+/* — Orta üst: görev başlığı + ekip (ajan hattı) — */
+.chat-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--border);
+  background:color-mix(in srgb, var(--md-surface-container-lowest) 78%, transparent); backdrop-filter:blur(8px); }
+.ch-title { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 260px; }
+.ch-title .task { font:700 17px/1.3 system-ui,"Segoe UI",sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.pill.soft { background:var(--md-surface-container-high); color:var(--muted); }
+.pill.soft:empty { display:none; }
+#btnCancel { padding:6px 16px; min-height:36px; }
+.pipe { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+/* Başlıkta ekip tek satır: sığmazsa yatay kayar (fanout kopyaları çoğalınca başlık şişmesin) */
+.chat-head .pipe { order:3; flex:1 0 100%; flex-wrap:nowrap; overflow-x:auto; padding:2px 0 4px; scrollbar-width:thin; }
+.chat-head .pipe:empty { display:none; }
+.pill { white-space:nowrap; }
+.pipe .arrow { color:var(--muted); font-size:13px; }
+.node.mem { display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px; border:1px solid var(--border);
+  background:var(--md-surface-container-lowest); transition:border-color var(--md-motion), box-shadow var(--md-motion), opacity var(--md-motion); }
+.node.mem .nm { font:600 12.5px system-ui,"Segoe UI",sans-serif; white-space:nowrap; }
+.node.mem .sub { font-size:11px; color:var(--muted); white-space:nowrap; display:flex; align-items:center; gap:5px; }
+.node.mem.pending { opacity:.6; }
+.node.mem.running { border-color:var(--md-primary); box-shadow:0 0 0 3px color-mix(in srgb, var(--md-primary) 16%, transparent); }
+.node.mem.done .sub { color:var(--teal); }
+.node.mem.rejected { border-color:var(--red); }
+.node.mem.rejected .sub { color:var(--red); }
+.node.mem.disabled { opacity:.45; border-style:dashed; }
+.node.mem.disabled .nm { text-decoration:line-through; }
+.node.group { display:flex; align-items:center; gap:4px; padding:3px 4px 3px 10px; border-radius:999px; border:1px dashed var(--border); background:var(--md-surface-container-low); }
+.node.group > .glabel { font:600 11px system-ui,"Segoe UI",sans-serif; color:var(--muted); margin-right:4px; white-space:nowrap; }
+.node.group > .node.mem { padding:2px 10px 2px 2px; }
+/* Grup içindeki repo kopyaları kompakt: durum yazı yerine kenar rengiyle (ayrıntısı title'da) */
+.node.group > .node.mem .sub { display:none; }
+.node.group > .node.mem.done { border-color:var(--teal); }
+.node.group > .node.mem.running .nm::after { content:" …"; color:var(--md-primary); }
+.node.mem, .node.group { flex:none; }
+.pipe .node[data-agent], .node.group > .glabel[data-group] { cursor:pointer; }
+.pipe .node[data-agent]:hover { border-color:var(--md-primary); }
+.node.focus { box-shadow:0 0 0 2px var(--md-primary) !important; }
+.node.group > .glabel[data-group]:hover { color:var(--md-primary); }
+/* "Yazıyor…" üç nokta — çalışan ajan */
+.typing { display:inline-flex; gap:3px; align-items:center; }
+.typing i { width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.3; animation:typ 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+@keyframes typ { 30% { opacity:1; transform:translateY(-2px); } }
+
+/* — Sohbet: kullanıcı görevi sağda, ajan mesajları solda avatarla, sistem olayları ortada — */
+.chat { flex:1; overflow-y:auto; padding:22px 24px 12px; min-height:0; scroll-behavior:smooth; }
+#stream { display:flex; flex-direction:column; gap:14px; overflow-wrap:anywhere; }
+#stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
+.msg { display:flex; gap:12px; max-width:min(920px, 94%); align-items:flex-start; }
+.bub { flex:1; min-width:0; background:var(--bubble); border:1px solid var(--border); border-radius:6px 20px 20px 20px; padding:11px 16px 12px; box-shadow:0 2px 12px color-mix(in srgb, var(--md-primary) 6%, transparent); }
+.bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px system-ui,"Segoe UI",sans-serif; margin-bottom:3px; }
+.bub .who small { font:400 11.5px system-ui,"Segoe UI",sans-serif; color:var(--muted); }
+.bub .who .typing { color:var(--md-primary); }
+.bub .body > * + * { margin-top:8px; }
+.bub .txt { font-size:14px; line-height:1.6; }
+.bub .txt.md { max-width:none; }
+.bub .note { font-size:12.5px; color:var(--muted); }
+.bub .note.warn { color:var(--amber); }
+.bub .note.err { color:var(--red); }
+.acts { display:flex; flex-wrap:wrap; gap:6px; }
+.tchip { display:inline-flex; align-items:center; gap:6px; max-width:100%; font:12px/1.4 ui-monospace,"Cascadia Code",Consolas,monospace; padding:4px 11px; border-radius:999px;
+  background:var(--md-surface-container-high); color:var(--muted); }
+.tchip b { font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.plus { color:var(--teal); font-weight:600; } .minus { color:var(--red); font-weight:600; }
+.term { background:#1C1A2B; color:#DAD6F2; border-radius:12px; padding:8px 12px; font:12.5px/1.75 ui-monospace,"Cascadia Code",Consolas,monospace; overflow-x:auto; }
+.term .ps { color:#8DE3B4; user-select:none; margin-right:6px; }
+.bub details.structured summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.bub details.structured pre { white-space:pre-wrap; font-size:11.5px; margin:6px 0 2px; max-height:clamp(240px, 34vh, 520px); overflow-y:auto; background:var(--bg); border-radius:var(--md-shape-sm); padding:8px; }
+#stream > .sys { align-self:center; max-width:90%; text-align:center; font-size:12px; color:var(--muted); background:var(--md-surface-container-lowest); border:1px solid var(--border); padding:4px 14px; border-radius:14px; }
+#stream > .sys .t { opacity:.7; margin-right:6px; font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+#stream > .sys.ok { color:var(--teal); } #stream > .sys.err { color:var(--red); } #stream > .sys.warn { color:var(--amber); }
+#stream .flt-out { display:none !important; }
+.logfilter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; padding:6px 6px 6px 14px; border-radius:var(--md-shape-full); background:var(--blueBg); color:var(--md-on-primary-container); font-size:12.5px; position:sticky; top:-22px; z-index:2; }
+.logfilter b { font-family:ui-monospace,Consolas,monospace; }
+.logfilter button { margin-left:auto; min-height:auto; padding:3px 12px; font-size:12px; }
+/* Fanout kopyası etiketi (sistem satırlarında) — iç içe akan repo kayıtları ayırt edilsin */
+.atag { display:inline-block; margin-right:6px; padding:0 7px; border-radius:var(--md-shape-full); border:1px solid currentColor; color:var(--c); font-size:10.5px; line-height:1.6; }
+
+/* — Sohbet içindeki kartlar (cevap, onay, zamanlama, karar, build): mesaj gibi avatarlı — */
+#cards { display:flex; flex-direction:column; gap:14px; margin-top:14px; }
+#cards > .card { margin:0; max-width:min(980px, 100%); border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
+#cards > .card.hidden { display:none; }
+.card-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.card-head .label { margin:0; }
+.card-head .cicon { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--md-surface-container-high); font-size:16px; flex:none; }
+
+/* — Alt: yazma kutusu (görev kartı) — */
+.composer-wrap { padding:6px 24px 18px; }
+#taskCard { margin:0; border-radius:22px; background:var(--md-surface-container-lowest); box-shadow:0 8px 28px color-mix(in srgb, var(--md-primary) 12%, transparent); padding:14px 16px 12px; border:1px solid var(--border); }
+#taskCard .label { margin-bottom:8px; }
+#taskCard .row textarea { border:none; box-shadow:none; background:transparent; padding:8px 4px; font-size:15px; }
+#taskCard .row textarea:focus { box-shadow:none; }
+.composer-opts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
+.composer-opts select { min-height:34px; padding:4px 10px; font-size:13px; }
+.composer-opts .flow { margin-top:0; }
+#btnStart { flex:none; box-shadow:var(--md-elev-2); }
+
+/* — Sağ: koşu özeti — */
+.rail { background:var(--md-surface-container-low); border-left:1px solid var(--border); padding:16px; overflow:auto; }
+.rail-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:14px; }
+.rail-tools a { font-size:13px; color:var(--blue); text-decoration:none; font-weight:600; }
+.rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
+.rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px system-ui,"Segoe UI",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
+.rbox .empty { font-size:12.5px; color:var(--muted); }
+.kv { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; margin:7px 0; min-width:0; }
+.kv > span:first-child { color:var(--muted); flex:none; }
+.kv b { font:600 12.5px ui-monospace,Consolas,monospace; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.kv.col { flex-direction:column; align-items:stretch; gap:4px; }
+.rail #modelSel { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
+.rail .dir-wrap { display:flex; align-items:center; gap:6px; min-width:0; }
+.rail .dir { font:12.5px ui-monospace,Consolas,monospace; color:var(--text); cursor:pointer; border-bottom:1px dashed var(--border); overflow-wrap:anywhere; }
+.rail .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
+.rail .dir.missing { color:var(--red); font-weight:600; }
+.rail #dirInput { font-size:12.5px; padding:4px 10px; min-height:32px; width:100%; min-width:0; }
+.frow { display:flex; align-items:center; gap:8px; font:12.5px ui-monospace,Consolas,monospace; margin:7px 0; min-width:0; }
+.frow .fn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; direction:rtl; text-align:left; }
+.ftag { font:700 10px system-ui,sans-serif; padding:2px 7px; border-radius:999px; flex:none; }
+.ftag.M { background:var(--amberBg); color:var(--amber); } .ftag.W { background:var(--tealBg); color:var(--teal); }
+.rrow { display:flex; align-items:center; gap:10px; font:12.5px ui-monospace,Consolas,monospace; margin:8px 0; }
+.rrow .nm { width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.prog { flex:1; height:7px; border-radius:9px; background:var(--md-surface-container-high); overflow:hidden; }
+.prog > span { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg, var(--dev), var(--arch)); transition:width .4s; }
+.prog.running > span { width:55%; animation:indet 1.4s ease-in-out infinite alternate; }
+.prog.done > span { width:100%; background:var(--teal); }
+.prog.rejected > span { width:100%; background:var(--red); }
+.prog.pending > span { width:0; }
+@keyframes indet { from { width:20%; } to { width:80%; } }
+.grid { display:contents; }
+/* Dar ekran: önce sağ sütun sohbetin altına iner, telefonda her şey tek sütun */
+@media (max-width:1240px) {
+  body { overflow:auto; }
+  .layout, .layout:has(.sidebar.collapsed) { grid-template-columns:240px minmax(0,1fr); height:auto; min-height:100vh; }
+  .main { height:100vh; }
+  .rail { grid-column:2; border-left:none; border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; align-items:start; }
+  .rail .rbox { margin:0; } .rail-tools { grid-column:1/-1; margin:0; }
+}
 @media (max-width:860px) {
-  body { padding:16px; }
-  .layout { flex-direction:column; }
-  .sidebar, .sidebar.collapsed { width:100%; flex-basis:auto; position:static; max-height:none; }
-  .hdr .dir-wrap { margin-left:0; width:100%; order:1; }
-  .hdr #dirInput { flex:1; width:auto; }
-  .pipe { flex-direction:column; }
-  .pipe .arrow { transform:rotate(90deg); padding:2px 0; }
-  /* Görev/red kutusu yanındaki buton dar ekranda metni sıkıştırıp taşırıyordu — alta düşsün.
-     Placeholder metni dar genişlikte 2 satıra sarabiliyor — kutu tek satırlık autoGrow
-     tabanına sabitliyse alt satır kırpılır; min-height'ı 2 satıra yükselt. */
+  .layout, .layout:has(.sidebar.collapsed) { grid-template-columns:1fr; }
+  .sidebar { border-right:none; border-bottom:1px solid var(--border); }
+  .main { height:auto; min-height:80vh; }
+  .chat { overflow:visible; padding:16px; }
+  .chat-head, .composer-wrap { padding-left:16px; padding-right:16px; }
+  .rail { grid-column:1; }
+  .msg, #stream > .me { max-width:100%; }
   #taskCard .row textarea, #approval .row textarea { flex-basis:100%; min-width:0; min-height:64px; }
 }
-/* Kutu yükseklikleri ekranla ölçeklenir: küçük ekranda eski sabit değer korunur,
-   büyük monitörde kendiliğinden açılır (alt sınır = eski değer, üst sınır = tavan) */
-/* overflow-wrap:anywhere — uzun Windows yolları (`D:\a\b\c...`) boşluk içermediği
-   için sarmıyor, kartı yatay taşırıyordu; `\` bölme fırsatı sayılmaz. */
-#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:clamp(380px, 46vh, 720px); overflow-y:auto; overflow-wrap:anywhere; }
-#stream .t { color:var(--muted); margin-right:8px; }
-#stream .muted { color:var(--muted); }
-#stream .ok { color:var(--teal); }
-#stream .err { color:var(--red); }
-#stream .warn { color:var(--amber); }
-#stream details.structured { margin:4px 0 8px; border:1px solid var(--border); border-radius:var(--md-shape-sm); padding:6px 10px; }
-#stream details.structured summary { cursor:pointer; color:var(--muted); font-size:11px; }
-#stream details.structured pre { white-space:pre-wrap; margin:6px 0 2px; max-height:clamp(260px, 34vh, 520px); overflow-y:auto; }
 .issue { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; font-size:13px; }
 .sev.low { background:var(--amberBg); color:var(--amber); }
 .sev.medium, .sev.high { background:var(--redBg); color:var(--red); }
-#approval, #schedule { border-color:var(--amber); }
+#approval, #schedule { border:1px solid var(--amber); }
 #buildModules { flex-wrap:wrap; }
 .bnode { padding:6px 12px; border-radius:var(--md-shape-md); border:1px solid var(--border); font-size:12px; background:transparent; }
 .bnode.running { background:var(--blueBg); border-color:var(--blue); color:var(--blue); }
@@ -190,20 +305,6 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 .fchip.off { background:transparent; border-style:dashed; border-color:var(--border); color:var(--muted); }
 .fchip.off.skip .nm { text-decoration:line-through; }
 .fchip:disabled { cursor:wait; }
-/* Devre dışı düğüm: akış onu koşturmadan geçer — soluk, kesik kenar, üstü çizili */
-.node.disabled { opacity:.5; border-style:dashed; background:transparent; }
-/* Ajan kayıt süzgeci: hattaki kutuya tıkla → akışta yalnızca o ajanın satırları */
-.pipe .node[data-agent], .node.group > .glabel[data-group] { cursor:pointer; }
-.pipe .node[data-agent]:hover { border-color:var(--md-primary); }
-.node.focus { box-shadow:0 0 0 2px var(--md-primary); }
-.node.group > .glabel[data-group]:hover { color:var(--md-primary); }
-#stream .flt-out { display:none; }
-.logfilter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:-4px 0 10px; padding:6px 6px 6px 14px; border-radius:var(--md-shape-full); background:var(--blueBg); color:var(--md-on-primary-container); font-size:12.5px; }
-.logfilter b { font-family:ui-monospace,Consolas,monospace; }
-.logfilter button { margin-left:auto; min-height:auto; padding:3px 12px; font-size:12px; }
-/* Fanout kopyasının satır etiketi — iç içe akan repo kayıtları ayırt edilsin */
-.atag { display:inline-block; margin-right:6px; padding:0 7px; border-radius:var(--md-shape-full); border:1px solid currentColor; color:var(--c); font-size:10.5px; line-height:1.6; }
-.node.disabled .nm { text-decoration:line-through; }
 /* Bilgi cevabı (architect route=done): Markdown biçimlendirilmiş okuma kartı.
    Düz metin yığını yerine başlık/liste/tablo/kod — okuma yorgunluğunu azaltır. */
 #answerCard { border-color:var(--teal); }
@@ -239,132 +340,153 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <div class="layout">
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <span class="label">Oturumlar</span>
+    <span class="brand"><img class="brand-logo" src="/logo.svg" alt=""><span class="brand-name">yaver</span></span>
     <button id="btnSidebar" title="Aç / kapat">⟨</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
-    <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni oturum</div>
+    <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni görev</div>
+    <div class="label side-label">Oturumlar</div>
     <div id="sessionList"></div>
   </div>
 </aside>
+
 <main class="main">
+  <header class="chat-head">
+    <div class="ch-title">
+      <span class="task" id="task">bağlanıyor…</span>
+      <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
+      <span class="pill soft" id="cycle"></span>
+    </div>
+    <div class="pipe" id="pipeline"></div>
+    <button id="btnCancel" class="hidden danger">■ Durdur</button>
+  </header>
 
-<div class="card hdr">
-  <span class="brand"><img class="brand-logo" src="/logo.svg" alt="">yaver</span>
-  <span class="task" id="task">bağlanıyor…</span>
-  <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
-  <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
-  <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
-  <span class="dir-wrap">
-    <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
-    <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
-  </span>
-  <select id="modelSel" title="Model — sıradaki görevde kullanılır"></select>
-  <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
-  <button id="btnTheme" class="icon" title="Tema değiştir"></button>
-  <button id="btnCancel" class="hidden danger">Durdur</button>
-</div>
-
-<div class="card hidden" id="taskCard">
-  <div class="label" id="taskCardTitle">Yeni görev</div>
-  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
-    <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
-    <button class="primary" id="btnStart">Başlat</button>
-  </div>
-  <div class="notice hidden" id="dirWarn" style="margin:10px 0 0;align-items:center">
-    <span>⚠</span>
-    <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
-    <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
-  </div>
-  <div class="row" id="taskWhen" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <span class="label" style="margin:0">Ne zaman başlasın?</span>
-    <select id="taskWhenPreset" style="width:auto">
-      <option value="0">Hemen</option>
-      <option value="30m">+30 dakika</option>
-      <option value="1h">+1 saat</option>
-      <option value="3h">+3 saat</option>
-      <option value="1d">Yarın (+1 gün)</option>
-      <option value="custom">Belirli tarih/saat…</option>
-    </select>
-    <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
-  </div>
-  <div class="notice hidden" id="modelWarn" style="margin:10px 0 0;align-items:center">
-    <span>⚠</span>
-    <span style="flex:1">Model seçilmedi — görev başlatmak için üst çubuktaki listeden bir model seç.</span>
-  </div>
-  <div class="flow" id="flowChips"></div>
-  <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
-  <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
-</div>
-
-<div class="card">
-  <div class="label">Ajan hattı</div>
-  <div class="pipe" id="pipeline"></div>
-</div>
-
-<div class="card hidden" id="answerCard">
-  <div class="label" id="answerTitle">Cevap</div>
-  <p class="lead" id="answerLead"></p>
-  <div class="md" id="answerBody"></div>
-  <div class="refs hidden" id="answerRefs"></div>
-</div>
-
-<div class="card hidden" id="approval">
-  <div class="label">Onay bekleniyor</div>
-  <div style="font-weight:600;margin-bottom:6px" id="approvalTitle"></div>
-  <div id="approvalText"></div>
-  <div class="row">
-    <button class="primary" id="btnApprove">Onayla</button>
-    <button id="btnReject">Reddet</button>
-    <textarea id="rejectComment" rows="1" placeholder="Red gerekçesi (isteğe bağlı)"></textarea>
-  </div>
-  <div class="row" id="when" style="margin-top:8px">
-    <span class="label">Ne zaman çalışsın?</span>
-    <select id="whenPreset">
-      <option value="0">Hemen</option>
-      <option value="30m">+30 dakika</option>
-      <option value="1h">+1 saat</option>
-      <option value="3h">+3 saat</option>
-      <option value="1d">Yarın (+1 gün)</option>
-      <option value="custom">Belirli tarih/saat…</option>
-    </select>
-    <input type="datetime-local" id="whenCustom" class="hidden">
-  </div>
-</div>
-
-<div class="card hidden" id="schedule">
-  <div class="label">Zamanlandı</div>
-  <div style="font-weight:600;margin-bottom:6px" id="scheduleTitle"></div>
-  <div class="row">
-    <button class="primary" id="btnRunNow">Şimdi çalıştır</button>
-    <button id="btnCancelSchedule">İptal et</button>
-  </div>
-</div>
-
-<div class="card hidden" id="buildCard">
-  <div class="label">Build (modül sırası)</div>
-  <div class="pipe" id="buildModules"></div>
-  <details class="rawjson" style="margin-top:10px"><summary>Build çıktısı</summary><pre id="buildLog"></pre></details>
-</div>
-
-<div class="grid">
-  <div class="card">
-    <div class="label">Olay akışı</div>
+  <div class="chat" id="chat">
     <div class="logfilter hidden" id="logFilter">
       <span id="logFilterText"></span>
       <button id="btnLogAll">Tümünü göster</button>
     </div>
     <div id="stream"></div>
-  </div>
-  <div class="card hidden" id="verdictCard">
-    <div class="label">Reviewer kararı</div>
-    <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
-    <div id="issues"></div>
-  </div>
-</div>
 
+    <div id="cards">
+      <div class="card hidden" id="answerCard">
+        <div class="card-head"><span id="answerAv"></span><div class="label" id="answerTitle">Cevap</div></div>
+        <p class="lead" id="answerLead"></p>
+        <div class="md" id="answerBody"></div>
+        <div class="refs hidden" id="answerRefs"></div>
+      </div>
+
+      <div class="card hidden" id="approval">
+        <div class="card-head"><span id="approvalAv"></span><div class="label">Onayın bekleniyor</div></div>
+        <div style="font-weight:600;margin-bottom:6px" id="approvalTitle"></div>
+        <div id="approvalText"></div>
+        <div class="row">
+          <button class="primary" id="btnApprove">Onayla</button>
+          <button id="btnReject">Reddet</button>
+          <textarea id="rejectComment" rows="1" placeholder="Red gerekçesi (isteğe bağlı)"></textarea>
+        </div>
+        <div class="row" id="when" style="margin-top:8px">
+          <span class="label">Ne zaman çalışsın?</span>
+          <select id="whenPreset">
+            <option value="0">Hemen</option>
+            <option value="30m">+30 dakika</option>
+            <option value="1h">+1 saat</option>
+            <option value="3h">+3 saat</option>
+            <option value="1d">Yarın (+1 gün)</option>
+            <option value="custom">Belirli tarih/saat…</option>
+          </select>
+          <input type="datetime-local" id="whenCustom" class="hidden">
+        </div>
+      </div>
+
+      <div class="card hidden" id="schedule">
+        <div class="card-head"><span class="cicon">⏰</span><div class="label">Zamanlandı</div></div>
+        <div style="font-weight:600;margin-bottom:6px" id="scheduleTitle"></div>
+        <div class="row">
+          <button class="primary" id="btnRunNow">Şimdi çalıştır</button>
+          <button id="btnCancelSchedule">İptal et</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="verdictCard">
+        <div class="card-head"><span id="verdictAv"></span><div class="label">İnceleme kararı</div></div>
+        <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
+        <div id="issues"></div>
+      </div>
+
+      <div class="card hidden" id="buildCard">
+        <div class="card-head"><span class="cicon">🔨</span><div class="label">Build (modül sırası)</div></div>
+        <div class="pipe" id="buildModules"></div>
+        <details class="rawjson" style="margin-top:10px"><summary>Build çıktısı</summary><pre id="buildLog"></pre></details>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer-wrap">
+    <div class="card hidden" id="taskCard">
+      <div class="label" id="taskCardTitle">Yeni görev</div>
+      <div class="notice hidden" id="dirWarn" style="margin:0 0 10px;align-items:center">
+        <span>⚠</span>
+        <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
+        <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
+      </div>
+      <div class="notice hidden" id="modelWarn" style="margin:0 0 10px;align-items:center">
+        <span>⚠</span>
+        <span style="flex:1">Model seçilmedi — görev başlatmak için sağdaki listeden bir model seç.</span>
+      </div>
+      <div class="row" style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… örn: todo listesine filtreleme ekle (Enter gönderir)"></textarea>
+        <button class="primary" id="btnStart">Başlat ➤</button>
+      </div>
+      <div class="composer-opts">
+        <span class="row" id="taskWhen" style="display:flex;gap:8px;align-items:center">
+          <span class="label" style="margin:0">⏰</span>
+          <select id="taskWhenPreset" style="width:auto">
+            <option value="0">Hemen</option>
+            <option value="30m">+30 dakika</option>
+            <option value="1h">+1 saat</option>
+            <option value="3h">+3 saat</option>
+            <option value="1d">Yarın (+1 gün)</option>
+            <option value="custom">Belirli tarih/saat…</option>
+          </select>
+          <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
+        </span>
+        <div class="flow" id="flowChips"></div>
+      </div>
+      <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
+    </div>
+  </div>
 </main>
+
+<aside class="rail">
+  <div class="rail-tools">
+    <a href="/config">⚙ Config</a>
+    <button id="btnTheme" class="icon" title="Tema değiştir"></button>
+  </div>
+  <div class="rbox hidden" id="repoBox">
+    <h4>Repo ilerlemesi <span id="repoSum"></span></h4>
+    <div id="repoList"></div>
+  </div>
+  <div class="rbox">
+    <h4>Değişen dosyalar <span id="filesSum"></span></h4>
+    <div id="fileList"><div class="empty">Henüz dosya değişmedi</div></div>
+  </div>
+  <div class="rbox">
+    <h4>Oturum</h4>
+    <div class="kv"><span>Model</span><select id="modelSel" title="Model — sıradaki görevde kullanılır"></select></div>
+    <div class="kv col"><span>Hedef dizin</span>
+      <span class="dir-wrap">
+        <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
+        <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
+      </span>
+    </div>
+    <div class="kv"><span>Sağlayıcı</span><b id="provider">—</b></div>
+    <div class="kv"><span>Süre</span><b id="elapsed">—</b></div>
+    <div class="kv"><span>Token (girdi/çıktı)</span><b id="tokens">—</b></div>
+  </div>
+</aside>
 </div>
 
 <script>
@@ -424,6 +546,28 @@ document.addEventListener("pointerdown", (ev) => {
 });
 
 const stateLabels = { pending: "bekliyor", running: "çalışıyor", done: "tamamlandı", rejected: "reddetti", disabled: "devre dışı" };
+
+// Ekip üyeleri: ajan anahtarının kökü ("developer@order" → developer) rolü belirler.
+// Tanınmayan ajanlar (config'e eklenen yeni personalar) adlarıyla, ortak renkle görünür.
+const ROLES = {
+  architect: { ad: "Mimar", ic: "◇", c: "arch" },
+  developer: { ad: "Geliştirici", ic: "</>", c: "dev" },
+  reviewer: { ad: "İnceleyici", ic: "✓", c: "rev" },
+};
+function roleOf(key) {
+  const at = key.indexOf("@");
+  const base = at < 0 ? key : key.slice(0, at);
+  const r = ROLES[base] || { ad: base, ic: (base[0] || "?").toUpperCase(), c: "other" };
+  return { ...r, base, repo: at < 0 ? "" : key.slice(at + 1) };
+}
+function agentName(key) {
+  const r = roleOf(key);
+  return r.repo ? `${r.ad} · ${r.repo}` : r.ad;
+}
+function avatar(key, small) {
+  const r = roleOf(key);
+  return `<div class="av ${r.c}${small ? " sm" : ""}" title="${esc(key)}">${esc(r.ic)}</div>`;
+}
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -744,7 +888,8 @@ function referencesHtml(refs) {
   }).join("");
 }
 function showAnswer(agent, structured) {
-  $("answerTitle").textContent = `${agent} · cevap`;
+  $("answerTitle").textContent = `${agentName(agent)} · cevap`;
+  $("answerAv").innerHTML = avatar(agent);
   $("answerLead").textContent = structured.summary || "";
   $("answerLead").classList.toggle("hidden", !structured.summary);
   $("answerBody").innerHTML = renderMarkdown(structured.answer);
@@ -785,10 +930,13 @@ function nodeCell(a) {
   if (st === "running" && runningSince[a]) {
     sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
   }
-  // Fanout kopyası "developer@repoA": hücrede repo adı yeter, grup etiketi ajanı söylüyor
-  const ad = a.includes("@") ? a.slice(a.indexOf("@") + 1) : a;
+  // Fanout kopyası "developer@repoA": kapsülde repo adı yeter, grup etiketi ajanı söylüyor
+  const r = roleOf(a);
+  const ad = r.repo || r.ad;
   const odak = logFilter && logFilter.has(a) ? " focus" : "";
-  return `<div class="node ${st}${odak}" data-agent="${esc(a)}" title="${esc(a)} — tıkla: yalnızca bu ajanın kayıtları"><div class="nm">${esc(ad)}</div><div class="sub">${sub}</div></div>`;
+  const yaziyor = st === "running" ? '<span class="typing"><i></i><i></i><i></i></span>' : "";
+  return `<div class="node mem ${st}${odak}" data-agent="${esc(a)}" title="${esc(agentName(a))} · ${stateLabels[st]} — tıkla: yalnızca bu ajanın mesajları">` +
+    `${avatar(a, true)}<div><div class="nm">${esc(ad)}</div><div class="sub">${sub}${yaziyor}</div></div></div>`;
 }
 
 function renderPipeline() {
@@ -807,10 +955,11 @@ function renderPipeline() {
     drawn.add(g);
     const inner = groups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
     const fm = fanoutMeta[g] || { agent: g, max: 0 };
-    const etiket = `${esc(fm.agent)} · repo başına${fm.max ? ` · en fazla ${fm.max}` : ""}`;
+    const etiket = `${esc(roleOf(fm.agent).ad)} ekibi${fm.max ? ` · ${fm.max}'li` : ""}`;
     cells.push(`<div class="node group"><div class="glabel" data-group="${esc(g)}" title="Tıkla: tüm repo kopyalarının kayıtları">${etiket}</div>${inner}</div>`);
   }
-  $("pipeline").innerHTML = cells.join('<div class="arrow">→</div>');
+  $("pipeline").innerHTML = cells.join('<div class="arrow">›</div>');
+  renderRepos();
 }
 
 // Çalışan ajan varken saniyede bir pipeline'ı yeniden çizer; kimse çalışmıyorsa durur
@@ -865,6 +1014,12 @@ function agentTag(agent) {
 }
 
 // Satırı akışa ekler; süzgeç açıksa ve satır o ajana ait değilse gizli eklenir
+// Sohbet en alttaysa yeni mesajla birlikte kayar; kullanıcı yukarıda okuyorsa yerinde bırakılır
+function scrollChat(force) {
+  const c = $("chat");
+  if (force || replaying || c.scrollHeight - c.scrollTop - c.clientHeight < 160) c.scrollTop = c.scrollHeight;
+}
+
 function appendStream(el) {
   el.dataset.agent = logAgent;
   const s = $("stream");
@@ -874,14 +1029,147 @@ function appendStream(el) {
     return;
   }
   if (logFilter) { logFilterCount++; renderLogFilterBar(); }
-  s.scrollTop = s.scrollHeight;
+  scrollChat();
 }
 
+// Sistem olayı: sohbetin ortasında küçük kapsül (ajan mesajları balonlarda)
 function addLog(ts, html, cls) {
   const div = document.createElement("div");
-  if (cls) div.className = cls;
+  div.className = "sys" + (cls ? " " + cls : "");
   div.innerHTML = `<span class="t">${time(ts)}</span>${agentTag(logAgent)}${html}`;
   appendStream(div);
+}
+
+// ── Ajan mesaj balonları ───────────────────────────────────────────
+// Her ajan koşusu bir balon: başlıkta avatar+ad, içinde sırayla söyledikleri,
+// araç kapsülleri (📖 dosya, ✏️ +N −M) ve komutlar için mini terminal.
+let bubbles = {};             // ajan anahtarı → açık balon
+function bubbleOf(agent, ts) {
+  const mevcut = bubbles[agent];
+  if (mevcut && mevcut.isConnected) return mevcut;
+  const b = document.createElement("div");
+  b.className = "msg";
+  b.innerHTML = `${avatar(agent)}<div class="bub"><div class="who">${esc(agentName(agent))}` +
+    `<small>${time(ts)}</small><span class="typing hidden"><i></i><i></i><i></i></span></div><div class="body"></div></div>`;
+  appendStream(b);
+  bubbles[agent] = b;
+  return b;
+}
+function bubbleAdd(b, el) {
+  b.querySelector(".body").appendChild(el);
+  scrollChat();
+}
+function bubbleNote(b, html, cls) {
+  const d = document.createElement("div");
+  d.className = "note" + (cls ? " " + cls : "");
+  d.innerHTML = html;
+  bubbleAdd(b, d);
+}
+// Balonun son öğesi istenen türdeyse ona ekle (art arda araçlar tek satırda toplansın)
+function lastOf(b, cls) {
+  const last = b.querySelector(".body").lastElementChild;
+  if (last && last.classList.contains(cls)) return last;
+  const el = document.createElement("div");
+  el.className = cls;
+  bubbleAdd(b, el);
+  return el;
+}
+const TOOL_ICONS = { Read: "📖", Write: "✨", Edit: "✏️", MultiEdit: "✏️", NotebookEdit: "✏️", Grep: "🔎", Glob: "🗂",
+  WebFetch: "🌐", WebSearch: "🌐", Task: "🧩", Agent: "🧩", TodoWrite: "📝", ToolSearch: "🧰", Bash: "💻" };
+// Uzun yolun son iki parçası ("…/fan/target") — tam yol title'da
+const shortDir = (p) => {
+  const parca = String(p || "").split(/[\\/]/).filter(Boolean);
+  return parca.length > 2 ? "…/" + parca.slice(-2).join("/") : String(p || "");
+};
+const baseName = (p) => String(p).split(/[\\/]/).filter(Boolean).pop() || String(p);
+function lineDelta(e) {
+  if (!e.added && !e.removed) return "";
+  return `${e.added ? ` <span class="plus">+${e.added}</span>` : ""}${e.removed ? ` <span class="minus">−${e.removed}</span>` : ""}`;
+}
+function bubbleTool(b, e) {
+  if (e.command) {
+    const t = lastOf(b, "term");
+    const line = document.createElement("div");
+    line.innerHTML = `<span class="ps">$</span>${esc(e.command)}`;
+    t.appendChild(line);
+    scrollChat();
+    return;
+  }
+  const isMcp = e.tool.startsWith("mcp__");
+  const ic = TOOL_ICONS[e.tool] || (isMcp ? "🔌" : "⚙");
+  const ad = isMcp ? e.tool.split("__").pop() : e.tool;
+  const label = e.file ? baseName(e.file)
+    : (e.tool === "Grep" || e.tool === "Glob") ? `"${e.detail}"`
+    : TOOL_ICONS[e.tool] && e.tool !== "Bash" ? e.detail : `${ad}: ${e.detail}`;
+  const chip = document.createElement("span");
+  chip.className = "tchip";
+  chip.title = `${e.tool}: ${e.file || e.detail}`;
+  chip.innerHTML = `${ic} <b>${esc(trunc(label, 70))}</b>${lineDelta(e)}`;
+  lastOf(b, "acts").appendChild(chip);
+  scrollChat();
+}
+
+// ── Sağ sütun: koşu özeti ─────────────────────────────────────────
+let changedFiles = new Map(); // yol → {added, removed, write}
+let runTokens = { in: 0, out: 0 };
+let runStart = 0, runEnd = 0, runDir = "";
+const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+function trackFile(e) {
+  if (!FILE_TOOLS.has(e.tool) || !e.file) return;
+  const f = changedFiles.get(e.file) || { added: 0, removed: 0, write: false };
+  f.added += e.added || 0;
+  f.removed += e.removed || 0;
+  if (e.tool === "Write") f.write = true;
+  changedFiles.set(e.file, f);
+  renderFiles();
+}
+function relPath(p) {
+  const d = runDir.replace(/[\\/]+$/, "");
+  return d && p.startsWith(d) ? p.slice(d.length).replace(/^[\\/]+/, "") : p;
+}
+function renderFiles() {
+  if (!changedFiles.size) {
+    $("fileList").innerHTML = '<div class="empty">Henüz dosya değişmedi</div>';
+    $("filesSum").innerHTML = "";
+    return;
+  }
+  let top = 0, eks = 0;
+  $("fileList").innerHTML = [...changedFiles].map(([p, f]) => {
+    top += f.added; eks += f.removed;
+    const tag = f.write ? '<span class="ftag W" title="yazıldı">W</span>' : '<span class="ftag M" title="düzenlendi">M</span>';
+    return `<div class="frow" title="${esc(p)}">${tag}<span class="fn">${esc(relPath(p))}</span>` +
+      `${f.added ? `<span class="plus">+${f.added}</span>` : ""}${f.removed ? `<span class="minus">−${f.removed}</span>` : ""}</div>`;
+  }).join("");
+  $("filesSum").innerHTML = `${changedFiles.size} · <span class="plus">+${top}</span> <span class="minus">−${eks}</span>`;
+}
+function renderRepos() {
+  const gruplar = Object.values(groups).filter((g) => g.length);
+  $("repoBox").classList.toggle("hidden", !gruplar.length);
+  if (!gruplar.length) return;
+  const uyeler = gruplar.flat();
+  const biten = uyeler.filter((a) => states[a] === "done").length;
+  $("repoSum").textContent = `${biten}/${uyeler.length}`;
+  $("repoList").innerHTML = uyeler.map((a) => {
+    const st = states[a] || "pending";
+    const isaret = st === "done" ? "✓" : st === "rejected" ? "✗" : st === "running" ? "…" : "";
+    return `<div class="rrow"><span class="nm" title="${esc(a)}">${esc(roleOf(a).repo || a)}</span>` +
+      `<div class="prog ${st}"><span></span></div><span style="width:12px">${isaret}</span></div>`;
+  }).join("");
+}
+function renderStats() {
+  $("tokens").textContent = runTokens.in || runTokens.out ? `${tok(runTokens.in)} / ${tok(runTokens.out)}` : "—";
+  if (!runStart) { $("elapsed").textContent = "—"; return; }
+  const bitis = runEnd || Date.now();
+  $("elapsed").textContent = fmtElapsed(Math.max(0, Math.floor((bitis - runStart) / 1000)));
+}
+setInterval(() => { if (runStart && !runEnd) renderStats(); }, 1000);
+function resetRail() {
+  changedFiles = new Map();
+  runTokens = { in: 0, out: 0 };
+  runStart = 0; runEnd = 0; runDir = "";
+  renderFiles();
+  renderStats();
+  $("repoBox").classList.add("hidden");
 }
 
 function renderLogFilterBar() {
@@ -904,8 +1192,7 @@ function setLogFilter(keys) {
   }
   renderLogFilterBar();
   if (agents.length) renderPipeline();
-  const s = $("stream");
-  s.scrollTop = s.scrollHeight;
+  scrollChat(true);
 }
 $("btnLogAll").addEventListener("click", () => setLogFilter(null));
 // Hattaki ajan kutusu → o ajan; fanout grup başlığı → grubun tüm repo kopyaları
@@ -949,8 +1236,19 @@ function handleEvent(e) {
       $("btnCancel").classList.remove("hidden");
       setStatus("çalışıyor", "run");
       renderPipeline();
-      if (e.resumed) addLog(e.ts, "──────── aynı oturumda yeni görev ────────", "muted");
-      addLog(e.ts, `iş akışı başladı · 📁 ${esc(e.targetDir)}${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
+      bubbles = {};
+      resetRail();
+      runStart = Date.parse(e.ts) || Date.now();
+      runDir = e.targetDir || "";
+      renderStats();
+      if (e.resumed) addLog(e.ts, "aynı oturumda yeni görev", "muted");
+      {
+        const me = document.createElement("div");
+        me.className = "me";
+        me.textContent = e.task;
+        appendStream(me);
+      }
+      addLog(e.ts, `ekip işe koyuldu · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -960,44 +1258,58 @@ function handleEvent(e) {
           : `atlandı → ${e.to ? esc(e.to) : "akış biter"}`), "muted");
       break;
     }
-    case "agent_started":
+    case "agent_started": {
       states[e.agent] = "running";
       runningSince[e.agent] = Date.now();
       ensurePipelineTicker();
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> başladı`);
+      delete bubbles[e.agent]; // her koşu yeni bir mesaj balonu açar
+      const b = bubbleOf(e.agent, e.ts);
+      b.querySelector(".who .typing").classList.remove("hidden");
       break;
-    case "agent_text":
-      addLog(e.ts, esc(trunc(e.text, 240)), "muted");
+    }
+    case "agent_text": {
+      const b = bubbleOf(e.agent, e.ts);
+      // Orkestratör notları (rota, onarım, dağıtım) küçük not; modelin sözü Markdown
+      if (/^(🧭|⚠|🔀)/u.test(e.text)) {
+        bubbleNote(b, esc(e.text), e.text.startsWith("⚠") ? "warn" : "");
+      } else {
+        const d = document.createElement("div");
+        d.className = "txt md";
+        d.innerHTML = renderMarkdown(trunc(e.text, 2400));
+        bubbleAdd(b, d);
+      }
       break;
+    }
     case "agent_retrying": {
       // Bağlantı koptu — akış ölmedi, bekleyip yeniden deneyecek
       const kac = e.maxAttempts > 0 ? `${e.attempt}/${e.maxAttempts}` : `${e.attempt}`;
       const nasil = e.resumed ? "oturum sürdürülecek" : "oturum baştan";
-      addLog(
-        e.ts,
-        `🔌 <b>${esc(e.agent)}</b> bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ` +
-          `${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`,
-        "warn",
-      );
+      bubbleNote(bubbleOf(e.agent, e.ts),
+        `🔌 bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`, "warn");
       break;
     }
     case "tool_used":
       if (!e.detail) break;
-      addLog(e.ts, `⚙ ${esc(e.tool)}: ${esc(e.detail)}`, "muted");
+      bubbleTool(bubbleOf(e.agent, e.ts), e);
+      trackFile(e);
       break;
-    case "agent_finished":
+    case "agent_finished": {
       states[e.agent] = "done";
       delete runningSince[e.agent];
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> bitti`, "ok");
+      const b = bubbleOf(e.agent, e.ts);
+      b.querySelector(".who .typing").classList.add("hidden");
+      b.querySelector(".who small").textContent = e.metrics
+        ? `${time(e.ts)} · ${fmtMetrics(e.metrics)}` : `${time(e.ts)} · bitti`;
       if (e.metrics) {
-        addLog(e.ts, `📊 ${fmtMetrics(e.metrics)}`, "muted");
-        // Birden fazla model = arka planda ikinci bir model calismis
+        runTokens.in += e.metrics.inputTokens || 0;
+        runTokens.out += e.metrics.outputTokens || 0;
+        renderStats();
+        // Birden fazla model = arka planda ikinci bir model çalışmış
         if (e.metrics.perModel && e.metrics.perModel.length > 1) {
-          const kirilim = e.metrics.perModel
-            .map((p) => `${esc(p.model)}: ${tok(p.inputTokens)}/${tok(p.outputTokens)}`).join(" · ");
-          addLog(e.ts, `📊 ${kirilim}`, "muted");
+          bubbleNote(b, "📊 " + e.metrics.perModel
+            .map((p) => `${esc(p.model)}: ${tok(p.inputTokens)}/${tok(p.outputTokens)}`).join(" · "));
         }
       }
       if (hasAnswer(e.structured)) showAnswer(e.agent, e.structured);
@@ -1008,10 +1320,11 @@ function handleEvent(e) {
         const inner = diff ? diff
           : hasAnswer(e.structured) ? `<div class="md" style="font:var(--md-type-body-md);margin:6px 0">${renderMarkdown(e.structured.answer)}</div>`
           : `<pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
-        d.innerHTML = `<summary>${agentTag(e.agent)}${esc(e.agent)} yapılandırılmış çıktısı</summary>${inner}`;
-        appendStream(d);
+        d.innerHTML = `<summary>📦 yapılandırılmış çıktı</summary>${inner}`;
+        bubbleAdd(b, d);
       }
       break;
+    }
     case "approval_required": {
       // endsFlow: ajan "kod değişikliği gerekmiyor" dedi — onay akışı bitirir,
       // red ise gerekçeyle yeniden planlatır. Zamanlama burada anlamsız, gizlenir.
@@ -1045,7 +1358,9 @@ function handleEvent(e) {
       }
       updateRejectLabel();
       resetWhen();
+      $("approvalAv").innerHTML = avatar(e.agent);
       $("approval").classList.remove("hidden");
+      scrollChat(true);
       setStatus("onay bekliyor", "warn");
       addLog(e.ts, `${esc(e.agent)} onay bekliyor`, "warn");
       break;
@@ -1060,7 +1375,9 @@ function handleEvent(e) {
       renderPipeline();
       addLog(e.ts, `<b>${esc(e.agent)}</b> kararı: ${e.approved ? "onay" : "red"} — ${esc(e.summary)}`,
         e.approved ? "ok" : "err");
+      $("verdictAv").innerHTML = avatar(e.agent);
       $("verdictCard").classList.remove("hidden");
+      scrollChat(true);
       const head = $("verdictHead");
       head.textContent = e.approved ? "Onaylandı" : "Reddedildi";
       head.style.color = e.approved ? "var(--teal)" : "var(--red)";
@@ -1137,6 +1454,7 @@ function handleEvent(e) {
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");
+      scrollChat(true);
       startCountdown(e.agent, e.runAt);
       setStatus("zamanlandı", "warn");
       addLog(e.ts, `${esc(e.agent)} → ${fmt(e.runAt)} için zamanlandı`, "warn");
@@ -1156,6 +1474,8 @@ function handleEvent(e) {
       break;
     case "workflow_finished":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       // Zamanlama iptaliyle biten koşu "tamamlandı" değil — iptal durumu korunur
@@ -1170,6 +1490,8 @@ function handleEvent(e) {
       break;
     case "workflow_cancelled":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       $("approval").classList.add("hidden");
@@ -1181,6 +1503,8 @@ function handleEvent(e) {
       break;
     case "workflow_failed":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       setStatus("hata", "err");
@@ -1368,6 +1692,8 @@ function resetView() {
   agents = []; states = {}; groups = {}; fanoutMeta = {};
   logFilter = null; logFilterCount = 0;
   renderLogFilterBar();
+  bubbles = {};
+  resetRail();
   finished = false; scheduleCancelled = false; approvalEndsFlow = false;
   stopCountdown();
   stopPipelineTicker();
@@ -1442,8 +1768,7 @@ function openSession(id) {
       }
     }
     syncTaskCard();
-    const st = $("stream");
-    st.scrollTop = st.scrollHeight;
+    scrollChat(true);
   });
   es.onerror = () => {
     if (es && es.readyState === EventSource.CLOSED) setStatus("oturum bulunamadı", "err");

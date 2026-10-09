@@ -30,6 +30,36 @@ function toolDetail(input: unknown): string {
   return "";
 }
 
+const lineCount = (v: unknown): number => (typeof v === "string" && v ? v.split("\n").length : 0);
+
+/**
+ * Panel için araç çağrısının kod dostu alanları: dosya yolu, Bash komutu ve
+ * düzenlemelerde yaklaşık +/− satır (değiştirilen bloğun eski/yeni satır sayısı —
+ * gerçek diff değil, ama "ne kadar dokundu" hissi için yeterli).
+ */
+function toolFacts(tool: string, input: unknown): { file?: string; command?: string; added?: number; removed?: number } {
+  if (!input || typeof input !== "object") return {};
+  const i = input as Record<string, unknown>;
+  const facts: { file?: string; command?: string; added?: number; removed?: number } = {};
+  const file = i.file_path ?? i.notebook_path;
+  if (typeof file === "string" && file) facts.file = file;
+  if (tool === "Bash" && typeof i.command === "string") facts.command = i.command.slice(0, TOOL_DETAIL_MAX);
+  if (tool === "Edit") {
+    facts.added = lineCount(i.new_string);
+    facts.removed = lineCount(i.old_string);
+  } else if (tool === "MultiEdit" && Array.isArray(i.edits)) {
+    facts.added = 0;
+    facts.removed = 0;
+    for (const e of i.edits as Array<Record<string, unknown>>) {
+      facts.added += lineCount(e?.new_string);
+      facts.removed += lineCount(e?.old_string);
+    }
+  } else if (tool === "Write") {
+    facts.added = lineCount(i.content);
+  }
+  return facts;
+}
+
 /** Şema denemeleri tükendiğinde dönen işaret — akışı öldürmez, şemasız tekrara düşülür */
 const SCHEMA_FAILED = Symbol("schema_failed");
 
@@ -200,7 +230,7 @@ async function executeQuery(
           console.log(`  🔧 ${block.name}${detail ? `: ${detail}` : ""}`);
           // Detaysız araç çağrıları loglanmaz — panelde gürültü yaratıyordu
           if (detail) {
-            bus.emit({ type: "tool_used", agent: agent.key, tool: block.name, detail });
+            bus.emit({ type: "tool_used", agent: agent.key, tool: block.name, detail, ...toolFacts(block.name, block.input) });
           }
         }
       }

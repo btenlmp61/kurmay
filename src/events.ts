@@ -34,7 +34,18 @@ export type OrchestratorEvent =
       /** true ise deneme resume ile yapılacak (ajan baştan başlamaz) */
       resumed: boolean;
     }
-  | { type: "tool_used"; agent: string; tool: string; detail: string }
+  | {
+      type: "tool_used";
+      agent: string;
+      tool: string;
+      detail: string;
+      /** Dosya araçlarında yol, Bash'te komut — panel kod dostu gösterir (dosya çipi / mini terminal) */
+      file?: string;
+      command?: string;
+      /** Düzenleme araçlarında yaklaşık satır sayısı (eski/yeni metinden) — panelde +N −M */
+      added?: number;
+      removed?: number;
+    }
   | {
       type: "agent_finished";
       agent: string;
