@@ -11,6 +11,9 @@ export interface UiServer {
   close(): void;
 }
 
+/** Aç/Kapat sayfasındaki anahtar türleri: ajan düğümü, beceri, MCP sunucusu */
+export type ToggleKind = "agent" | "skill" | "mcp";
+
 export interface UiServerOptions {
   /** Oturum çalışma zamanları — olay akışı, onay/zamanlama/iptal oturum başına */
   runtimes: RuntimeRegistry;
@@ -47,6 +50,10 @@ export interface UiServerOptions {
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
   setNodeDisabled?: (key: string, disabled: boolean) => { ok: boolean; error?: string };
+  /** Aç/Kapat sayfası verisi (GET /toggles-data): ajanlar, beceriler, MCP sunucuları */
+  getToggles?: () => unknown;
+  /** Bir ajanı/beceriyi/MCP sunucusunu açar ya da kapatır: canlı + config.json */
+  setToggle?: (kind: ToggleKind, name: string, disabled: boolean) => { ok: boolean; error?: string };
 }
 
 /**
@@ -67,11 +74,15 @@ export interface UiServerOptions {
  *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
  *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
+ *   GET  /toggles       Aç/Kapat sayfası (ui/toggles.html)
+ *   GET  /toggles-data  { entry, agents[], skills[], mcpServers[] } — açık/kapalı durumları
+ *   POST /toggle        { kind: "agent"|"skill"|"mcp", name, disabled } — açar/kapatır (canlı + config.json)
  */
 export function startUiServer(port: number, options: UiServerOptions): Promise<UiServer> {
   const uiDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
+  const togglesUiPath = path.join(uiDir, "toggles.html");
   const themeCssPath = path.join(uiDir, "theme.css");
   const sseClients = new Set<http.ServerResponse>();
   const json = (res: http.ServerResponse, code: number, payload: unknown) => {
@@ -322,6 +333,30 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
         const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/toggles") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(fs.readFileSync(togglesUiPath));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/toggles-data") {
+      return json(res, 200, options.getToggles?.() ?? { entry: "", agents: [], skills: [], mcpServers: [] });
+    }
+
+    if (req.method === "POST" && req.url === "/toggle") {
+      readJson(req, (parsed) => {
+        const kind = parsed?.kind;
+        if (kind !== "agent" && kind !== "skill" && kind !== "mcp") {
+          return json(res, 400, { ok: false, error: "geçersiz istek" });
+        }
+        const name = String(parsed?.name ?? "");
+        if (!name) return json(res, 400, { ok: false, error: "ad boş olamaz" });
+        const r = options.setToggle ? options.setToggle(kind, name, parsed?.disabled === true) : { ok: false, error: "kapalı" };
+        json(res, r.ok ? 200 : 400, r);
       });
       return;
     }
