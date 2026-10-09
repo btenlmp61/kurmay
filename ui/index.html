@@ -77,7 +77,7 @@ body { overflow:hidden; }
 .av.dev.sm { font-size:8.5px; }
 
 /* — Orta üst: görev başlığı + ekip (ajan hattı) — */
-.chat-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--border);
+.chat-head { display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; padding:10px 24px; border-bottom:1px solid var(--border);
   background:color-mix(in srgb, var(--md-surface-container-lowest) 78%, transparent); backdrop-filter:blur(8px); }
 .ch-title { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 260px; }
 .ch-title .task { font:700 17px/1.3 var(--font-ui); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -170,6 +170,11 @@ body { overflow:hidden; }
 #taskCard .row textarea:focus { box-shadow:none; }
 .composer-opts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
 .composer-opts select { min-height:34px; padding:4px 10px; font-size:13px; }
+/* Kutu boşken seçenekler (zaman, akış çipleri, oturum notu) gizli — dizüstü ekranda sohbete yer
+   kalsın; yazmaya başlayınca açılır. Zamanlama seçiliyse ya da kapalı bir adım varsa hep görünür
+   (kullanıcı bunu fark etmeli). Uyarılar ve hata satırı her zaman görünür. Odağa bağlanamaz:
+   kart açılınca kutu otomatik odaklanıyor. */
+#taskCard:has(#taskInput:placeholder-shown):has(#taskWhenPreset option[value="0"]:checked):not(:has(.fchip.off)) :is(.composer-opts, #taskCtx) { display:none; }
 .composer-opts .flow { margin-top:0; }
 #btnStart { flex:none; box-shadow:var(--md-elev-2); }
 
@@ -482,7 +487,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
         <span style="flex:1">Model seçilmedi — görev başlatmak için sağdaki listeden bir model seç.</span>
       </div>
       <div class="row" style="display:flex;gap:8px;align-items:flex-end">
-        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… örn: todo listesine filtreleme ekle (Enter gönderir)"></textarea>
+        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… (Enter gönderir)"></textarea>
         <button class="primary" id="btnStart">Başlat ➤</button>
       </div>
       <div class="composer-opts">
