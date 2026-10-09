@@ -240,7 +240,30 @@ body { overflow:hidden; }
 [data-theme="evrak"] .sess.sess-new { background:var(--md-primary); color:var(--md-on-primary); border-color:var(--md-primary); border-radius:3px; }
 [data-theme="evrak"] #approval { position:relative; }
 [data-theme="evrak"] #approval::after { content:"ONAY BEKLİYOR"; position:absolute; top:20px; right:26px; transform:rotate(-8deg); pointer-events:none;
-  border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85; }
+  border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85;
+  animation:muhur-vur .62s cubic-bezier(.55,0,.6,1) both; }
+/* Mühür vurma: kart açılınca (display:none'dan çıkınca animasyon baştan başlar) mühür havadan
+   büyük ve soluk gelir, kâğıda çarpar (ezilir + mürekkep yayılır), hafifçe geri seker; kart da
+   darbeyle sarsılır. Hareket azaltma tercihinde mühür doğrudan yerinde görünür. */
+@keyframes muhur-vur {
+  0%   { opacity:0;   transform:translate(-18px,-26px) rotate(-22deg) scale(3.2); filter:blur(3px); }
+  52%  { opacity:.95; transform:rotate(-7deg) scale(.86); filter:blur(0); text-shadow:0 0 1px var(--md-error);
+         box-shadow:0 0 0 2px rgba(161,27,27,.18), 0 0 14px rgba(161,27,27,.25); }
+  68%  { transform:rotate(-8.5deg) scale(1.07); }
+  84%  { transform:rotate(-7.8deg) scale(.98); box-shadow:0 0 0 0 rgba(161,27,27,0); }
+  100% { opacity:.85; transform:rotate(-8deg) scale(1); }
+}
+[data-theme="evrak"] #approval:not(.hidden) { animation:muhur-sars .32s .3s ease-out both; }
+@keyframes muhur-sars {
+  0%   { transform:translate(0,0); }
+  20%  { transform:translate(-2px,3px) rotate(-.25deg); }
+  45%  { transform:translate(2px,-1px) rotate(.2deg); }
+  70%  { transform:translate(-1px,1px); }
+  100% { transform:none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="evrak"] #approval::after, [data-theme="evrak"] #approval:not(.hidden) { animation:none; }
+}
 [data-theme="evrak"] #stream > .me { background:var(--md-surface-container-lowest); color:var(--text); border:1px solid var(--md-outline-variant);
   border-left:4px solid var(--md-primary); border-radius:2px; box-shadow:none; }
 [data-theme="evrak"] #stream > .me::before { content:"EMİR: "; font-weight:700; color:var(--md-primary); }
