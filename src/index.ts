@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
-import { disabledMcpServers, loadAppConfig, modelMissing } from "./config.js";
+import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
 import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
@@ -91,6 +91,7 @@ async function executeRun(o: {
       task,
       provider: cfg.provider,
       model: cfg.model,
+      effort: cfg.effort,
       targetDir: cwd,
       entry: cfg.workflow.entry,
       maxCycles: cfg.workflow.maxCycles,
@@ -188,15 +189,17 @@ async function main() {
         cwd: rt?.cwd,
         runs: e.runLogs?.length ?? 0,
         model: e.model,
+        effort: e.effort,
       };
     });
 
   /** Bir oturumda görev başlatır (oturum yoksa açar); arka planda koşar */
   const launch = (task: string, entry: SessionEntry | undefined, runAt?: number) => {
-    // Yeni oturum o anki genel modelle açılır; sonra panelden yalnızca kendisi için değişebilir
-    const e = entry ?? sessions.create(task, cfg.model);
+    // Yeni oturum o anki genel model/derinlikle açılır; sonra panelden yalnızca kendisi için değişebilir
+    const e = entry ?? sessions.create(task, cfg.model, cfg.effort);
     const runCfg = snapshotConfig(cfg);
     if (e.model) runCfg.model = e.model;
+    if (e.effort) runCfg.effort = e.effort;
     const runtime = runtimes.get(e.id, e.runLogs);
     const run = executeRun({
       task,
@@ -410,13 +413,38 @@ async function main() {
       getModels: async () => {
         const current = cfg.model ?? "";
         const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
+        const effort = cfg.effort ?? "";
         if (!cfg.modelsUrl) {
-          return { current, required, models: [], error: "model listesi adresi tanımlı değil — ⚙ Ayarlar sayfasındaki Bağlantı bölümünden ekle" };
+          return { current, required, effort, models: [], error: "model listesi adresi tanımlı değil — ⚙ Ayarlar sayfasındaki Bağlantı bölümünden ekle" };
         }
         try {
-          return { current, required, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
+          return { current, required, effort, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
         } catch (e) {
-          return { current, required, models: [], error: e instanceof Error ? e.message : String(e) };
+          return { current, required, effort, models: [], error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      setEffort: (effort, sessionId) => {
+        if (effort !== "" && !isEffort(effort)) return { ok: false, error: "geçersiz akıl yürütme derinliği" };
+        // Oturuma özel: config.json'a dokunmaz, yalnızca o oturumun sıradaki görevi etkilenir
+        if (sessionId) {
+          if (!sessions.get(sessionId)) return { ok: false, error: "oturum bulunamadı" };
+          sessions.setEffort(sessionId, effort);
+          runtimes.notify();
+          return { ok: true, effort };
+        }
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as Record<string, unknown>;
+          parsed.effort = effort; // "" = varsayılan (loadAppConfig tanımsız sayar)
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          loadAppConfig(resolvedConfigPath);
+          // Sıradaki görev bunu kullanır; çalışan koşu kendi kopyasıyla devam eder
+          if (effort) cfg.effort = effort;
+          else delete cfg.effort;
+          return { ok: true, effort };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
       setModel: (model, sessionId) => {

@@ -42,10 +42,12 @@ export interface UiServerOptions {
   setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
   /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
-  getModels?: () => Promise<{ current: string; required?: boolean; models: ModelInfo[]; error?: string }>;
+  getModels?: () => Promise<{ current: string; required?: boolean; effort?: string; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
   /** session verilirse yalnızca o oturumun modeli, yoksa genel varsayılan (config.json) değişir */
   setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };
+  /** Akıl yürütme derinliği: session verilirse yalnızca o oturum, yoksa genel varsayılan (config.json) */
+  setEffort?: (effort: string, session?: string) => { ok: boolean; error?: string; effort?: string };
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -70,8 +72,9 @@ export interface UiServerOptions {
  *                   oturumlar birbirinden bağımsız, aynı anda koşabilir
  *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
- *   GET  /models      { current, models[], error? } — modelsUrl'den çekilen model listesi
- *   POST /model       { model: string } — genel modeli değiştirir ve config.json'a yazar
+ *   GET  /models      { current, effort, models[], error? } — modelsUrl'den çekilen model listesi
+ *   POST /model       { model: string, session? } — oturumun ya da genel modeli değiştirir
+ *   POST /effort      { effort: string, session? } — oturumun ya da genel akıl yürütme derinliği
  *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  *   GET  /toggles       Aç/Kapat sayfası (ui/toggles.html)
@@ -303,6 +306,28 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           return;
         }
         const r = options.setModel ? options.setModel(model, session) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/effort") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let effort = "";
+        let session: string | undefined;
+        try {
+          const parsed = JSON.parse(body) as { effort?: unknown; session?: unknown };
+          effort = String(parsed.effort ?? "").trim();
+          if (typeof parsed.session === "string" && parsed.session) session = parsed.session;
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
+          return;
+        }
+        const r = options.setEffort ? options.setEffort(effort, session) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });

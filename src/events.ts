@@ -7,6 +7,8 @@ export type OrchestratorEvent =
       provider: string;
       /** Bu koşunun modeli (oturuma özel ya da genel varsayılan; boş = sağlayıcı varsayılanı) */
       model?: string;
+      /** Koşunun genel akıl yürütme derinliği (oturum ya da genel ayar; ajan düğümü ezebilir) */
+      effort?: string;
       targetDir: string;
       entry: string;
       maxCycles: number;

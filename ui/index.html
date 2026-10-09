@@ -77,7 +77,7 @@ body { overflow:hidden; }
 .av.dev.sm { font-size:8.5px; }
 
 /* — Orta üst: görev başlığı + ekip (ajan hattı) — */
-.chat-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--border);
+.chat-head { display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; padding:10px 24px; border-bottom:1px solid var(--border);
   background:color-mix(in srgb, var(--md-surface-container-lowest) 78%, transparent); backdrop-filter:blur(8px); }
 .ch-title { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 260px; }
 .ch-title .task { font:700 17px/1.3 var(--font-ui); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -123,7 +123,7 @@ body { overflow:hidden; }
 .chat { flex:1; overflow-y:auto; padding:22px 24px 12px; min-height:0; scroll-behavior:smooth; }
 #stream { display:flex; flex-direction:column; gap:14px; overflow-wrap:anywhere; }
 #stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
-.msg { display:flex; gap:12px; max-width:min(920px, 94%); align-items:flex-start; }
+.msg { display:flex; gap:12px; max-width:94%; align-items:flex-start; } /* geniş ekranda sütunu doldursun (sabit üst sınır 32" monitörde yarıda bırakıyordu) */
 .bub { flex:1; min-width:0; background:var(--bubble); border:1px solid var(--border); border-radius:6px 20px 20px 20px; padding:11px 16px 12px; box-shadow:0 2px 12px color-mix(in srgb, var(--md-primary) 6%, transparent); }
 .bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px var(--font-ui); margin-bottom:3px; }
 .bub .who small { font:400 11.5px var(--font-ui); color:var(--muted); }
@@ -156,7 +156,7 @@ body { overflow:hidden; }
 
 /* — Sohbet içindeki kartlar (cevap, onay, zamanlama, karar, build): mesaj gibi avatarlı — */
 #cards { display:flex; flex-direction:column; gap:14px; margin-top:14px; }
-#cards > .card { margin:0; max-width:min(980px, 100%); border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
+#cards > .card { margin:0; max-width:100%; border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
 #cards > .card.hidden { display:none; }
 .card-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .card-head .label { margin:0; }
@@ -170,6 +170,11 @@ body { overflow:hidden; }
 #taskCard .row textarea:focus { box-shadow:none; }
 .composer-opts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
 .composer-opts select { min-height:34px; padding:4px 10px; font-size:13px; }
+/* Kutu boşken seçenekler (zaman, akış çipleri, oturum notu) gizli — dizüstü ekranda sohbete yer
+   kalsın; yazmaya başlayınca açılır. Zamanlama seçiliyse ya da kapalı bir adım varsa hep görünür
+   (kullanıcı bunu fark etmeli). Uyarılar ve hata satırı her zaman görünür. Odağa bağlanamaz:
+   kart açılınca kutu otomatik odaklanıyor. */
+#taskCard:has(#taskInput:placeholder-shown):has(#taskWhenPreset option[value="0"]:checked):not(:has(.fchip.off)) :is(.composer-opts, #taskCtx) { display:none; }
 .composer-opts .flow { margin-top:0; }
 #btnStart { flex:none; box-shadow:var(--md-elev-2); }
 
@@ -186,7 +191,7 @@ body { overflow:hidden; }
 .kv > span:first-child { color:var(--muted); flex:none; }
 .kv b { font:600 12.5px ui-monospace,Consolas,monospace; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .kv.col { flex-direction:column; align-items:stretch; gap:4px; }
-.rail #modelSel { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
+.rail :is(#modelSel, #effortSel) { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
 .rail .dir-wrap { display:flex; align-items:center; gap:6px; min-width:0; }
 .rail .dir { font:12.5px ui-monospace,Consolas,monospace; color:var(--text); cursor:pointer; border-bottom:1px dashed var(--border); overflow-wrap:anywhere; }
 .rail .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
@@ -482,7 +487,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
         <span style="flex:1">Model seçilmedi — görev başlatmak için sağdaki listeden bir model seç.</span>
       </div>
       <div class="row" style="display:flex;gap:8px;align-items:flex-end">
-        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… örn: todo listesine filtreleme ekle (Enter gönderir)"></textarea>
+        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… (Enter gönderir)"></textarea>
         <button class="primary" id="btnStart">Başlat ➤</button>
       </div>
       <div class="composer-opts">
@@ -527,6 +532,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <div class="rbox">
     <h4>Oturum</h4>
     <div class="kv"><span>Model</span><select id="modelSel" title="Model — sıradaki görevde kullanılır"></select></div>
+    <div class="kv"><span>Akıl yürütme</span><select id="effortSel" title="Akıl yürütme derinliği — sıradaki görevde kullanılır"></select></div>
     <div class="kv col"><span>Hedef dizin</span>
       <span class="dir-wrap">
         <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
@@ -1380,7 +1386,7 @@ function handleEvent(e) {
         me.textContent = e.task;
         appendStream(me);
       }
-      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
+      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}${e.effort ? ` · akıl yürütme: ${esc(EFFORT_NAMES[e.effort] || e.effort)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -1953,7 +1959,7 @@ lobby.onmessage = (m) => {
   if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
   renderSessions();
   updateTaskCtx();
-  if (viewModel() !== currentModel) applyViewModel(); // başka sekmeden değişmiş olabilir
+  if (viewModel() !== currentModel || viewEffort() !== currentEffort) applyViewModel(); // başka sekmeden değişmiş olabilir
 };
 
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
@@ -2046,6 +2052,7 @@ function viewModel() {
 function applyViewModel() {
   currentModel = viewModel();
   fillModelSelect(modelList, modelListError);
+  fillEffortSelect();
   updateStartGate();
 }
 
@@ -2077,12 +2084,14 @@ async function loadModels() {
   try {
     const data = await (await fetch("/models")).json();
     globalModel = data.current || "";
+    globalEffort = data.effort || "";
     modelRequired = !!data.required;
     modelList = data.models || [];
     modelListError = data.error;
     applyViewModel();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
+    fillEffortSelect();
   }
 }
 $("modelSel").addEventListener("change", async () => {
@@ -2112,6 +2121,57 @@ $("modelSel").addEventListener("change", async () => {
   } catch {
     alert("model kaydedilemedi");
     $("modelSel").value = currentModel;
+  }
+});
+
+// Akıl yürütme derinliği: model gibi oturuma özel (taslakta yeni oturumların varsayılanı).
+// Liste sabit — Claude Code bu beşinin dışındaki değerleri sessizce "yüksek" yapar;
+// "kapalı" düşünmeyi tamamen kapatır. Ajan düğümüne özel ayar (Ayarlar) bunu ezer.
+const EFFORT_LEVELS = ["off", "low", "medium", "high", "xhigh", "max"];
+const EFFORT_NAMES = { off:"kapalı", low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
+let globalEffort = "", currentEffort = "";
+function viewEffort() {
+  const s = sessionsById[viewSessionId];
+  return (s && s.effort) || globalEffort;
+}
+function fillEffortSelect() {
+  currentEffort = viewEffort();
+  const sel = $("effortSel");
+  sel.innerHTML = [`<option value="">varsayılan</option>`,
+    ...EFFORT_LEVELS.map((v) => `<option value="${v}">${EFFORT_NAMES[v]}</option>`)].join("");
+  sel.value = currentEffort;
+  sel.title = viewSessionId
+    ? "Bu oturumun akıl yürütme derinliği — oturumdaki sıradaki görevde geçerli (diğer oturumlar etkilenmez)"
+    : "Yeni oturumların varsayılan akıl yürütme derinliği";
+}
+$("effortSel").addEventListener("change", async () => {
+  const effort = $("effortSel").value;
+  try {
+    const res = await fetch("/effort", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ effort, session: viewSessionId || undefined }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      const s = sessionsById[viewSessionId];
+      if (s) {
+        if (effort) s.effort = effort; else delete s.effort;
+      } else {
+        globalEffort = effort;
+      }
+      applyViewModel();
+      const ad = effort ? EFFORT_NAMES[effort] : "varsayılan";
+      addLog(new Date().toISOString(), s
+        ? `bu oturumun akıl yürütme derinliği: ${esc(ad)} — oturumdaki sıradaki görevde geçerli`
+        : `yeni oturumların akıl yürütme derinliği: ${esc(ad)}`, "ok");
+    } else {
+      alert(data.error || "akıl yürütme derinliği kaydedilemedi");
+      $("effortSel").value = currentEffort;
+    }
+  } catch {
+    alert("akıl yürütme derinliği kaydedilemedi");
+    $("effortSel").value = currentEffort;
   }
 });
 loadModels();

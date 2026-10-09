@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isCommandNode, isFanoutNode, type AppConfig, type McpServerJson, type ProviderConfig } from "./types.js";
+import { EFFORT_LEVELS, isCommandNode, isFanoutNode, type AppConfig, type EffortSetting, type McpServerJson, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -18,6 +18,10 @@ export function loadAppConfig(configPath: string): AppConfig {
   // görünür kalması için boş string'e izin veriyoruz
   for (const key of ["baseUrl", "apiKey", "model", "modelsUrl", "targetDir"] as const) {
     if (cfg[key] === "") delete cfg[key];
+  }
+  if ((cfg.effort as string | undefined) === "") delete cfg.effort;
+  if (cfg.effort !== undefined && !isEffort(cfg.effort)) {
+    throw new Error(`config: "effort" şunlardan biri olmalı: ${EFFORT_LEVELS.join(", ")} (verilen: ${JSON.stringify(cfg.effort)})`);
   }
 
   if (cfg.provider !== "anthropic" && cfg.provider !== "ollama") {
@@ -69,6 +73,13 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   if (!cfg.workflow?.entry || !cfg.workflow.agents) {
     throw new Error('config: "workflow" bölümü eksik ("entry" ve "agents" alanları zorunlu)');
+  }
+  for (const [key, node] of Object.entries(cfg.workflow.agents)) {
+    const effort = (node as { effort?: unknown }).effort;
+    if (effort === "") delete (node as { effort?: unknown }).effort;
+    else if (effort !== undefined && !isEffort(effort)) {
+      throw new Error(`config: "${key}.effort" şunlardan biri olmalı: ${EFFORT_LEVELS.join(", ")} (verilen: ${JSON.stringify(effort)})`);
+    }
   }
   if (!cfg.workflow.agents[cfg.workflow.entry]) {
     throw new Error(`config: workflow.entry "${cfg.workflow.entry}" agents içinde tanımlı değil`);
@@ -146,6 +157,11 @@ export function isOffMcpTool(tool: string, offServers: readonly string[]): boole
  * model adı Ollama'da yoktur). Config'te boş bırakılabilir — panelden seçilene
  * kadar görev başlatılmaz.
  */
+/** Geçerli bir akıl yürütme derinliği mi (EFFORT_LEVELS) */
+export function isEffort(v: unknown): v is EffortSetting {
+  return typeof v === "string" && (EFFORT_LEVELS as readonly string[]).includes(v);
+}
+
 export function modelMissing(cfg: ProviderConfig): boolean {
   return cfg.provider === "ollama" && !cfg.model;
 }
