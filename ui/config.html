@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kurmay · config editörü</title>
+<title>Kurmay · Teşkilat Şeması</title>
 <link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
 <script>
@@ -78,38 +78,38 @@ input[type=text], input[type=number], select { width:100%; }
 
 <div class="hdr">
   <span class="brand">Kurmay</span>
-  <h1>Config editörü</h1>
+  <h1>Teşkilat Şeması</h1>
   <span class="pill" id="prov" style="background:var(--bg);color:var(--muted)"></span>
   <span class="pill" id="dir" style="background:var(--bg);color:var(--muted)"></span>
   <span class="sp"></span>
   <span id="msg"></span>
   <button class="primary" id="btnSave" disabled>Kaydet</button>
-  <select id="themeSel" title="Tema" style="min-height:36px;padding:4px 10px;font-size:13px;width:auto">
-    <option value="teskilat">◆ Teşkilat</option>
-    <option value="evrak">▤ Gizli Evrak</option>
-    <option value="radar">◎ Radar</option>
-  </select>
+  <div class="tswitch" role="radiogroup" aria-label="Tema">
+    <button class="tsw" data-t="teskilat" aria-label="Teşkilat"></button>
+    <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
+    <button class="tsw" data-t="radar" aria-label="Radar"></button>
+  </div>
   <a href="/">← izleme paneli</a>
 </div>
 
 <div class="card" style="margin-bottom:14px">
   <div class="gbar">
     <div class="grow">
-      <label class="minl">Çalışma dizini (targetDir)</label>
+      <label class="minl">Çalışma dizini</label>
       <input type="text" id="tdir" placeholder="D:\work\proje">
     </div>
     <div>
-      <label class="minl">Başlangıç düğümü (entry)</label>
+      <label class="minl">Başlangıç düğümü</label>
       <select id="entrySel"></select>
     </div>
     <button id="btnAdd">+ Düğüm ekle</button>
   </div>
   <div id="addForm" class="hidden" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
     <div class="gbar">
-      <div><label class="minl">Anahtar (key)</label><input type="text" id="ndKey" placeholder="ör. tester" style="width:150px"></div>
-      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">agent</option><option value="command">command (build)</option><option value="fanout">fanout (ajanı repo başına dağıt)</option></select></div>
-      <div id="ndAgentSrc"><label class="minl">Rol tanımı (.md · system prompt)</label><select id="ndMd"></select></div>
-      <div id="ndNewMd" class="hidden"><label class="minl">Yeni rol adı</label><input type="text" id="ndMdName" placeholder="ör. tester" style="width:150px"></div>
+      <div><label class="minl">Anahtar</label><input type="text" id="ndKey" placeholder="ör. guvenlik" style="width:150px"></div>
+      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">ajan</option><option value="command">komut (derleme)</option><option value="fanout">dağıtım (ajanı mıntıka başına çoğalt)</option></select></div>
+      <div id="ndAgentSrc"><label class="minl">Rol tanımı dosyası</label><select id="ndMd"></select></div>
+      <div id="ndNewMd" class="hidden"><label class="minl">Yeni rol adı</label><input type="text" id="ndMdName" placeholder="ör. guvenlik" style="width:150px"></div>
       <button class="primary" id="ndAddBtn">Ekle</button>
       <button id="ndCancel">Vazgeç</button>
     </div>
@@ -117,18 +117,48 @@ input[type=text], input[type=number], select { width:100%; }
   </div>
 </div>
 
+<div class="card" style="margin-bottom:14px">
+  <div class="label">Bağlantı</div>
+  <div class="gbar">
+    <div>
+      <label class="minl">Sağlayıcı</label>
+      <select id="cProvider"><option value="anthropic">Bulut</option><option value="ollama">Yerel sunucu</option></select>
+    </div>
+    <div class="grow">
+      <label class="minl">Sunucu adresi</label>
+      <input type="text" id="cBaseUrl" placeholder="boşsa mevcut oturum kullanılır · yerel sunucu için ör. http://localhost:11434">
+    </div>
+    <div class="grow">
+      <label class="minl">Erişim anahtarı</label>
+      <div style="display:flex;gap:6px"><input type="password" id="cApiKey" autocomplete="off" placeholder="boşsa oturum anahtarı kullanılır" style="flex:1">
+      <button id="cKeyShow" type="button" title="Göster / gizle" style="min-height:auto;padding:4px 12px">👁</button></div>
+    </div>
+  </div>
+  <div class="gbar" style="margin-top:10px">
+    <div class="grow">
+      <label class="minl">Genel model</label>
+      <input type="text" id="cModel" list="modelList" placeholder="boşsa sağlayıcının varsayılanı">
+    </div>
+    <div class="grow">
+      <label class="minl">Model listesi adresi</label>
+      <input type="text" id="cModelsUrl" placeholder="paneldeki model seçici listeyi bu adresten alır">
+    </div>
+  </div>
+  <div class="fhint" style="margin-top:8px">Kaydettikten sonra servisi yeniden başlat. Anahtar ayar dosyasına düz metin olarak yazılır — dosyayı git'e gönderirken dikkat et.</div>
+</div>
+
 <div class="layout">
   <div class="card graph">
-    <div class="label">İş akışı grafı</div>
-    <div class="intro">Ajanların hangi sırayla çalışacağı bu grafta tanımlı — geçişler koda gömülü değil, config'ten gelir.
-      Kutular <b>düğümler</b> (ajanlar + build), oklar <b>geçişler</b>. Bir düğüme tıkla → sağda özelliklerini düzenle, sonra <b>Kaydet</b>.</div>
+    <div class="label">Akış şeması</div>
+    <div class="intro">Ajanların hangi sırayla çalışacağı bu şemada tanımlı — geçişler koda gömülü değil, ayar dosyasından gelir.
+      Kutular <b>düğümler</b> (ajanlar + komut adımları), oklar <b>geçişler</b>. Bir düğüme tıkla → sağda özelliklerini düzenle, sonra <b>Kaydet</b>.</div>
     <div id="graph"></div>
     <div class="legend">
-      <span class="k"><span class="sw" style="border-color:var(--muted)"></span> next (koşulsuz)</span>
-      <span class="k"><span class="sw" style="border-color:var(--blue)"></span> route (koşullu)</span>
+      <span class="k"><span class="sw" style="border-color:var(--muted)"></span> sonraki (koşulsuz)</span>
+      <span class="k"><span class="sw" style="border-color:var(--blue)"></span> yönlendirme (koşullu)</span>
       <span class="k"><span class="sw" style="border-color:var(--teal)"></span> onay / başarılı</span>
       <span class="k"><span class="sw" style="border-color:var(--red)"></span> red / hata</span>
-      <span class="k"><span class="tybadge entry">entry</span> başlangıç düğümü</span>
+      <span class="k"><span class="tybadge entry">başlangıç</span> başlangıç düğümü</span>
       <span class="k"><span class="sw" style="border-color:var(--muted);border-top-style:dashed"></span> kesik kutu = devre dışı</span>
     </div>
   </div>
@@ -141,13 +171,19 @@ input[type=text], input[type=number], select { width:100%; }
 <script>
 const $ = (id) => document.getElementById(id);
 
-// Tema: Teşkilat (koyu) · Gizli Evrak (açık) · Radar (gece görüşü) — panelle ortak kayıt
-$("themeSel").value = document.documentElement.dataset.theme;
-$("themeSel").addEventListener("change", () => {
-  const t = $("themeSel").value;
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem("kurmay-theme", t); } catch (e) {}
-});
+// Tema: yalnızca renk örnekleri (adlar görünmez). Seçim <html data-theme>'e uygulanır,
+// localStorage'a yazılır (sayfa başındaki betik okur; panel ve şema ortak)
+function applyThemeUI() {
+  for (const b of document.querySelectorAll(".tsw")) b.classList.toggle("on", b.dataset.t === document.documentElement.dataset.theme);
+}
+for (const b of document.querySelectorAll(".tsw")) {
+  b.addEventListener("click", () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    try { localStorage.setItem("kurmay-theme", b.dataset.t); } catch (e) {}
+    applyThemeUI();
+  });
+}
+applyThemeUI();
 
 function esc(s){ return String(s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
@@ -170,11 +206,30 @@ document.addEventListener("pointerdown", (ev) => {
 });
 
 let cfg = null, meta = { rules:[], skills:[], agents:[] }, selected = null, dirty = false;
+
+// Görünen adlar — config anahtarları (architect, developer…) teknik kalır, ekranda Türkçe
+const NODE_NAMES = { architect:"Analist", developer:"Saha ajanı", reviewer:"Teftiş" };
+const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım" };
+const ROUTE_VALUES = { developer:"uygulama", done:"bitir", default:"varsayılan" };
+const FIELD_NAMES = { route:"rota" };
+const EFFORT_NAMES = { low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
+const TOOL_NAMES = { Read:"Dosya oku", Write:"Dosya yaz", Edit:"Düzenle", MultiEdit:"Çoklu düzenle", NotebookEdit:"Defter düzenle",
+  Glob:"Dosya bul", Grep:"Metin ara", Bash:"Komut", WebSearch:"İnternette ara", WebFetch:"Sayfa getir",
+  ToolSearch:"Araç bul", TodoWrite:"Yapılacaklar", Task:"Alt görev" };
+const toolName = (t)=> t.startsWith("mcp__") ? "Eklenti: " + t.split("__").slice(1).join(" · ") : (TOOL_NAMES[t] || t);
+const valName = (v)=> ROUTE_VALUES[v] || v;
+/** Düğüm anahtarı → ekrandaki ad; dağıtım düğümü işçisinin takım adıyla ("Saha Timi") görünür */
+function nodeName(k){
+  if (!k) return "";
+  const n = cfg && nodes()[k];
+  if (isFan(n)) return n.agent === "developer" ? "Saha Timi" : `${nodeName(n.agent) || k} ekibi`;
+  return NODE_NAMES[k] || k;
+}
 const STD_TOOLS = ["Read","Write","Edit","Glob","Grep","Bash","WebSearch","WebFetch","ToolSearch"];
 function markDirty(){ dirty = true; $("btnSave").disabled = false; $("msg").textContent = ""; }
 function nodeExists(k){ return Object.prototype.hasOwnProperty.call(nodes(), k); }
 function refreshEntry(){
-  $("entrySel").innerHTML = keys().map((k)=>`<option ${k===cfg.workflow.entry?"selected":""}>${esc(k)}</option>`).join("");
+  $("entrySel").innerHTML = keys().map((k)=>`<option value="${esc(k)}" ${k===cfg.workflow.entry?"selected":""}>${esc(nodeName(k))}</option>`).join("");
 }
 
 function nodes(){ return cfg.workflow.agents; }
@@ -194,10 +249,10 @@ function fanoutOwner(key){
  */
 function adoptWorker(fk, wk){
   const f = nodes()[fk], w = nodes()[wk];
-  if (!w || isGate(w)) return `"${wk}" bir ajan düğümü değil`;
-  if (w.verdict || w.routes) return `"${wk}" verdict/routes ile dallanıyor — işçi kendi kenarı olmayan bir ajan olmalı`;
+  if (!w || isGate(w)) return `"${nodeName(wk)}" bir ajan düğümü değil`;
+  if (w.verdict || w.routes) return `"${nodeName(wk)}" karar/yönlendirme ile dallanıyor — üye, kendi geçişi olmayan bir ajan olmalı`;
   const eski = fanoutOwner(wk);
-  if (eski && eski !== fk) return `"${wk}" zaten "${eski}" fanout'unun işçisi`;
+  if (eski && eski !== fk) return `"${nodeName(wk)}" zaten "${nodeName(eski)}" dağıtımının üyesi`;
   if (w.next){ if (!f.next) f.next = w.next; }
   delete w.next;
   for (const k of keys()){ if (k === fk) continue; const nn = nodes()[k];
@@ -227,14 +282,14 @@ function outEdges(key){
     if (n.onSuccess) e.push({ to:n.onSuccess, kind:"ok", label:"başarılı" });
     if (n.onFailure) e.push({ to:n.onFailure, kind:"fail", label:"hata" });
   } else if (isFan(n)) {
-    if (n.agent) e.push({ to:n.agent, kind:"next", label:"repo başına" });
+    if (n.agent) e.push({ to:n.agent, kind:"next", label:"mıntıka başına" });
     if (n.next) e.push({ to:n.next, kind:"next", label:"" });
   } else if (n.verdict) {
     if (n.verdict.onApprove) e.push({ to:n.verdict.onApprove, kind:"ok", label:"onay" });
     if (n.verdict.onReject) e.push({ to:n.verdict.onReject, kind:"fail", label:"red" });
   } else if (n.routes) {
-    for (const [val,t] of Object.entries(n.routes.cases)) if (t) e.push({ to:t, kind:"route", label:val });
-    if (n.routes.default) e.push({ to:n.routes.default, kind:"route", label:"default" });
+    for (const [val,t] of Object.entries(n.routes.cases)) if (t) e.push({ to:t, kind:"route", label:valName(val) });
+    if (n.routes.default) e.push({ to:n.routes.default, kind:"route", label:"varsayılan" });
   } else if (n.next) {
     e.push({ to:n.next, kind:"next", label:"" });
   }
@@ -309,18 +364,17 @@ function drawGraph(){
     const isEntry = k === cfg.workflow.entry;
     const fill = k===selected ? "var(--blueBg)" : "var(--card)";
     const stroke = k===selected ? "var(--blue)" : "var(--border)";
-    const badge = isEntry ? "entry" : ty;
     const fOwner = fanoutOwner(k);
-    const sub = isCmd(n) ? "command"
-      : isFan(n) ? `fanout · ${n.agent || "?"}${n.maxConcurrency ? ` · en fazla ${n.maxConcurrency}` : ""}`
-      : fOwner ? `${fOwner} işçisi`
-      : (n.verdict ? "verdict" : (n.routes ? "routes" : "next"));
+    const sub = isCmd(n) ? "komut"
+      : isFan(n) ? `dağıtım · ${nodeName(n.agent) || "?"}${n.maxConcurrency ? ` · en fazla ${n.maxConcurrency}` : ""}`
+      : fOwner ? `${nodeName(fOwner)} üyesi`
+      : (n.verdict ? "karar" : (n.routes ? "yönlendirme" : "sıralı"));
     // Devre dışı: soluk + kesik kenar + üstü çizili ad — akış bu kutuyu atlar
     const off = !!n.disabled;
     return `<g class="gnode" data-key="${esc(k)}" transform="translate(${p.x},${p.y})"${off?' opacity="0.5"':""}>
       <rect width="${BW}" height="${BH}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.5"${off?' stroke-dasharray="5 4"':""}/>
-      <text x="12" y="24"${off?' text-decoration="line-through"':""}>${esc(k)}</text>
-      <text class="sub" x="12" y="42">${off?"devre dışı · ":""}${esc(sub)}${isEntry?" · entry":""}</text>
+      <text x="12" y="24"${off?' text-decoration="line-through"':""}>${esc(nodeName(k))}</text>
+      <text class="sub" x="12" y="42">${off?"devre dışı · ":""}${esc(sub)}${isEntry?" · başlangıç":""}</text>
     </g>`;
   }).join("");
 
@@ -337,7 +391,7 @@ function drawGraph(){
 // ── Özellik paneli ─────────────────────────────────────────────────
 function targetSelect(cur, onChange, allowEnd){
   const opts = (allowEnd ? [`<option value="">(bitir)</option>`] : [])
-    .concat(keys().map((k)=>`<option value="${esc(k)}" ${k===cur?"selected":""}>${esc(k)}</option>`)).join("");
+    .concat(keys().map((k)=>`<option value="${esc(k)}" ${k===cur?"selected":""}>${esc(nodeName(k))}</option>`)).join("");
   const s = document.createElement("select");
   s.innerHTML = opts;
   s.value = cur || "";
@@ -351,12 +405,12 @@ function field(labelText, el, hint){
   if (hint){ const h = document.createElement("div"); h.className="fhint"; h.textContent = hint; d.appendChild(h); }
   return d;
 }
-function chipEditor(list, options, onChange){
+function chipEditor(list, options, onChange, label = (v)=>v){
   const wrap = document.createElement("div");
   const chips = document.createElement("div"); chips.className = "chips";
   list.forEach((v,i)=>{
     const c = document.createElement("span"); c.className="chip";
-    c.innerHTML = `<span class="mono">${esc(v)}</span>`;
+    c.innerHTML = `<span class="mono">${esc(label(v))}</span>`;
     const x = document.createElement("button"); x.textContent="×";
     x.addEventListener("click", ()=>{ list.splice(i,1); onChange(); });
     c.appendChild(x); chips.appendChild(c);
@@ -365,7 +419,7 @@ function chipEditor(list, options, onChange){
   const avail = options.filter((o)=> !list.includes(o));
   if (avail.length){
     const sel = document.createElement("select");
-    sel.innerHTML = `<option value="">+ ekle…</option>` + avail.map((o)=>`<option>${esc(o)}</option>`).join("");
+    sel.innerHTML = `<option value="">+ ekle…</option>` + avail.map((o)=>`<option value="${esc(o)}">${esc(label(o))}</option>`).join("");
     sel.addEventListener("change", ()=>{ if (sel.value){ list.push(sel.value); onChange(); } });
     wrap.appendChild(sel);
   }
@@ -383,8 +437,8 @@ function render(){
   const addDelete = () => {
     const delWrap = document.createElement("div"); delWrap.style.marginTop="16px";
     const del = document.createElement("button"); del.className="danger"; del.textContent="Bu düğümü sil";
-    if (key === cfg.workflow.entry){ del.disabled = true; del.title = "entry düğümü silinemez — önce başka bir başlangıç seç"; }
-    if (fanoutOwner(key)){ del.disabled = true; del.title = `"${fanoutOwner(key)}" fanout'unun işçisi — önce fanout'u sil ya da başka bir ajan seç`; }
+    if (key === cfg.workflow.entry){ del.disabled = true; del.title = "Başlangıç düğümü silinemez — önce başka bir başlangıç seç"; }
+    if (fanoutOwner(key)){ del.disabled = true; del.title = `"${nodeName(fanoutOwner(key))}" dağıtımının üyesi — önce dağıtım düğümünü sil ya da başka bir ajan seç`; }
     del.addEventListener("click", ()=>{
       delete nodes()[key];
       for (const k of keys()){ const nn = nodes()[k];       // bu düğüme işaret eden kenarları temizle
@@ -402,17 +456,17 @@ function render(){
   const head = document.createElement("div");
   const ty = isCmd(n) ? "command" : isFan(n) ? "fanout" : "agent";
   const fOwner = fanoutOwner(key);
-  head.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${esc(key)}</div>
-    <span class="tybadge ${key===cfg.workflow.entry?"entry":ty}">${key===cfg.workflow.entry?"entry · ":""}${ty}</span>`;
+  head.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${esc(nodeName(key))}</div>
+    <span class="tybadge ${key===cfg.workflow.entry?"entry":ty}">${key===cfg.workflow.entry?"başlangıç · ":""}${TYPE_NAMES[ty]}</span>`;
   panel.appendChild(head);
   const desc = document.createElement("div"); desc.className="fhint"; desc.style.margin="6px 0 2px";
   desc.textContent = isCmd(n)
-    ? "LLM değil — değişen repoları sırayla build eden deterministik komut adımı."
-    : isFan(n) ? "LLM değil — architect'in planını repolara böler ve seçilen ajanı her repo için AYRI kopya olarak koşturur (kaç kopya olacağına kod karar verir). Her kopya yalnızca kendi reposuna yazabilir; sonuçlar birleşip next'e geçer. Plan tek repoya dokunuyorsa ajan tek kopya koşar."
-    : fOwner ? `"${fOwner}" fanout düğümünün işçisi — repo başına kopyalanır. Kendi geçiş kenarı olamaz; kopyalar bitince geçişi "${fOwner}" yapar.`
-    : (n.routes ? "Ajan; structured çıktısındaki rota alanına göre dallanır (ör. developer / done)."
-    : (n.verdict ? "İnceleme ajanı; kararına göre onApprove/onReject'e dallanır."
-    : "Ajan; işini bitince koşulsuz olarak next'e geçer."));
+    ? "Yapay zekâ değil — değişen mıntıkaları sırayla derleyen, her seferinde aynı sonucu veren komut adımı."
+    : isFan(n) ? "Yapay zekâ değil — Analist'in planını mıntıkalara böler ve seçilen ajanı her mıntıka için AYRI kopya olarak koşturur (kaç kopya olacağına kod karar verir). Her kopya yalnızca kendi mıntıkasına yazabilir; sonuçlar birleşip sonraki düğüme geçer. Plan tek mıntıkaya dokunuyorsa ajan tek kopya koşar."
+    : fOwner ? `"${nodeName(fOwner)}" dağıtımının üyesi — mıntıka başına kopyalanır. Kendi geçişi olamaz; kopyalar bitince geçişi "${nodeName(fOwner)}" yapar.`
+    : (n.routes ? "Ajan; yapılandırılmış çıktısındaki rota alanına göre dallanır (ör. uygulama / bitir)."
+    : (n.verdict ? "İnceleme ajanı; kararına göre onay ya da red yoluna dallanır."
+    : "Ajan; işini bitince koşulsuz olarak sonraki düğüme geçer."));
   panel.appendChild(desc);
 
   // Devre dışı anahtarı — Kaydet'i beklemez: anında config.json'a yazılır ve
@@ -424,10 +478,10 @@ function render(){
   dL.appendChild(dChk); dL.append(isFan(n) ? "Dağıtımı kapat — ajan tek kopya koşar" : "Devre dışı — akış bu düğümü atlar");
   const dH = document.createElement("div"); dH.className = "fhint";
   const gecer = passThrough(n);
-  dH.textContent = isFan(n) ? `Kapalıyken DAĞITIM yapılmaz: "${n.agent}" bölünmemiş planla tek kopya koşar, sonra next. `
-      + "Paralel ile tek kopyayı karşılaştırmak için. Anında uygulanır (Kaydet ve restart gerekmez)."
-    : `Kapalıyken koşturulmaz, akış başarı yönünden devam eder → ${gecer ? `"${gecer}"` : "akış biter"}. `
-      + "Anında uygulanır (Kaydet ve restart gerekmez), o an çalışan koşuyu etkilemez.";
+  dH.textContent = isFan(n) ? `Kapalıyken DAĞITIM yapılmaz: "${nodeName(n.agent)}" bölünmemiş planla tek kopya koşar, sonra sonraki düğüme geçer. `
+      + "Paralel ile tek kopyayı karşılaştırmak için. Anında uygulanır (kaydetmek ya da yeniden başlatmak gerekmez)."
+    : `Kapalıyken koşturulmaz, akış başarı yönünden devam eder → ${gecer ? `"${nodeName(gecer)}"` : "akış biter"}. `
+      + "Anında uygulanır (kaydetmek ya da yeniden başlatmak gerekmez), o an çalışan görevi etkilemez.";
   dWrap.appendChild(dL); dWrap.appendChild(dH);
   dChk.addEventListener("change", async ()=>{
     const want = dChk.checked;
@@ -438,7 +492,7 @@ function render(){
       const data = await res.json().catch(()=>({}));
       if (!data.ok) throw new Error(data.error || "uygulanamadı");
       if (want) n.disabled = true; else delete n.disabled;
-      $("msg").innerHTML = `<span style="color:var(--teal)">✓ "${esc(key)}" ${want ? "devre dışı" : "yeniden açık"} — sıradaki görevde geçerli</span>`;
+      $("msg").innerHTML = `<span style="color:var(--teal)">✓ "${esc(nodeName(key))}" ${want ? "devre dışı" : "yeniden açık"} — sıradaki görevde geçerli</span>`;
       render();
     } catch (err) {
       dChk.checked = !want;
@@ -455,28 +509,28 @@ function render(){
       && (!fanoutOwner(k) || fanoutOwner(k) === key));
     const ag = document.createElement("select");
     ag.innerHTML = (n.agent ? "" : `<option value="">(seç)</option>`)
-      + adaylar.map((k)=>`<option value="${esc(k)}" ${k===n.agent?"selected":""}>${esc(k)}</option>`).join("");
+      + adaylar.map((k)=>`<option value="${esc(k)}" ${k===n.agent?"selected":""}>${esc(nodeName(k))}</option>`).join("");
     ag.addEventListener("change", ()=>{
       const err = adoptWorker(key, ag.value);
       if (err){ $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err)}</span>`; ag.value = n.agent || ""; return; }
       changed();
     });
-    panel.appendChild(field("agent (repo başına kopyalanacak ajan)", ag,
-      "Seçince ajanın next'i bu düğüme taşınır ve ajana gelen kenarlar buraya çevrilir — graf geçerli kalır. Yazma araçları serbest (her kopya kendi reposuna kilitli)."));
+    panel.appendChild(field("Çoğaltılacak ajan", ag,
+      "Seçince ajanın sonraki düğümü buraya taşınır ve ajana gelen geçişler bu düğüme çevrilir — şema geçerli kalır. Her kopya yalnızca kendi mıntıkasına yazabilir."));
 
     const mc = document.createElement("input"); mc.type = "number"; mc.min = "0"; mc.step = "1";
     mc.value = n.maxConcurrency ?? ""; mc.placeholder = "0 = sınırsız";
     mc.addEventListener("input", ()=>{ const v = parseInt(mc.value, 10); if (Number.isInteger(v) && v > 0) n.maxConcurrency = v; else delete n.maxConcurrency; mark(); drawGraph(); });
-    panel.appendChild(field("maxConcurrency (aynı anda en fazla kaç kopya)", mc,
-      "Model sunucun istekleri SIRAYLA işliyorsa (ör. Ollama varsayılanı) paralellik hız kazandırmaz, kuyruk ve zaman aşımı getirir. Sunucunun eş zamanlı kapasitesine göre ayarla; 0/boş = sınırsız."));
+    panel.appendChild(field("Aynı anda en fazla kaç kopya", mc,
+      "Model sunucun istekleri SIRAYLA işliyorsa paralellik hız kazandırmaz, kuyruk ve zaman aşımı getirir. Sunucunun eş zamanlı kapasitesine göre ayarla; 0/boş = sınırsız."));
 
-    const pr = document.createElement("input"); pr.type = "text"; pr.value = n.parent || ""; pr.placeholder = "ör. common-events";
+    const pr = document.createElement("input"); pr.type = "text"; pr.value = n.parent || ""; pr.placeholder = "ör. ortak-modul";
     pr.addEventListener("input", ()=>{ if (pr.value.trim()) n.parent = pr.value.trim(); else delete n.parent; mark(); });
-    panel.appendChild(field("parent (ortak repo, isteğe bağlı)", pr,
-      "Plana dahilse diğer repolardan ÖNCE tek başına koşar — servisler güncel sözleşmeye göre kod yazsın."));
+    panel.appendChild(field("Ortak mıntıka (isteğe bağlı)", pr,
+      "Plana dahilse diğer mıntıkalardan ÖNCE tek başına koşar — servisler güncel sözleşmeye göre kod yazsın."));
 
-    panel.appendChild(field("next", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true),
-      "Tüm kopyalar bitince gidilecek düğüm (ör. review). Reddedilirse oraya bu düğümü ver: yalnızca geri bildirimde adı geçen repolar yeniden koşar."));
+    panel.appendChild(field("Sonraki düğüm", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true),
+      "Tüm kopyalar bitince gidilecek düğüm (ör. Teftiş). Teftiş reddederse oraya bu düğümü ver: yalnızca raporda adı geçen mıntıkalar yeniden koşar."));
     addDelete();
     return;
   }
@@ -484,43 +538,43 @@ function render(){
   if (isCmd(n)){
     const cmd = document.createElement("input"); cmd.type="text"; cmd.value = n.command||"";
     cmd.addEventListener("input", ()=>{ n.command = cmd.value; mark(); });
-    panel.appendChild(field("command (varsayılan build komutu)", cmd, "Değişen servis repolarında çalıştırılan komut (ör. mvn clean install)."));
+    panel.appendChild(field("Komut (varsayılan derleme komutu)", cmd, "Değişen mıntıkalarda çalıştırılan komut (ör. mvn clean install)."));
 
     // parent: ortak/parent repo (değişmişse diğerlerinden ÖNCE, kendi komutuyla build edilir)
     const pWrap = document.createElement("div"); pWrap.className="field";
     const pLbl = document.createElement("label"); pLbl.style.cssText="display:flex;align-items:center;gap:6px;font-size:13px";
     const pChk = document.createElement("input"); pChk.type="checkbox"; pChk.checked = !!n.parent;
     pChk.addEventListener("change", ()=>{ if (pChk.checked) n.parent = n.parent || { path:"", command:"" }; else delete n.parent; changed(); });
-    pLbl.appendChild(pChk); pLbl.append("parent repo (varsa)");
+    pLbl.appendChild(pChk); pLbl.append("Ortak mıntıka (varsa)");
     pWrap.appendChild(pLbl);
     const pHint = document.createElement("div"); pHint.className="fhint";
-    pHint.textContent="Ortak modül (ör. common-events); değişmişse diğer repolardan ÖNCE, kendi komutuyla build edilir.";
+    pHint.textContent="Ortak modül; değişmişse diğer mıntıkalardan ÖNCE, kendi komutuyla derlenir.";
     pWrap.appendChild(pHint); panel.appendChild(pWrap);
     if (n.parent){
-      const pp = document.createElement("input"); pp.type="text"; pp.value=n.parent.path||""; pp.placeholder="common-events";
+      const pp = document.createElement("input"); pp.type="text"; pp.value=n.parent.path||""; pp.placeholder="ortak-modul";
       pp.addEventListener("input", ()=>{ n.parent.path = pp.value; mark(); });
-      panel.appendChild(field("parent.path (repo klasörü)", pp, "targetDir altındaki parent repo klasörü."));
+      panel.appendChild(field("Ortak mıntıka klasörü", pp, "Çalışma dizini altındaki ortak mıntıka klasörü."));
       const pc = document.createElement("input"); pc.type="text"; pc.value=n.parent.command||""; pc.placeholder="(boşsa yukarıdaki komut)";
       pc.addEventListener("input", ()=>{ if (pc.value.trim()) n.parent.command = pc.value; else delete n.parent.command; mark(); });
-      panel.appendChild(field("parent.command", pc, "Parent'a özel build komutu; boşsa varsayılan komut kullanılır."));
+      panel.appendChild(field("Ortak mıntıka komutu", pc, "Ortak mıntıkaya özel derleme komutu; boşsa varsayılan komut kullanılır."));
     }
 
-    panel.appendChild(field("onSuccess", targetSelect(n.onSuccess, (v)=>{ n.onSuccess=v; changed(); }, true), "Build başarılıysa gidilecek düğüm ((bitir)=akış sonlanır)."));
-    panel.appendChild(field("onFailure", targetSelect(n.onFailure, (v)=>{ n.onFailure=v; changed(); }, false), "Build hatasında gidilecek düğüm — hata logu geri bildirim olur."));
+    panel.appendChild(field("Başarılıysa →", targetSelect(n.onSuccess, (v)=>{ n.onSuccess=v; changed(); }, true), "Derleme başarılıysa gidilecek düğüm ((bitir) = akış biter)."));
+    panel.appendChild(field("Hata olursa →", targetSelect(n.onFailure, (v)=>{ n.onFailure=v; changed(); }, false), "Derleme hatasında gidilecek düğüm — hata kaydı geri bildirim olur."));
     addDelete();
     return;
   }
 
   // agent: rol tanımı dosyası (salt-okunur)
   const f = document.createElement("input"); f.type="text"; f.value = n.file||""; f.disabled = true;
-  panel.appendChild(field("rol tanımı — .md (salt-okunur)", f,
-    "Ajanın \"kim olduğu ve nasıl davranacağı\" (system prompt). .claude/agents içindeki md dosyası — buna persona da denir."));
+  panel.appendChild(field("Rol tanımı dosyası (salt okunur)", f,
+    "Ajanın kim olduğunu ve nasıl davranacağını anlatan talimat dosyası."));
 
   // requiresUserApproval
   const chk = document.createElement("input"); chk.type="checkbox"; chk.checked = !!n.requiresUserApproval;
   chk.addEventListener("change", ()=>{ n.requiresUserApproval = chk.checked; mark(); });
   const chkL = document.createElement("label"); chkL.style.cssText="display:flex;align-items:center;gap:6px;font-size:13px";
-  chkL.appendChild(chk); chkL.append("requiresUserApproval");
+  chkL.appendChild(chk); chkL.append("Kullanıcı onayı beklensin");
   const chkF = document.createElement("div"); chkF.className="field"; chkF.appendChild(chkL);
   const chkH = document.createElement("div"); chkH.className="fhint";
   chkH.textContent = "Açıksa bu ajanın çıktısından sonra kullanıcı onayı beklenir (terminal veya panelden).";
@@ -531,32 +585,32 @@ function render(){
   const m = document.createElement("input"); m.type="text"; m.value = n.model||""; m.placeholder="(genel model)";
   m.setAttribute("list", "modelList"); // modelsUrl'den çekilen öneriler (serbest yazım da serbest)
   m.addEventListener("input", ()=>{ if (m.value.trim()) n.model = m.value.trim(); else delete n.model; mark(); });
-  panel.appendChild(field("model (override)", m, "Bu ajana özel model; boşsa config'teki genel model kullanılır."));
+  panel.appendChild(field("Model (bu ajana özel)", m, "Boşsa genel model kullanılır."));
 
   // effort: akıl yürütme derinliği
   const ef = document.createElement("select");
   ef.innerHTML = ["", "low", "medium", "high", "xhigh", "max"]
-    .map((v)=>`<option value="${v}" ${(n.effort||"")===v?"selected":""}>${v || "(varsayılan)"}</option>`).join("");
+    .map((v)=>`<option value="${v}" ${(n.effort||"")===v?"selected":""}>${v ? EFFORT_NAMES[v] : "(varsayılan)"}</option>`).join("");
   ef.addEventListener("change", ()=>{ if (ef.value) n.effort = ef.value; else delete n.effort; mark(); });
-  panel.appendChild(field("effort (akıl yürütme derinliği)", ef,
-    "Dar/ucuz işler low, yüksek bedelli incelemeler high/xhigh."));
+  panel.appendChild(field("Akıl yürütme derinliği", ef,
+    "Dar ve ucuz işler için düşük, yüksek bedelli incelemeler için yüksek / çok yüksek."));
 
   // tools
   n.tools = n.tools || [];
   const mcpTools = Object.keys(cfg.mcpServers||{}).map((s)=>"mcp__"+s);
-  panel.appendChild(field("tools", chipEditor(n.tools, STD_TOOLS.concat(mcpTools), changed),
-    "Ajanın kullanabileceği araçlar. mcp__ ile başlayanlar bir MCP sunucusunu gösterir."));
+  panel.appendChild(field("Araçlar", chipEditor(n.tools, STD_TOOLS.concat(mcpTools), changed, toolName),
+    "Ajanın kullanabileceği araçlar. \"Eklenti:\" ile başlayanlar dış bir araç sunucusundan gelir."));
 
   // rules
   n.rules = n.rules || [];
-  panel.appendChild(field("rules", chipEditor(n.rules, meta.rules, changed),
-    "Her zaman system prompt'a gömülen kısa kurallar (.claude/rules)."));
+  panel.appendChild(field("Kurallar", chipEditor(n.rules, meta.rules, changed),
+    "Ajanın talimatına her zaman eklenen kısa kurallar."));
 
   // skills
   if (meta.skills.length){
     n.skills = n.skills || [];
-    panel.appendChild(field("skills", chipEditor(n.skills, meta.skills, changed),
-      "İlgili görülürse ajanın Read ile okuyacağı beceriler (.claude/skills)."));
+    panel.appendChild(field("Beceriler", chipEditor(n.skills, meta.skills, changed),
+      "İlgili görülürse ajanın okuyacağı beceriler."));
   }
 
   // kenarlar: next / verdict / routes
@@ -564,22 +618,22 @@ function render(){
   panel.appendChild(eh);
   if (fOwner){
     const note = document.createElement("div"); note.className="fhint";
-    note.textContent = `Bu düğüm "${fOwner}" fanout'unun işçisi; geçişi fanout yapar (next'i orada).`;
+    note.textContent = `Bu düğüm "${nodeName(fOwner)}" dağıtımının üyesi; geçişi dağıtım düğümü yapar.`;
     panel.appendChild(note);
     addDelete();
     return;
   }
   if (n.verdict){
-    panel.appendChild(field("verdict.onApprove", targetSelect(n.verdict.onApprove, (v)=>{ n.verdict.onApprove=v; changed(); }, true), "Reviewer onaylarsa gidilecek düğüm ((bitir)=akış biter)."));
-    panel.appendChild(field("verdict.onReject", targetSelect(n.verdict.onReject, (v)=>{ n.verdict.onReject=v; changed(); }, false), "Reviewer reddederse düzeltme için geri gönderilecek düğüm."));
+    panel.appendChild(field("Onaylanırsa →", targetSelect(n.verdict.onApprove, (v)=>{ n.verdict.onApprove=v; changed(); }, true), "Teftiş onaylarsa gidilecek düğüm ((bitir) = akış biter)."));
+    panel.appendChild(field("Reddedilirse →", targetSelect(n.verdict.onReject, (v)=>{ n.verdict.onReject=v; changed(); }, false), "Teftiş reddederse düzeltme için geri gönderilecek düğüm."));
   } else if (n.routes){
-    const fl = document.createElement("input"); fl.type="text"; fl.value=n.routes.field; fl.disabled=true;
-    panel.appendChild(field("routes.field (çıktı alanı)", fl, "Ajanın structured çıktısındaki hangi alana göre dallanılacağı (ör. route)."));
+    const fl = document.createElement("input"); fl.type="text"; fl.value=FIELD_NAMES[n.routes.field] || n.routes.field; fl.disabled=true;
+    panel.appendChild(field("Yönlendirme alanı", fl, "Ajanın yapılandırılmış çıktısındaki hangi alana göre dallanılacağı."));
     for (const val of Object.keys(n.routes.cases))
-      panel.appendChild(field(`route "${val}" →`, targetSelect(n.routes.cases[val], (v)=>{ n.routes.cases[val]=v; changed(); }, true), `Alan değeri "${val}" ise gidilecek düğüm ((bitir)=akış biter).`));
-    panel.appendChild(field("routes.default →", targetSelect(n.routes.default, (v)=>{ n.routes.default=v; changed(); }, true), "Tanınmayan/eksik değerde gidilecek düğüm (güvenli varsayılan)."));
+      panel.appendChild(field(`"${valName(val)}" ise →`, targetSelect(n.routes.cases[val], (v)=>{ n.routes.cases[val]=v; changed(); }, true), `Alan değeri "${valName(val)}" ise gidilecek düğüm ((bitir) = akış biter).`));
+    panel.appendChild(field("Varsayılan →", targetSelect(n.routes.default, (v)=>{ n.routes.default=v; changed(); }, true), "Tanınmayan ya da eksik değerde gidilecek düğüm (güvenli varsayılan)."));
   } else {
-    panel.appendChild(field("next", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true), "İş bitince koşulsuz gidilecek sonraki düğüm ((bitir)=akış biter)."));
+    panel.appendChild(field("Sonraki düğüm", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true), "İş bitince koşulsuz gidilecek düğüm ((bitir) = akış biter)."));
   }
   addDelete();
 }
@@ -593,17 +647,31 @@ async function save(){
   }
   const res = await fetch("/config", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(cfg, null, 2) });
   const data = await res.json().catch(()=>({}));
-  if (data.ok){ dirty=false; $("msg").innerHTML = `<span style="color:var(--teal)">✓ kaydedildi — değişiklik için serve'ü yeniden başlat</span>`; }
+  if (data.ok){ dirty=false; $("msg").innerHTML = `<span style="color:var(--teal)">✓ kaydedildi — değişikliğin geçmesi için servisi yeniden başlat</span>`; }
   else { $("btnSave").disabled=false; $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(data.error||"kaydedilemedi")}</span>`; }
 }
 $("btnSave").addEventListener("click", save);
 
 // ── Çalışma dizini + entry + yeni düğüm ─────────────────────────────
-$("tdir").addEventListener("input", ()=>{ cfg.targetDir = $("tdir").value; markDirty(); $("dir").textContent = cfg.targetDir || "(cwd)"; });
+$("tdir").addEventListener("input", ()=>{ cfg.targetDir = $("tdir").value; markDirty(); $("dir").textContent = cfg.targetDir || "(çalışılan dizin)"; });
+
+// Bağlantı alanları: boş metin = tanımsız (loadAppConfig "" değerini yok sayar)
+for (const [id, alan] of [["cBaseUrl","baseUrl"],["cApiKey","apiKey"],["cModel","model"],["cModelsUrl","modelsUrl"]]){
+  $(id).addEventListener("input", ()=>{ cfg[alan] = $(id).value.trim(); markDirty(); });
+}
+$("cProvider").addEventListener("change", ()=>{ cfg.provider = $("cProvider").value; markDirty(); });
+$("cKeyShow").addEventListener("click", ()=>{ const k = $("cApiKey"); k.type = k.type === "password" ? "text" : "password"; });
+function fillConn(){
+  $("cProvider").value = cfg.provider || "anthropic";
+  $("cBaseUrl").value = cfg.baseUrl || "";
+  $("cApiKey").value = cfg.apiKey || "";
+  $("cModel").value = cfg.model || "";
+  $("cModelsUrl").value = cfg.modelsUrl || "";
+}
 $("entrySel").addEventListener("change", ()=>{ cfg.workflow.entry = $("entrySel").value; markDirty(); render(); });
 
 function populateMd(){
-  $("ndMd").innerHTML = meta.agents.map((a)=>`<option value="${esc(a)}">${esc(a)}</option>`).join("")
+  $("ndMd").innerHTML = meta.agents.map((a)=>`<option value="${esc(a)}">${esc(NODE_NAMES[a] || a)}</option>`).join("")
     + `<option value="__new__">＋ yeni rol tanımı…</option>`;
 }
 function syncAddForm(){
@@ -642,7 +710,7 @@ $("ndAddBtn").addEventListener("click", async ()=>{
     if ($("ndMd").value === "__new__"){
       const name = ($("ndMdName").value.trim() || key);
       const r = await (await fetch("/agent-md", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ name }) })).json();
-      if (!r.ok) return void ($("ndErr").textContent = r.error || "persona oluşturulamadı");
+      if (!r.ok) return void ($("ndErr").textContent = r.error || "rol tanımı oluşturulamadı");
       file = r.file;
       const base = file.replace(/^.*\//, "").replace(/\.md$/, "");
       if (!meta.agents.includes(base)) meta.agents.push(base);
@@ -660,9 +728,10 @@ async function load(){
   const d = await (await fetch("/config-data")).json();
   cfg = JSON.parse(d.raw);
   meta = { rules: d.rules||[], skills: d.skills||[], agents: d.agents||[] };
-  $("prov").textContent = cfg.provider + (cfg.model?(" · "+cfg.model):"");
-  $("dir").textContent = cfg.targetDir || "(cwd)";
+  $("prov").textContent = (cfg.provider === "ollama" ? "yerel sunucu" : "bulut") + (cfg.model?(" · "+cfg.model):"");
+  $("dir").textContent = cfg.targetDir || "(çalışılan dizin)";
   $("tdir").value = cfg.targetDir || "";
+  fillConn();
   refreshEntry();
   render();
   loadModelList();

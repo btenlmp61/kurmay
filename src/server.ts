@@ -147,7 +147,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "POST" && req.url === "/approval") {
       readJson(req, (parsed) => {
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         const rt = options.runtimes.peek(String(parsed.session ?? ""));
         const comment =
           typeof parsed.comment === "string" && parsed.comment.trim() ? parsed.comment.trim() : undefined;
@@ -165,9 +165,9 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "POST" && req.url === "/schedule") {
       readJson(req, (parsed) => {
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         if (parsed.action !== "run" && parsed.action !== "cancel") {
-          return json(res, 400, { ok: false, error: "action 'run' veya 'cancel' olmalı" });
+          return json(res, 400, { ok: false, error: "işlem 'şimdi çalıştır' ya da 'iptal' olmalı" });
         }
         const rt = options.runtimes.peek(String(parsed.session ?? ""));
         if (!rt?.resolveSchedule(parsed.action === "run" ? "run_now" : "cancelled")) {
@@ -246,7 +246,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           dir = String((JSON.parse(body) as { dir?: unknown }).dir ?? "").trim();
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
         if (!dir) {
@@ -288,7 +288,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           if (typeof parsed.session === "string" && parsed.session) session = parsed.session;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
         const r = options.setModel ? options.setModel(model, session) : { ok: false, error: "kapalı" };
@@ -316,7 +316,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           disabled = parsed.disabled === true;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
         const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
@@ -366,7 +366,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
             error: "bu koşu görevini CLI'dan aldı; panelden görev vermek için sunucu modunda başlat (görev argümanı olmadan)",
           });
         }
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
         if (!task) return json(res, 400, { ok: false, error: "görev boş olamaz" });
         const session = typeof parsed.session === "string" && parsed.session ? parsed.session : undefined;

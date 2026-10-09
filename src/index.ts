@@ -293,7 +293,7 @@ async function main() {
         const current = cfg.model ?? "";
         const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
         if (!cfg.modelsUrl) {
-          return { current, required, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
+          return { current, required, models: [], error: "model listesi adresi tanımlı değil — Teşkilat şemasındaki Bağlantı bölümünden ekle" };
         }
         try {
           return { current, required, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
@@ -345,7 +345,7 @@ async function main() {
         try {
           const parsed = JSON.parse(prev) as AppConfig;
           const node = parsed.workflow?.agents?.[key];
-          if (!node) return { ok: false, error: `düğüm config dosyasında yok: ${key}` };
+          if (!node) return { ok: false, error: `düğüm ayar dosyasında yok: ${key}` };
           if (disabled) node.disabled = true;
           else delete node.disabled;
           fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
@@ -378,7 +378,7 @@ async function main() {
             if (busy.length >= maxParallel) {
               return {
                 ok: false,
-                error: `Aynı anda en fazla ${maxParallel} görev çalışabilir (config: maxParallelRuns) — biri bitince tekrar dene`,
+                error: `Aynı anda en fazla ${maxParallel} görev çalışabilir (ayar dosyasında değiştirilebilir) — biri bitince tekrar dene`,
               };
             }
             // Aynı dizine iki akış aynı anda yazarsa birbirini ezer — engellemiyoruz

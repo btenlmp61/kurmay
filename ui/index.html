@@ -205,7 +205,6 @@ body { overflow:hidden; }
 .prog.pending > span { width:0; }
 @keyframes indet { from { width:20%; } to { width:80%; } }
 .grid { display:contents; }
-.rail-tools select { min-height:34px; padding:4px 10px; font-size:13px; }
 
 /* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
 /* Teşkilat: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
@@ -457,9 +456,9 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
       </div>
 
       <div class="card hidden" id="buildCard">
-        <div class="card-head"><span class="cicon">🔨</span><div class="label">Build (modül sırası)</div></div>
+        <div class="card-head"><span class="cicon">🔨</span><div class="label">Derleme (modül sırası)</div></div>
         <div class="pipe" id="buildModules"></div>
-        <details class="rawjson" style="margin-top:10px"><summary>Build çıktısı</summary><pre id="buildLog"></pre></details>
+        <details class="rawjson" style="margin-top:10px"><summary>Derleme çıktısı</summary><pre id="buildLog"></pre></details>
       </div>
     </div>
   </div>
@@ -503,12 +502,12 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 
 <aside class="rail">
   <div class="rail-tools">
-    <a href="/config">⚙ Config</a>
-    <select id="themeSel" title="Tema">
-      <option value="teskilat">◆ Teşkilat</option>
-      <option value="evrak">▤ Gizli Evrak</option>
-      <option value="radar">◎ Radar</option>
-    </select>
+    <a href="/config">⚙ Teşkilat şeması</a>
+    <div class="tswitch" role="radiogroup" aria-label="Tema">
+      <button class="tsw" data-t="teskilat" aria-label="Teşkilat"></button>
+      <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
+      <button class="tsw" data-t="radar" aria-label="Radar"></button>
+    </div>
   </div>
   <div class="rbox hidden" id="repoBox">
     <h4>Mıntıkalar <span id="repoSum"></span></h4>
@@ -529,7 +528,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     </div>
     <div class="kv"><span>Sağlayıcı</span><b id="provider">—</b></div>
     <div class="kv"><span>Süre</span><b id="elapsed">—</b></div>
-    <div class="kv"><span>Token (girdi/çıktı)</span><b id="tokens">—</b></div>
+    <div class="kv"><span>Jeton (girdi/çıktı)</span><b id="tokens">—</b></div>
   </div>
 </aside>
 </div>
@@ -537,14 +536,19 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <script>
 const $ = (id) => document.getElementById(id);
 
-// Tema: Teşkilat (koyu) · Gizli Evrak (açık) · Radar (gece görüşü). Seçim <html
-// data-theme>'e uygulanır ve localStorage'a yazılır (sayfa başındaki betik okur).
-$("themeSel").value = document.documentElement.dataset.theme;
-$("themeSel").addEventListener("change", () => {
-  const t = $("themeSel").value;
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem("kurmay-theme", t); } catch (e) {}
-});
+// Tema: yalnızca renk örnekleri (adlar görünmez). Seçim <html data-theme>'e uygulanır,
+// localStorage'a yazılır (sayfa başındaki betik okur; panel ve şema ortak)
+function applyThemeUI() {
+  for (const b of document.querySelectorAll(".tsw")) b.classList.toggle("on", b.dataset.t === document.documentElement.dataset.theme);
+}
+for (const b of document.querySelectorAll(".tsw")) {
+  b.addEventListener("click", () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    try { localStorage.setItem("kurmay-theme", b.dataset.t); } catch (e) {}
+    applyThemeUI();
+  });
+}
+applyThemeUI();
 
 let agents = [], states = {}, finished = false;
 // Fanout düğümü → repo kopyalarının anahtarları ("<ajan>@<repo>"); fanout_started'da dolar
@@ -608,6 +612,34 @@ function assignCodeName(key) {
   return (codeNames[key] = ad);
 }
 const mintika = (repo) => (repo === "." ? "merkez" : repo);
+// Modelden/backend'den gelen teknik değerlerin ekrandaki Türkçe karşılıkları
+const ACTION_NAMES = { create: "yeni", created: "yeni", modify: "değişecek", modified: "değişti", delete: "silinecek", deleted: "silindi" };
+const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek" };
+const SOURCE_NAMES = { web: "panel", terminal: "terminal", timer: "zamanlayıcı" };
+const ROUTE_VALUES = { developer: "uygulama", done: "bitir" };
+const TOOL_NAMES = { Read: "Dosya oku", Write: "Dosya yaz", Edit: "Düzenle", MultiEdit: "Çoklu düzenle", NotebookEdit: "Defter düzenle",
+  Glob: "Dosya bul", Grep: "Metin ara", Bash: "Komut", WebSearch: "İnternette ara", WebFetch: "Sayfa getir",
+  ToolSearch: "Araç bul", TodoWrite: "Yapılacaklar", Task: "Alt görev", Agent: "Alt görev" };
+function toolName(t) {
+  if (t.startsWith("mcp__")) return "Eklenti: " + t.split("__").slice(1).join(" · ");
+  return TOOL_NAMES[t] || t;
+}
+// Düğüm anahtarı ("developer-team") → ekrandaki ad; dağıtım düğümü işçisinin takım adıyla görünür
+function nodeName(key) {
+  if (!key) return "";
+  if (fanoutMeta[key]) return roleOf(fanoutMeta[key].agent).ad;
+  return roleOf(key).ad;
+}
+// Orkestratör notlarındaki teknik adları çevir: "architect rotası: developer → developer-team"
+function noteText(t) {
+  const rota = /^🧭 (\S+) rotası: (.+?) → (.+)$/u.exec(t);
+  if (rota) {
+    const deger = ROUTE_VALUES[rota[2]] || rota[2];
+    const hedef = rota[3].startsWith("akış biter") ? "akış biter" : nodeName(rota[3]);
+    return `🧭 ${roleOf(rota[1]).ad} rotası: ${deger} → ${hedef}`;
+  }
+  return t.replace(/^⚠ ([^\s:]+):/u, (_, k) => `⚠ ${roleOf(k).ad}:`).replace(/ \(error_[a-z_]+\)/g, "");
+}
 function roleOf(key) {
   const at = key.indexOf("@");
   const base = at < 0 ? key : key.slice(0, at);
@@ -642,7 +674,7 @@ function startCountdown(agent, runAt) {
     const mm = Math.floor((s % 3600) / 60), ss = s % 60;
     const pad = (n) => String(n).padStart(2, "0");
     const kalan = (dd > 0 ? dd + "g " : "") + `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-    $("scheduleTitle").textContent = `${agent} → ${fmt(runAt)} · kalan ${kalan}`;
+    $("scheduleTitle").textContent = `${agentName(agent)} → ${fmt(runAt)} · kalan ${kalan}`;
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -699,7 +731,7 @@ function renderDiff(structured, commentable) {
     const path = f.path || f.file || "?";
     const hunks = f.changes || f.hunks || [];
     if (!Array.isArray(hunks)) return "";
-    const act = f.action ? `<span class="act ${esc(f.action)}">${esc(f.action)}</span>` : "";
+    const act = f.action ? `<span class="act ${esc(f.action)}">${esc(ACTION_NAMES[f.action] || f.action)}</span>` : "";
     const sum = f.summary ? `<span class="diff-fsum">${esc(f.summary)}</span>` : "";
     const body = hunks.map((h) => {
       const loc = h.location ? `<div class="loc">@ ${esc(h.location)}</div>` : "";
@@ -733,7 +765,7 @@ const tok = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
 function fmtMetrics(m) {
   const sn = (ms) => (ms / 1000).toFixed(1) + "sn";
   const parts = [
-    `${sn(m.durationMs)} (API ${sn(m.apiDurationMs)})`,
+    `${sn(m.durationMs)} (modelde ${sn(m.apiDurationMs)})`,
     `${m.turns} tur`,
     `${tok(m.inputTokens)} girdi / ${tok(m.outputTokens)} çıktı`,
   ];
@@ -749,13 +781,13 @@ function fmtMetrics(m) {
 // Yapılandırılmış çıktı gelmediyse hangi yoldan düşüldüğü (runAgent → miss.reason)
 const MISS_TEXTS = {
   repair_text:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; aynı oturumda istenen onarım turunda da yine metinle döndü. " +
-    "Yerel modelde sık sebep bağlam penceresinin küçük olması: prompt'un başındaki araç tanımı kesiliyor " +
-    "(Ollama sunucu logunda <code>truncating input prompt</code> ara; çözüm <code>OLLAMA_CONTEXT_LENGTH</code> / <code>num_ctx</code>).",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; aynı oturumda istenen onarım turunda da yine metinle döndü. " +
+    "Yerel modelde sık sebep bağlam penceresinin küçük olması: talimatın başındaki araç tanımı kesiliyor — " +
+    "model sunucusunun bağlam uzunluğunu artırmayı dene.",
   repair_failed:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; istenen onarım turu da şemaya uygun çıktı üretemeden hatayla bitti.",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; istenen onarım turu da şemaya uygun çıktı üretemeden hatayla bitti.",
   no_session:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; oturum kimliği alınamadığı için onarım turu denenemedi.",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; oturum kimliği alınamadığı için onarım turu denenemedi.",
   schemaless:
     "Model şemaya uygun çıktıyı üretemedi (şema denemeleri tükendi); ajan şemasız yeniden koşturuldu, bu yüzden yalnızca düz metin var.",
 };
@@ -777,7 +809,7 @@ function outputNotice(structured, diff, miss) {
   }
   const files = structured.file_plan || structured.changes;
   if (!Array.isArray(files) || files.length === 0) {
-    return kutu("Ajan somut değişiklik üretmedi — <code>file_plan</code> boş geldi.");
+    return kutu("Ajan somut değişiklik üretmedi — plan boş geldi.");
   }
   const hunks = files.flatMap((f) => (Array.isArray(f.changes) ? f.changes : f.hunks) || []);
   if (hunks.length === 0) {
@@ -816,7 +848,7 @@ function rawOutputHtml(text) {
   if (plan) {
     const diff = renderDiff(plan, true);
     const lead = typeof plan.summary === "string" && plan.summary ? `<p class="lead">${esc(plan.summary)}</p>` : "";
-    const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metne JSON olarak yazmış — ` +
+    const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metnin içine yazmış — ` +
       `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (developer'a metin olarak gider, repo dağıtımı yapılmaz).</p>`;
     if (diff) return not + lead + diff + rawTextDetails(text);
     if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>` + rawTextDetails(text);
@@ -829,7 +861,7 @@ function rawTextDetails(text) {
 }
 
 function rawJsonDetails(structured) {
-  return `<details class="rawjson"><summary>Ham JSON</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
+  return `<details class="rawjson"><summary>Ham veri</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
 }
 
 /**
@@ -1156,10 +1188,10 @@ function bubbleTool(b, e) {
   const ad = isMcp ? e.tool.split("__").pop() : e.tool;
   const label = e.file ? baseName(e.file)
     : (e.tool === "Grep" || e.tool === "Glob") ? `"${e.detail}"`
-    : TOOL_ICONS[e.tool] && e.tool !== "Bash" ? e.detail : `${ad}: ${e.detail}`;
+    : TOOL_ICONS[e.tool] && e.tool !== "Bash" ? e.detail : `${toolName(e.tool)}: ${e.detail}`;
   const chip = document.createElement("span");
   chip.className = "tchip";
-  chip.title = `${e.tool}: ${e.file || e.detail}`;
+  chip.title = `${toolName(e.tool)}: ${e.file || e.detail}`;
   chip.innerHTML = `${ic} <b>${esc(trunc(label, 70))}</b>${lineDelta(e)}`;
   lastOf(b, "acts").appendChild(chip);
   scrollChat();
@@ -1192,7 +1224,7 @@ function renderFiles() {
   let top = 0, eks = 0;
   $("fileList").innerHTML = [...changedFiles].map(([p, f]) => {
     top += f.added; eks += f.removed;
-    const tag = f.write ? '<span class="ftag W" title="yazıldı">W</span>' : '<span class="ftag M" title="düzenlendi">M</span>';
+    const tag = f.write ? '<span class="ftag W" title="yazıldı">Y</span>' : '<span class="ftag M" title="düzenlendi">D</span>';
     return `<div class="frow" title="${esc(p)}">${tag}<span class="fn">${esc(relPath(p))}</span>` +
       `${f.added ? `<span class="plus">+${f.added}</span>` : ""}${f.removed ? `<span class="minus">−${f.removed}</span>` : ""}</div>`;
   }).join("");
@@ -1209,7 +1241,7 @@ function renderRepos() {
     const st = states[a] || "pending";
     const isaret = st === "done" ? "✓" : st === "rejected" ? "✗" : st === "running" ? "…" : "";
     const repo = roleOf(a).repo;
-    return `<div class="rrow"><span class="nm" title="${esc(agentName(a))} · ${esc(repo || a)}"><b>${esc(agentName(a))}</b> · ${esc(mintika(repo || a))}</span>` +
+    return `<div class="rrow"><span class="nm" title="${esc(agentName(a))} · ${esc(mintika(repo || a))}"><b>${esc(agentName(a))}</b> · ${esc(mintika(repo || a))}</span>` +
       `<div class="prog ${st}"><span></span></div><span style="width:12px">${isaret}</span></div>`;
   }).join("");
 }
@@ -1233,7 +1265,7 @@ function renderLogFilterBar() {
   const bar = $("logFilter");
   bar.classList.toggle("hidden", !logFilter);
   if (!logFilter) return;
-  const adlar = [...logFilter].map(esc).join(", ");
+  const adlar = [...logFilter].map((k) => esc(agentName(k))).join(", ");
   $("logFilterText").innerHTML = `Yalnızca <b>${adlar}</b> · ${logFilterCount} kayıt`;
 }
 
@@ -1278,7 +1310,7 @@ function handleEvent(e) {
       (e.disabled || []).forEach((a) => (states[a] = "disabled"));
       $("answerCard").classList.add("hidden");
       $("task").textContent = e.task;
-      $("provider").textContent = e.provider;
+      $("provider").textContent = e.provider === "ollama" ? "yerel sunucu" : "bulut";
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
       if (logFilter) setLogFilter(null); // önceki koşunun süzgeci yeni koşuda yanıltır
       if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
@@ -1311,9 +1343,9 @@ function handleEvent(e) {
     case "node_skipped": {
       states[e.node] = "disabled";
       renderPipeline();
-      addLog(e.ts, `⏭ <b>${esc(e.node)}</b> devre dışı — ` +
-        (fanoutMeta[e.node] ? `dağıtım yok, ${esc(e.to)} tek kopya koşuyor`
-          : `atlandı → ${e.to ? esc(e.to) : "akış biter"}`), "muted");
+      addLog(e.ts, `⏭ <b>${esc(nodeName(e.node))}</b> devre dışı — ` +
+        (fanoutMeta[e.node] ? `dağıtım yok, ${esc(agentName(e.to || ""))} tek kopya koşuyor`
+          : `atlandı → ${e.to ? esc(nodeName(e.to)) : "akış biter"}`), "muted");
       break;
     }
     case "agent_started": {
@@ -1330,7 +1362,7 @@ function handleEvent(e) {
       const b = bubbleOf(e.agent, e.ts);
       // Orkestratör notları (rota, onarım, dağıtım) küçük not; modelin sözü Markdown
       if (/^(🧭|⚠|🔀)/u.test(e.text)) {
-        bubbleNote(b, esc(e.text), e.text.startsWith("⚠") ? "warn" : "");
+        bubbleNote(b, esc(noteText(e.text)), e.text.startsWith("⚠") ? "warn" : "");
       } else {
         const d = document.createElement("div");
         d.className = "txt md";
@@ -1426,7 +1458,7 @@ function handleEvent(e) {
     case "approval_resolved":
       $("approval").classList.add("hidden");
       setStatus("çalışıyor", "run");
-      addLog(e.ts, `onay: ${e.approved ? "verildi" : "reddedildi"} (${e.source})${e.comment ? " — " + esc(e.comment) : ""}`, e.approved ? "ok" : "err");
+      addLog(e.ts, `onay: ${e.approved ? "verildi" : "reddedildi"} (${SOURCE_NAMES[e.source] || e.source})${e.comment ? " — " + esc(e.comment) : ""}`, e.approved ? "ok" : "err");
       break;
     case "verdict": {
       states[e.agent] = e.approved ? "done" : "rejected";
@@ -1441,7 +1473,7 @@ function handleEvent(e) {
       head.style.color = e.approved ? "var(--teal)" : "var(--red)";
       $("verdictSummary").textContent = e.summary;
       $("issues").innerHTML = e.issues.map((i) =>
-        `<div class="issue"><span class="sev ${i.severity}">${i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
+        `<div class="issue"><span class="sev ${i.severity}">${SEVERITY_NAMES[i.severity] || i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
       ).join("") || '<div style="font-size:13px;color:var(--muted)">Sorun bildirilmedi</div>';
       break;
     }
@@ -1476,7 +1508,7 @@ function handleEvent(e) {
       break;
     case "cycle":
       $("cycle").textContent = `tur ${e.n}/${e.max}`;
-      addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(e.to)}`, "warn");
+      addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(nodeName(e.to))}`, "warn");
       break;
     case "build_started":
       buildOrder = e.order; buildStates = {};
@@ -1484,8 +1516,8 @@ function handleEvent(e) {
       $("buildLog").textContent = "";
       $("buildCard").classList.remove("hidden");
       renderBuild();
-      setStatus("build", "run");
-      addLog(e.ts, e.order.length ? `build sırası: ${e.order.map(esc).join(" → ")}` : "build: değişen modül yok", "muted");
+      setStatus("derleme", "run");
+      addLog(e.ts, e.order.length ? `derleme sırası: ${e.order.map(esc).join(" → ")}` : "derleme: değişen modül yok", "muted");
       break;
     case "build_module_started":
       buildStates[e.module] = "running";
@@ -1505,11 +1537,11 @@ function handleEvent(e) {
     case "build_failed":
       buildStates[e.module] = "failed";
       renderBuild();
-      setStatus("build hatası", "err");
-      addLog(e.ts, `build başarısız: ${esc(e.module)} (çıkış ${e.code})`, "err");
+      setStatus("derleme hatası", "err");
+      addLog(e.ts, `derleme başarısız: ${esc(e.module)} (çıkış ${e.code})`, "err");
       break;
     case "build_finished":
-      addLog(e.ts, `build tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
+      addLog(e.ts, `derleme tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
       break;
     case "run_scheduled":
       $("approval").classList.add("hidden");
@@ -1523,14 +1555,14 @@ function handleEvent(e) {
       $("schedule").classList.add("hidden");
       stopCountdown();
       setStatus("çalışıyor", "run");
-      addLog(e.ts, `zamanlama tamam (${esc(e.source)}) — devam ediliyor`, "ok");
+      addLog(e.ts, `zamanlama tamam (${esc(SOURCE_NAMES[e.source] || e.source)}) — devam ediliyor`, "ok");
       break;
     case "run_schedule_cancelled":
       scheduleCancelled = true;
       $("schedule").classList.add("hidden");
       stopCountdown();
       setStatus("iptal edildi", "err");
-      addLog(e.ts, `zamanlama iptal edildi (${esc(e.source)})`, "err");
+      addLog(e.ts, `zamanlama iptal edildi (${esc(SOURCE_NAMES[e.source] || e.source)})`, "err");
       break;
     case "workflow_finished":
       finished = true;
@@ -1743,7 +1775,7 @@ function updateTaskCtx() {
   const s = sessionsById[viewSessionId];
   $("taskCardTitle").textContent = s ? "Bu oturumda yeni görev" : "Yeni görev";
   $("taskCtx").textContent = s
-    ? `↩ Oturum sürdürülecek: ${s.name} (architect önceki konuşmayı hatırlar)`
+    ? `↩ Oturum sürdürülecek: ${s.name} (Analist önceki konuşmayı hatırlar)`
     : "＋ Yeni oturum açılacak — diğer oturumlar koşmaya devam eder";
 }
 
