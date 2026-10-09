@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { loadAgents } from "./agents.js";
+import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
-import { loadAppConfig, modelMissing } from "./config.js";
+import { disabledMcpServers, loadAppConfig, modelMissing } from "./config.js";
 import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
-import { startUiServer, type UiServer } from "./server.js";
+import { startUiServer, type ToggleKind, type UiServer } from "./server.js";
 import { SessionStore, type SessionEntry } from "./sessions.js";
 import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
@@ -37,6 +37,11 @@ function parseArgs(argv: string[]): {
   }
 
   return { task: taskParts.join(" ").trim(), configPath, cwdFlag, portFlag, noUi, atFlag };
+}
+
+/** Aç/Kapat sayfasında kapatılan beceri ve MCP sunucuları — loadAgents prompt'a almaz */
+function offOf(cfg: AppConfig): { skills: string[]; mcpServers: string[] } {
+  return { skills: cfg.disabledSkills ?? [], mcpServers: disabledMcpServers(cfg) };
 }
 
 /**
@@ -123,8 +128,10 @@ async function main() {
   const cfg = loadAppConfig(configPath);
   const resolvedConfigPath = path.resolve(configPath);
   const configRoot = path.dirname(resolvedConfigPath);
-  // md dosya yolları config dosyasının bulunduğu dizine göre çözülür
-  const agents = loadAgents(cfg.workflow, configRoot);
+  // md dosya yolları config dosyasının bulunduğu dizine göre çözülür.
+  // "let": beceri/eklenti açılıp kapatılınca prompt'lar yeniden derlenir (setToggle);
+  // çalışan koşu başlarken aldığı haritayla devam eder
+  let agents = loadAgents(cfg.workflow, configRoot, offOf(cfg));
 
   // Hedef dizin önceliği: --cwd bayrağı > config'deki targetDir > bulunulan dizin.
   // "let": panelden değiştirilebilir (bkz. setTargetDir) — bir sonraki görev yeni
@@ -208,6 +215,123 @@ async function main() {
     return { entry: e, run };
   };
 
+  /** .claude/<alt> dizininin girdileri (yoksa boş) */
+  const lsClaude = (sub: string) => {
+    try {
+      return fs.readdirSync(path.join(configRoot, ".claude", sub), { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  };
+
+  /** Düğümü devre dışı bırakır/açar: config.json'a yazar, sıradaki görev görür */
+  const setNodeDisabled = (key: string, disabled: boolean): { ok: boolean; error?: string } => {
+    if (!cfg.workflow.agents[key]) return { ok: false, error: `düğüm bulunamadı: ${key}` };
+    const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+    try {
+      const parsed = JSON.parse(prev) as AppConfig;
+      const node = parsed.workflow?.agents?.[key];
+      if (!node) return { ok: false, error: `düğüm ayar dosyasında yok: ${key}` };
+      if (disabled) node.disabled = true;
+      else delete node.disabled;
+      fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+      loadAppConfig(resolvedConfigPath); // yapı doğrulaması
+      // Sıradaki görev görür; çalışan koşu kendi workflow kopyasıyla devam eder
+      if (disabled) cfg.workflow.agents[key].disabled = true;
+      else delete cfg.workflow.agents[key].disabled;
+      return { ok: true };
+    } catch (e) {
+      fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  /** Aç/Kapat sayfası verisi: ajan düğümleri, beceriler, MCP sunucuları ve kimin kullandığı */
+  const getToggles = () => {
+    const nodes = cfg.workflow.agents;
+    const agentNodes = Object.entries(nodes).filter(([, n]) => (n.type ?? "agent") === "agent");
+    const workerOf = new Map(
+      Object.entries(nodes).flatMap(([k, n]) => (isFanoutNode(n) ? [[n.agent, k] as const] : [])),
+    );
+    const off = offOf(cfg);
+    // Diskteki beceri klasörleri + düğümlerde adı geçip diskte olmayanlar
+    const skillNames = new Set(lsClaude("skills").filter((e) => e.isDirectory()).map((e) => e.name));
+    for (const [, n] of agentNodes) for (const s of (n as { skills?: string[] }).skills ?? []) skillNames.add(s);
+    return {
+      entry: cfg.workflow.entry,
+      agents: Object.entries(nodes).map(([key, n]) => ({
+        key,
+        type: n.type ?? "agent",
+        disabled: !!n.disabled,
+        description: agents.get(key)?.description ?? "",
+        ...(isFanoutNode(n) ? { worker: n.agent } : {}),
+        ...(workerOf.has(key) ? { fanout: workerOf.get(key) } : {}),
+      })),
+      skills: [...skillNames].sort().map((name) => {
+        const info = skillInfo(name, configRoot);
+        return {
+          name,
+          description: info?.description ?? "",
+          missing: !info,
+          disabled: off.skills.includes(name),
+          usedBy: agentNodes.filter(([, n]) => (n as { skills?: string[] }).skills?.includes(name)).map(([k]) => k),
+        };
+      }),
+      mcpServers: Object.entries(cfg.mcpServers ?? {}).map(([name, s]) => ({
+        name,
+        disabled: !!s.disabled,
+        usedBy: agentNodes
+          .filter(([, n]) => (n as { tools?: string[] }).tools?.some((t) => t === `mcp__${name}` || t.startsWith(`mcp__${name}__`)))
+          .map(([k]) => k),
+      })),
+    };
+  };
+
+  /**
+   * Aç/Kapat: ajan düğümü (disabled), beceri (disabledSkills) ya da MCP sunucusu
+   * (mcpServers.<ad>.disabled). config.json'a yazılır; beceri/eklentide ajan
+   * prompt'ları yeniden derlenir. Sıradaki görev görür, çalışan koşu etkilenmez.
+   */
+  const setToggle = (kind: ToggleKind, name: string, disabled: boolean): { ok: boolean; error?: string } => {
+    if (kind === "agent") return setNodeDisabled(name, disabled);
+    if (kind === "mcp" && !cfg.mcpServers?.[name]) {
+      return { ok: false, error: `eklenti bulunamadı: ${name} (ayar dosyasına yeni eklendiyse servisi yeniden başlat)` };
+    }
+    const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+    try {
+      const parsed = JSON.parse(prev) as AppConfig;
+      // Bellekteki config'in yeni hali — yerinde değiştirilmez: çalışan koşunun
+      // kopyası ({...cfg}) eski dizi/nesneyi tutmaya devam etsin
+      let nextSkills = cfg.disabledSkills;
+      let nextMcp = cfg.mcpServers;
+      if (kind === "skill") {
+        const set = new Set(parsed.disabledSkills ?? []);
+        if (disabled) set.add(name);
+        else set.delete(name);
+        if (set.size > 0) parsed.disabledSkills = [...set];
+        else delete parsed.disabledSkills;
+        nextSkills = parsed.disabledSkills;
+      } else {
+        const server = parsed.mcpServers?.[name];
+        if (!server) return { ok: false, error: `eklenti ayar dosyasında yok: ${name}` };
+        if (disabled) server.disabled = true;
+        else delete server.disabled;
+        const { disabled: _, ...rest } = cfg.mcpServers![name];
+        nextMcp = { ...cfg.mcpServers, [name]: disabled ? { ...rest, disabled: true } : rest } as AppConfig["mcpServers"];
+      }
+      fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+      loadAppConfig(resolvedConfigPath); // yapı doğrulaması
+      const nextAgents = loadAgents(cfg.workflow, configRoot, offOf({ ...cfg, disabledSkills: nextSkills, mcpServers: nextMcp }));
+      cfg.disabledSkills = nextSkills;
+      cfg.mcpServers = nextMcp;
+      agents = nextAgents; // sıradaki görev yeni prompt'larla başlar
+      return { ok: true };
+    } catch (e) {
+      fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
   let server: UiServer | undefined;
   if (!noUi) {
     server = await startUiServer(portFlag ?? cfg.uiPort ?? 4141, {
@@ -227,13 +351,7 @@ async function main() {
       },
       getConfigData: () => {
         const raw = fs.readFileSync(resolvedConfigPath, "utf8");
-        const ls = (sub: string) => {
-          try {
-            return fs.readdirSync(path.join(configRoot, ".claude", sub), { withFileTypes: true });
-          } catch {
-            return [];
-          }
-        };
+        const ls = lsClaude;
         const rules = ls("rules")
           .filter((e) => e.isFile() && e.name.endsWith(".md"))
           .map((e) => e.name.replace(/\.md$/, ""));
@@ -263,7 +381,7 @@ async function main() {
           JSON.parse(text); // geçerli JSON mu
           fs.writeFileSync(resolvedConfigPath, text);
           const c = loadAppConfig(resolvedConfigPath); // yapı + mcp + komut doğrulaması
-          loadAgents(c.workflow, configRoot); // kenar + md + kural/beceri doğrulaması
+          loadAgents(c.workflow, configRoot, offOf(c)); // kenar + md + kural/beceri doğrulaması
           return null;
         } catch (e) {
           fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
@@ -339,26 +457,9 @@ async function main() {
           };
         }),
       }),
-      setNodeDisabled: (key, disabled) => {
-        if (!cfg.workflow.agents[key]) return { ok: false, error: `düğüm bulunamadı: ${key}` };
-        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
-        try {
-          const parsed = JSON.parse(prev) as AppConfig;
-          const node = parsed.workflow?.agents?.[key];
-          if (!node) return { ok: false, error: `düğüm ayar dosyasında yok: ${key}` };
-          if (disabled) node.disabled = true;
-          else delete node.disabled;
-          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
-          loadAppConfig(resolvedConfigPath); // yapı doğrulaması
-          // Sıradaki görev görür; çalışan koşu kendi workflow kopyasıyla devam eder
-          if (disabled) cfg.workflow.agents[key].disabled = true;
-          else delete cfg.workflow.agents[key].disabled;
-          return { ok: true };
-        } catch (e) {
-          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
-          return { ok: false, error: e instanceof Error ? e.message : String(e) };
-        }
-      },
+      setNodeDisabled,
+      getToggles,
+      setToggle,
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, sessionId, runAt) => {
