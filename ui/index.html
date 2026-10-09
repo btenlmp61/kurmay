@@ -191,7 +191,7 @@ body { overflow:hidden; }
 .kv > span:first-child { color:var(--muted); flex:none; }
 .kv b { font:600 12.5px ui-monospace,Consolas,monospace; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .kv.col { flex-direction:column; align-items:stretch; gap:4px; }
-.rail #modelSel { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
+.rail :is(#modelSel, #effortSel) { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
 .rail .dir-wrap { display:flex; align-items:center; gap:6px; min-width:0; }
 .rail .dir { font:12.5px ui-monospace,Consolas,monospace; color:var(--text); cursor:pointer; border-bottom:1px dashed var(--border); overflow-wrap:anywhere; }
 .rail .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
@@ -531,6 +531,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <div class="rbox">
     <h4>Oturum</h4>
     <div class="kv"><span>Model</span><select id="modelSel" title="Model — sıradaki görevde kullanılır"></select></div>
+    <div class="kv"><span>Akıl yürütme</span><select id="effortSel" title="Akıl yürütme derinliği — sıradaki görevde kullanılır"></select></div>
     <div class="kv col"><span>Hedef dizin</span>
       <span class="dir-wrap">
         <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
@@ -1384,7 +1385,7 @@ function handleEvent(e) {
         me.textContent = e.task;
         appendStream(me);
       }
-      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
+      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}${e.effort ? ` · akıl yürütme: ${esc(EFFORT_NAMES[e.effort] || e.effort)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -1957,7 +1958,7 @@ lobby.onmessage = (m) => {
   if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
   renderSessions();
   updateTaskCtx();
-  if (viewModel() !== currentModel) applyViewModel(); // başka sekmeden değişmiş olabilir
+  if (viewModel() !== currentModel || viewEffort() !== currentEffort) applyViewModel(); // başka sekmeden değişmiş olabilir
 };
 
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
@@ -2050,6 +2051,7 @@ function viewModel() {
 function applyViewModel() {
   currentModel = viewModel();
   fillModelSelect(modelList, modelListError);
+  fillEffortSelect();
   updateStartGate();
 }
 
@@ -2081,12 +2083,14 @@ async function loadModels() {
   try {
     const data = await (await fetch("/models")).json();
     globalModel = data.current || "";
+    globalEffort = data.effort || "";
     modelRequired = !!data.required;
     modelList = data.models || [];
     modelListError = data.error;
     applyViewModel();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
+    fillEffortSelect();
   }
 }
 $("modelSel").addEventListener("change", async () => {
@@ -2116,6 +2120,57 @@ $("modelSel").addEventListener("change", async () => {
   } catch {
     alert("model kaydedilemedi");
     $("modelSel").value = currentModel;
+  }
+});
+
+// Akıl yürütme derinliği: model gibi oturuma özel (taslakta yeni oturumların varsayılanı).
+// Liste sabit — Claude Code bu beşinin dışındaki değerleri sessizce "yüksek" yapar;
+// "kapalı" düşünmeyi tamamen kapatır. Ajan düğümüne özel ayar (Ayarlar) bunu ezer.
+const EFFORT_LEVELS = ["off", "low", "medium", "high", "xhigh", "max"];
+const EFFORT_NAMES = { off:"kapalı", low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
+let globalEffort = "", currentEffort = "";
+function viewEffort() {
+  const s = sessionsById[viewSessionId];
+  return (s && s.effort) || globalEffort;
+}
+function fillEffortSelect() {
+  currentEffort = viewEffort();
+  const sel = $("effortSel");
+  sel.innerHTML = [`<option value="">varsayılan</option>`,
+    ...EFFORT_LEVELS.map((v) => `<option value="${v}">${EFFORT_NAMES[v]}</option>`)].join("");
+  sel.value = currentEffort;
+  sel.title = viewSessionId
+    ? "Bu oturumun akıl yürütme derinliği — oturumdaki sıradaki görevde geçerli (diğer oturumlar etkilenmez)"
+    : "Yeni oturumların varsayılan akıl yürütme derinliği";
+}
+$("effortSel").addEventListener("change", async () => {
+  const effort = $("effortSel").value;
+  try {
+    const res = await fetch("/effort", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ effort, session: viewSessionId || undefined }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      const s = sessionsById[viewSessionId];
+      if (s) {
+        if (effort) s.effort = effort; else delete s.effort;
+      } else {
+        globalEffort = effort;
+      }
+      applyViewModel();
+      const ad = effort ? EFFORT_NAMES[effort] : "varsayılan";
+      addLog(new Date().toISOString(), s
+        ? `bu oturumun akıl yürütme derinliği: ${esc(ad)} — oturumdaki sıradaki görevde geçerli`
+        : `yeni oturumların akıl yürütme derinliği: ${esc(ad)}`, "ok");
+    } else {
+      alert(data.error || "akıl yürütme derinliği kaydedilemedi");
+      $("effortSel").value = currentEffort;
+    }
+  } catch {
+    alert("akıl yürütme derinliği kaydedilemedi");
+    $("effortSel").value = currentEffort;
   }
 });
 loadModels();

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { SessionStatus } from "./runtime.js";
+import type { EffortSetting } from "./types.js";
 
 export interface SessionEntry {
   /** Oturum kimliği (bizim; SDK oturumundan bağımsız — ilk görevden önce de var olur) */
@@ -21,6 +22,9 @@ export interface SessionEntry {
   /** Oturumun modeli — oturum açılırken genel varsayılandan alınır, sonra panelden
    *  yalnızca bu oturum için değiştirilebilir. Yoksa (eski kayıt) genel model geçerli. */
   model?: string;
+  /** Oturumun akıl yürütme derinliği — model gibi: açılırken genel varsayılandan alınır,
+   *  sonra panelden yalnızca bu oturum için değişir. Yoksa genel ayar geçerli. */
+  effort?: EffortSetting;
 }
 
 /** Görev metninden kısa bir oturum ismi türetir */
@@ -66,10 +70,11 @@ export class SessionStore {
   }
 
   /** İlk görevle yeni bir oturum açar (henüz SDK oturumu yok) */
-  create(task: string, model?: string): SessionEntry {
+  create(task: string, model?: string, effort?: EffortSetting): SessionEntry {
     const now = new Date().toISOString();
     const entry: SessionEntry = { id: randomUUID(), name: nameFromTask(task), createdAt: now, updatedAt: now, runLogs: [] };
     if (model) entry.model = model;
+    if (effort) entry.effort = effort;
     this.list.push(entry);
     this.persist();
     return entry;
@@ -102,6 +107,16 @@ export class SessionStore {
     if (!s) return false;
     if (model) s.model = model;
     else delete s.model;
+    this.persist();
+    return true;
+  }
+
+  /** Oturumun akıl yürütme derinliğini değiştirir ("" = genel ayara dön); sıradaki görevde geçerli */
+  setEffort(id: string, effort: EffortSetting | ""): boolean {
+    const s = this.get(id);
+    if (!s) return false;
+    if (effort) s.effort = effort;
+    else delete s.effort;
     this.persist();
     return true;
   }

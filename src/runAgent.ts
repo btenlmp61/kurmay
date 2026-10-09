@@ -178,6 +178,7 @@ async function executeQuery(
   const resume = session.id;
   const env = buildAgentEnv(cfg);
   const model = agent.config.model ?? cfg.model;
+  const effort = agent.config.effort ?? cfg.effort;
   let hooks = buildHooks(agent.config.hooks, cwd);
   if (opts.writeScope) {
     // Config hook'larına ek olarak yazma kapsamı kapısı (ikisi de çalışır)
@@ -210,9 +211,11 @@ async function executeQuery(
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
-      // Akıl yürütme derinliği — dar/ucuz işler "low", yüksek bedelli
-      // incelemeler "high"/"xhigh" ile koşsun diye ajan başına ayarlanır
-      ...(agent.config.effort ? { effort: agent.config.effort } : {}),
+      // Akıl yürütme derinliği — ajan düğümündeki ayar oturum/genel ayarı ezer.
+      // "off": düşünme kapalı (istekte thinking alanı hiç gitmez)
+      ...(effort === "off"
+        ? { thinking: { type: "disabled" as const } }
+        : effort ? { effort } : {}),
     },
   });
   for await (const message of iterator) {

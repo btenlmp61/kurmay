@@ -72,8 +72,9 @@ export interface AgentNodeConfig {
   /** İsteğe bağlı model override'ı (config'deki genel "model" alanını ezer) */
   model?: string;
   /** Akıl yürütme derinliği (SDK'nin effort seçeneği). Ucuz/dar işler için "low",
-   *  güvenlik gibi yüksek bedelli incelemeler için "high"/"xhigh". */
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+   *  güvenlik gibi yüksek bedelli incelemeler için "high"/"xhigh"; "off" düşünmeyi kapatır.
+   *  Genel/oturum ayarını ezer. */
+  effort?: EffortSetting;
   /** Bu ajana bağlı komut-hook'ları (araç kapıları, otomatik lint/format vb.) */
   hooks?: HookConfig[];
   /** true ise bu ajanın çıktısı sonrasında kullanıcı onayı beklenir */
@@ -268,6 +269,15 @@ export interface RetryConfig {
   maxDelayMs?: number;
 }
 
+/** Akıl yürütme derinliği seçenekleri. "off" dışındakiler SDK'nin effort seçeneğine
+ *  gider (istekte output_config.effort + thinking: adaptive); "off" düşünmeyi kapatır
+ *  (thinking: disabled → istekte thinking alanı hiç gönderilmez). Liste sabittir:
+ *  Claude Code bu beşinin dışındaki değerleri (minimal, none, sayı…) sessizce "high"
+ *  yapar — sahte API ile doğrulandı. Modelin bu alanı dikkate alıp almadığı model
+ *  sunucusuna bağlıdır. */
+export const EFFORT_LEVELS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
+export type EffortSetting = (typeof EFFORT_LEVELS)[number];
+
 /** Sağlayıcı bağlantı bilgileri — hem Anthropic hem Ollama aynı alanları kullanır */
 export interface ProviderConfig {
   /** "anthropic": Claude API / Claude Code oturumu. "ollama": yerel Ollama sunucusu */
@@ -281,6 +291,9 @@ export interface ProviderConfig {
   /** Panelde model seçimi için listenin çekileceği adres (GET). "apiKey" başlıkta
    *  gönderilir (Authorization: Bearer + x-api-key). Boşsa panelde seçici kapalı */
   modelsUrl?: string;
+  /** Ajanların varsayılan akıl yürütme derinliği. Oturum kendi ayarını taşır (panelden
+   *  değişir), ajan düğümündeki "effort" ikisini de ezer. Boşsa SDK varsayılanı (yüksek) */
+  effort?: EffortSetting;
   /** Geliştirmenin yapılacağı hedef proje dizini (CLI --cwd bayrağı bunu ezer) */
   targetDir?: string;
   /** MCP sunucuları. Bir ajanın bu sunucuların araçlarını kullanabilmesi için

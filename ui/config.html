@@ -141,6 +141,10 @@ input[type=text], input[type=number], select { width:100%; }
       <label class="minl">Model listesi adresi</label>
       <input type="text" id="cModelsUrl" placeholder="paneldeki model seçici listeyi bu adresten alır">
     </div>
+    <div>
+      <label class="minl">Akıl yürütme</label>
+      <select id="cEffort" title="Yeni oturumların varsayılanı — panelde oturum başına değişir"></select>
+    </div>
   </div>
   <div class="fhint" style="margin-top:8px">Kaydettikten sonra servisi yeniden başlat. Anahtar ayar dosyasına düz metin olarak yazılır — dosyayı git'e gönderirken dikkat et.</div>
 </div>
@@ -210,7 +214,9 @@ const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
 const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım" };
 const ROUTE_VALUES = { implement:"uygulama", done:"bitir", default:"varsayılan" };
 const FIELD_NAMES = { route:"rota" };
-const EFFORT_NAMES = { low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
+const EFFORT_NAMES = { off:"kapalı", low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
+// Sabit liste: Claude Code bunların dışındaki değerleri sessizce "yüksek" yapar; "kapalı" düşünmeyi kapatır
+const EFFORT_LEVELS = ["off", "low", "medium", "high", "xhigh", "max"];
 const TOOL_NAMES = { Read:"Dosya oku", Write:"Dosya yaz", Edit:"Düzenle", MultiEdit:"Çoklu düzenle", NotebookEdit:"Defter düzenle",
   Glob:"Dosya bul", Grep:"Metin ara", Bash:"Komut", WebSearch:"İnternette ara", WebFetch:"Sayfa getir",
   ToolSearch:"Araç bul", TodoWrite:"Yapılacaklar", Task:"Alt görev" };
@@ -587,11 +593,11 @@ function render(){
 
   // effort: akıl yürütme derinliği
   const ef = document.createElement("select");
-  ef.innerHTML = ["", "low", "medium", "high", "xhigh", "max"]
-    .map((v)=>`<option value="${v}" ${(n.effort||"")===v?"selected":""}>${v ? EFFORT_NAMES[v] : "(varsayılan)"}</option>`).join("");
+  ef.innerHTML = ["", ...EFFORT_LEVELS]
+    .map((v)=>`<option value="${v}" ${(n.effort||"")===v?"selected":""}>${v ? EFFORT_NAMES[v] : "(oturumun ayarı)"}</option>`).join("");
   ef.addEventListener("change", ()=>{ if (ef.value) n.effort = ef.value; else delete n.effort; mark(); });
   panel.appendChild(field("Akıl yürütme derinliği", ef,
-    "Dar ve ucuz işler için düşük, yüksek bedelli incelemeler için yüksek / çok yüksek."));
+    "Bu ajana özel; panelde oturum için seçileni ezer. Dar ve ucuz işler için düşük, yüksek bedelli incelemeler için yüksek / çok yüksek; kapalı = düşünme yok."));
 
   // tools
   n.tools = n.tools || [];
@@ -658,6 +664,8 @@ for (const [id, alan] of [["cBaseUrl","baseUrl"],["cApiKey","apiKey"],["cModel",
   $(id).addEventListener("input", ()=>{ cfg[alan] = $(id).value.trim(); markDirty(); });
 }
 $("cProvider").addEventListener("change", ()=>{ cfg.provider = $("cProvider").value; markDirty(); });
+$("cEffort").innerHTML = ["", ...EFFORT_LEVELS].map((v)=>`<option value="${v}">${v ? EFFORT_NAMES[v] : "varsayılan"}</option>`).join("");
+$("cEffort").addEventListener("change", ()=>{ cfg.effort = $("cEffort").value; markDirty(); });
 $("cKeyShow").addEventListener("click", ()=>{ const k = $("cApiKey"); k.type = k.type === "password" ? "text" : "password"; });
 function fillConn(){
   $("cProvider").value = cfg.provider || "anthropic";
@@ -665,6 +673,7 @@ function fillConn(){
   $("cApiKey").value = cfg.apiKey || "";
   $("cModel").value = cfg.model || "";
   $("cModelsUrl").value = cfg.modelsUrl || "";
+  $("cEffort").value = cfg.effort || "";
 }
 $("entrySel").addEventListener("change", ()=>{ cfg.workflow.entry = $("entrySel").value; markDirty(); render(); });
 
