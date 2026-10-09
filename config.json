@@ -97,9 +97,14 @@
           "arama"
         ],
         "verdict": {
-          "onApprove": null,
+          "onApprove": "cekme-istegi",
           "onReject": "saha-timi"
         }
+      },
+      "cekme-istegi": {
+        "type": "pr",
+        "disabled": true,
+        "next": null
       }
     }
   }
