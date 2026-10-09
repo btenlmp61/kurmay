@@ -243,16 +243,17 @@ body { overflow:hidden; }
   border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85;
   animation:muhur-iz .4s .62s ease-out both; }
 /* Mühür sahnesi (kart açılınca display:none'dan çıkar, animasyonlar baştan oynar):
-   1) sağ üstten mührü tutan el girer, yazının üstünde havada durur, 2) bastırır
+   1) tahta mühür sağ üstten girer, yazının üstünde havada durur, 2) bastırır
    (≈0,62 sn) — yazı tam o anda mürekkep izi olarak belirir, kart darbeyle sarsılır,
-   3) el mührü kaldırıp geldiği yöne çıkar. El: ::before'da satır içi SVG (dosya yok).
-   Konum: mühür lastiğinin alt-orta noktası yazının alt-ortasına denk gelir (yazı ≈186×29). */
+   3) kalkıp geldiği yöne çıkar. Mühür: ::before'da satır içi SVG (dosya yok; el yok —
+   kullanıcı istemedi). Konum: lastiğin alt-orta noktası yazının alt-ortasına denk
+   gelir (yazı ≈186×29). */
 [data-theme="evrak"] #approval::before { content:""; position:absolute; z-index:2; pointer-events:none;
   top:-133px; right:19px; width:200px; height:200px; transform-origin:100px 176px;
-  background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'> <path d='M118 66 L214 -24 L240 6 L140 90 Z' fill='%233B4A6B' stroke='%23232C40' stroke-width='2'/> <path d='M116 64 L128 52 L152 78 L140 90 Z' fill='%23E9E2D0' stroke='%239C9480' stroke-width='2'/> <rect x='12' y='146' width='176' height='24' rx='4' fill='%23A9713A' stroke='%236E4520' stroke-width='2'/> <rect x='18' y='151' width='164' height='4' rx='2' fill='%23C79157'/> <rect x='8' y='170' width='184' height='12' rx='2' fill='%238B1E1E' stroke='%235E1010' stroke-width='1.5'/> <rect x='89' y='100' width='22' height='48' fill='%23C08A50' stroke='%236E4520' stroke-width='2'/> <ellipse cx='100' cy='92' rx='30' ry='18' fill='%23B5793F' stroke='%236E4520' stroke-width='2'/> <path d='M68 74 Q68 50 96 47 L124 49 Q142 52 141 72 L139 94 Q120 106 100 106 Q76 106 68 96 Z' fill='%23F1C27D' stroke='%23B98352' stroke-width='2.2'/> <path d='M77 97 Q82 106 91 101 M93 103 Q99 109 107 103 M109 103 Q115 108 122 101 M124 99 Q131 102 135 93' fill='none' stroke='%23B98352' stroke-width='2' stroke-linecap='round'/> <path d='M70 70 Q55 76 59 90 Q64 99 77 91' fill='%23F1C27D' stroke='%23B98352' stroke-width='2.2'/> </svg>") no-repeat center/contain;
+  background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'> <rect x='12' y='146' width='176' height='24' rx='4' fill='%23A9713A' stroke='%236E4520' stroke-width='2'/> <rect x='18' y='151' width='164' height='4' rx='2' fill='%23C79157'/> <rect x='8' y='170' width='184' height='12' rx='2' fill='%238B1E1E' stroke='%235E1010' stroke-width='1.5'/> <path d='M90 104 L88 148 L112 148 L110 104 Z' fill='%23C08A50' stroke='%236E4520' stroke-width='2'/> <rect x='93' y='108' width='4' height='36' rx='2' fill='%23D9A66B'/> <ellipse cx='100' cy='100' rx='22' ry='8' fill='%23A9713A' stroke='%236E4520' stroke-width='2'/> <path d='M70 78 Q70 50 100 50 Q130 50 130 78 Q130 98 100 98 Q70 98 70 78 Z' fill='%23B5793F' stroke='%236E4520' stroke-width='2'/> <ellipse cx='90' cy='64' rx='10' ry='6' fill='%23D9A66B' opacity='.8'/> </svg>") no-repeat center/contain;
   filter:drop-shadow(-6px 10px 6px rgba(60,40,10,.25));
-  animation:muhur-el 1.5s cubic-bezier(.45,.05,.35,1) both; }
-@keyframes muhur-el {
+  animation:muhur-bas 1.5s cubic-bezier(.45,.05,.35,1) both; }
+@keyframes muhur-bas {
   0%   { opacity:0; transform:translate(260px,-200px) rotate(14deg); }
   8%   { opacity:1; }
   34%  { transform:translate(0,-46px) rotate(-8deg); }
