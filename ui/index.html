@@ -6,6 +6,7 @@
 <title>Kurmay</title>
 <link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
+<script src="/dirpicker.js" defer></script>
 <script>
 // Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
 // bir an için yanlış gelip (flash) sonra düzelir.
@@ -196,7 +197,6 @@ body { overflow:hidden; }
 .rail .dir { font:12.5px ui-monospace,Consolas,monospace; color:var(--text); cursor:pointer; border-bottom:1px dashed var(--border); overflow-wrap:anywhere; }
 .rail .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
 .rail .dir.missing { color:var(--red); font-weight:600; }
-.rail #dirInput { font-size:12.5px; padding:4px 10px; min-height:32px; width:100%; min-width:0; }
 .frow { display:flex; align-items:center; gap:8px; font:12.5px ui-monospace,Consolas,monospace; margin:7px 0; min-width:0; }
 .frow .fn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; direction:rtl; text-align:left; }
 .ftag { font:700 10px system-ui,sans-serif; padding:2px 7px; border-radius:999px; flex:none; }
@@ -536,7 +536,6 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <div class="kv col"><span>Hedef dizin</span>
       <span class="dir-wrap">
         <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
-        <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
       </span>
     </div>
     <div class="kv"><span>Sağlayıcı</span><b id="provider">—</b></div>
@@ -1985,19 +1984,15 @@ function updateStartGate() {
 }
 function showDirDisplay(text) {
   $("dir").textContent = dirMissing ? `⚠ ${text} (bulunamadı)` : text;
-  $("dir").classList.remove("hidden");
-  $("dirInput").classList.add("hidden");
 }
-function showDirEditor() {
-  $("dirInput").value = currentDir;
-  $("dir").classList.add("hidden");
-  $("dirInput").classList.remove("hidden");
-  $("dirInput").focus();
-  $("dirInput").select();
+// Dizin klasör seçiciyle değiştirilir (ui/dirpicker.js); elle yol yazmak için
+// seçicinin adres çubuğu var
+async function pickDir() {
+  const val = await openDirPicker(currentDir);
+  if (val) saveDir(val);
 }
-async function saveDir() {
-  const val = $("dirInput").value.trim();
-  if (!val || val === currentDir) { showDirDisplay(currentDir); return; }
+async function saveDir(val) {
+  if (!val || (val === currentDir && !dirMissing)) return;
   try {
     const res = await fetch("/target-dir", {
       method: "POST",
@@ -2013,19 +2008,12 @@ async function saveDir() {
       addLog(new Date().toISOString(), `📁 hedef dizin değiştirildi: ${esc(currentDir)}`, "ok");
     } else {
       alert(data.error || "hedef dizin kaydedilemedi");
-      showDirEditor();
     }
   } catch {
     alert("hedef dizin kaydedilemedi");
-    showDirEditor();
   }
 }
-$("dir").addEventListener("click", showDirEditor);
-$("dirInput").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); saveDir(); }
-  else if (ev.key === "Escape") { showDirDisplay(currentDir); }
-});
-$("dirInput").addEventListener("blur", () => showDirDisplay(currentDir));
+$("dir").addEventListener("click", pickDir);
 async function loadTargetDir() {
   try {
     const data = await (await fetch("/target-dir")).json();
@@ -2036,7 +2024,7 @@ async function loadTargetDir() {
   } catch {}
 }
 loadTargetDir();
-$("btnDirFix").addEventListener("click", showDirEditor);
+$("btnDirFix").addEventListener("click", pickDir);
 
 // Model seçimi: liste config'teki modelsUrl'den sunucu üzerinden çekilir (API
 // anahtarı tarayıcıya hiç gelmez). Seçim config.json'a yazılır, sıradaki görev kullanır.

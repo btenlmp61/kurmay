@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt } from "./approval.js";
@@ -9,6 +10,45 @@ import type { RuntimeRegistry, SessionRuntime } from "./runtime.js";
 export interface UiServer {
   url: string;
   close(): void;
+}
+
+/** Klasör seçicide gizlenen sistem klasörleri (Windows) — "." ile başlayanlar da gizli */
+const HIDDEN_DIRS = new Set(["System Volume Information", "$RECYCLE.BIN", "$Recycle.Bin", "Recovery", "Config.Msi"]);
+
+/**
+ * Klasör seçici (GET /browse): tarayıcı güvenlik gereği seçilen klasörün tam yolunu
+ * vermez, bu yüzden klasörleri sunucu listeler. Yalnızca klasör ADLARI döner (dosya
+ * yok). İstenen dizin yoksa en yakın var olan üst klasörden açılır.
+ */
+function browseDir(requested: string, fallback: string) {
+  const isDir = (d: string) => {
+    try {
+      return fs.statSync(d).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  let dir = path.resolve(requested.trim() || (isDir(fallback) ? fallback : os.homedir()));
+  while (!isDir(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  // Sürücüler (Windows) ya da kök; tıklanınca oraya gidilir
+  const roots =
+    process.platform === "win32"
+      ? "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((l) => `${l}:\\`).filter(isDir)
+      : ["/"];
+  const parent = path.dirname(dir) !== dir ? path.dirname(dir) : null;
+  const base = { dir, parent, sep: path.sep, roots, home: os.homedir() };
+  try {
+    const dirs = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => !e.name.startsWith(".") && !HIDDEN_DIRS.has(e.name))
+      // Kısayol/bağlantı klasöre gidiyorsa o da klasör sayılır
+      .filter((e) => e.isDirectory() || (e.isSymbolicLink() && isDir(path.join(dir, e.name))))
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b, "tr", { numeric: true, sensitivity: "base" }));
+    return { ...base, dirs };
+  } catch {
+    return { ...base, dirs: [] as string[], error: "Bu klasörün içi okunamadı (izin yok)" };
+  }
 }
 
 /** Aç/Kapat sayfasındaki anahtar türleri: ajan düğümü, beceri, MCP sunucusu */
@@ -72,6 +112,8 @@ export interface UiServerOptions {
  *                   oturumlar birbirinden bağımsız, aynı anda koşabilir
  *   GET  /target-dir  { dir, exists } — hedef proje dizini ve diskte var mı (yoksa panel uyarır)
  *   POST /target-dir  { dir: string } — hedef dizini değiştirir ve config.json'a yazar
+ *   GET  /browse?dir=  { dir, parent, roots[], home, dirs[] } — klasör seçici: alt klasör adları
+ *   GET  /dirpicker.js klasör seçici penceresi (panel + ayar sayfası ortak)
  *   GET  /models      { current, effort, models[], error? } — modelsUrl'den çekilen model listesi
  *   POST /model       { model: string, session? } — oturumun ya da genel modeli değiştirir
  *   POST /effort      { effort: string, session? } — oturumun ya da genel akıl yürütme derinliği
@@ -87,6 +129,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
   const configUiPath = path.join(uiDir, "config.html");
   const togglesUiPath = path.join(uiDir, "toggles.html");
   const themeCssPath = path.join(uiDir, "theme.css");
+  const dirPickerPath = path.join(uiDir, "dirpicker.js");
   const sseClients = new Set<http.ServerResponse>();
   const json = (res: http.ServerResponse, code: number, payload: unknown) => {
     res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
@@ -130,6 +173,16 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       res.writeHead(200, { "content-type": "text/css; charset=utf-8" });
       res.end(fs.readFileSync(themeCssPath));
       return;
+    }
+
+    if (req.method === "GET" && req.url === "/dirpicker.js") {
+      res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+      res.end(fs.readFileSync(dirPickerPath));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/browse") {
+      return json(res, 200, browseDir(url.searchParams.get("dir") ?? "", options.getTargetDir?.() ?? ""));
     }
 
     // Oturumun olay akışı: önce geçmiş (servis yeniden başladıysa diskten), sonra canlı
