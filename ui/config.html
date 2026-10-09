@@ -63,7 +63,6 @@ input[type=text], input[type=number], select { width:100%; }
 .tybadge.agent { background:var(--blueBg); color:var(--blue); }
 .tybadge.command { background:var(--amberBg); color:var(--amber); }
 .tybadge.fanout { background:var(--amberBg); color:var(--amber); }
-.tybadge.pr { background:var(--tealBg); color:var(--teal); }
 .tybadge.entry { background:var(--tealBg); color:var(--teal); }
 #msg { font-size:13px; }
 .mono { font-family:ui-monospace,Consolas,monospace; }
@@ -124,7 +123,7 @@ input[type=text], input[type=number], select { width:100%; }
   <div id="addForm" class="hidden" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
     <div class="gbar">
       <div><label class="minl">Anahtar</label><input type="text" id="ndKey" placeholder="ör. guvenlik" style="width:150px"></div>
-      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">ajan</option><option value="command">komut (derleme)</option><option value="fanout">dağıtım (ajanı mıntıka başına çoğalt)</option><option value="pr">çekme isteği (dal + gönder + istek aç)</option></select></div>
+      <div><label class="minl">Tür</label><select id="ndType"><option value="agent">ajan</option><option value="command">komut (derleme)</option><option value="fanout">dağıtım (ajanı mıntıka başına çoğalt)</option></select></div>
       <div id="ndAgentSrc"><label class="minl">Rol tanımı dosyası</label><select id="ndMd"></select></div>
       <div id="ndNewMd" class="hidden"><label class="minl">Yeni rol adı</label><input type="text" id="ndMdName" placeholder="ör. guvenlik" style="width:150px"></div>
       <button class="primary" id="ndAddBtn">Ekle</button>
@@ -319,8 +318,8 @@ $("mdDlg").addEventListener("keydown", (ev)=>{
 });
 
 // Görünen adlar — config anahtarları (analist, saha…) teknik kalır, ekranda tam Türkçe ad
-const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş", "cekme-istegi":"Çekme isteği" };
-const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım", pr:"çekme isteği" };
+const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
+const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım" };
 const ROUTE_VALUES = { implement:"uygulama", done:"bitir", default:"varsayılan" };
 const FIELD_NAMES = { route:"rota" };
 const EFFORT_NAMES = { off:"kapalı", low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
@@ -349,9 +348,7 @@ function nodes(){ return cfg.workflow.agents; }
 function keys(){ return Object.keys(nodes()); }
 function isCmd(n){ return n && n.type === "command"; }
 function isFan(n){ return n && n.type === "fanout"; }
-function isPr(n){ return n && n.type === "pr"; }
-function isGate(n){ return isCmd(n) || isFan(n) || isPr(n); }
-function typeOf(n){ return isCmd(n) ? "command" : isFan(n) ? "fanout" : isPr(n) ? "pr" : "agent"; }
+function isGate(n){ return isCmd(n) || isFan(n); }
 /** Bir ajan bir fanout düğümünün işçisi mi? İşçinin de kendi kenarı olamaz. */
 function fanoutOwner(key){
   for (const k of keys()){ const n = nodes()[k]; if (isFan(n) && n.agent === key) return k; }
@@ -384,7 +381,7 @@ function adoptWorker(fk, wk){
 /** Devre dışı düğümün akışı devam ettireceği "geçer" kenarı — src/types.ts passThroughTarget ile aynı kural */
 function passThrough(n){
   if (isCmd(n)) return n.onSuccess || null;
-  if (isFan(n) || isPr(n)) return n.next || null;
+  if (isFan(n)) return n.next || null;
   if (n.verdict) return n.verdict.onApprove || null;
   if (n.routes) return n.routes.default || null;
   return n.next || null;
@@ -398,8 +395,6 @@ function outEdges(key){
     if (n.onFailure) e.push({ to:n.onFailure, kind:"fail", label:"hata" });
   } else if (isFan(n)) {
     if (n.agent) e.push({ to:n.agent, kind:"next", label:"mıntıka başına" });
-    if (n.next) e.push({ to:n.next, kind:"next", label:"" });
-  } else if (isPr(n)) {
     if (n.next) e.push({ to:n.next, kind:"next", label:"" });
   } else if (n.verdict) {
     if (n.verdict.onApprove) e.push({ to:n.verdict.onApprove, kind:"ok", label:"onay" });
@@ -477,13 +472,12 @@ function drawGraph(){
 
   const boxes = keys().map((k)=>{
     const p = pos[k], n = nodes()[k];
-    const ty = typeOf(n);
+    const ty = isCmd(n) ? "command" : isFan(n) ? "fanout" : "agent";
     const isEntry = k === cfg.workflow.entry;
     const fill = k===selected ? "var(--blueBg)" : "var(--card)";
     const stroke = k===selected ? "var(--blue)" : "var(--border)";
     const fOwner = fanoutOwner(k);
     const sub = isCmd(n) ? "komut"
-      : isPr(n) ? `çekme isteği${n.targetBranch ? ` → ${n.targetBranch}` : ""}`
       : isFan(n) ? `dağıtım · ${nodeName(n.agent) || "?"}${n.maxConcurrency ? ` · en fazla ${n.maxConcurrency}` : ""}`
       : fOwner ? `${nodeName(fOwner)} üyesi`
       : (n.verdict ? "karar" : (n.routes ? "yönlendirme" : "sıralı"));
@@ -572,7 +566,7 @@ function render(){
   };
 
   const head = document.createElement("div");
-  const ty = typeOf(n);
+  const ty = isCmd(n) ? "command" : isFan(n) ? "fanout" : "agent";
   const fOwner = fanoutOwner(key);
   head.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${esc(nodeName(key))}</div>
     <span class="tybadge ${key===cfg.workflow.entry?"entry":ty}">${key===cfg.workflow.entry?"başlangıç · ":""}${TYPE_NAMES[ty]}</span>`;
@@ -580,7 +574,6 @@ function render(){
   const desc = document.createElement("div"); desc.className="fhint"; desc.style.margin="6px 0 2px";
   desc.textContent = isCmd(n)
     ? "Yapay zekâ değil — değişen mıntıkaları sırayla derleyen, her seferinde aynı sonucu veren komut adımı."
-    : isPr(n) ? "Yapay zekâ değil — değişen her git deposunda yeni dal açar, YALNIZCA ajanların değiştirdiği dosyaları kaydeder, dalı gönderir ve depo sunucusunda çekme isteği açar. Açıklamaya görev, plan özeti, değişiklik listesi ve Teftiş özeti yazılır. Hata akışı durdurmaz. Akışa bağlamak için Teftiş'in onay yolunu bu düğüme ver."
     : isFan(n) ? "Yapay zekâ değil — Analist'in planını mıntıkalara böler ve seçilen ajanı her mıntıka için AYRI kopya olarak koşturur (kaç kopya olacağına kod karar verir). Her kopya yalnızca kendi mıntıkasına yazabilir; sonuçlar birleşip sonraki düğüme geçer. Plan tek mıntıkaya dokunuyorsa ajan tek kopya koşar."
     : fOwner ? `"${nodeName(fOwner)}" dağıtımının üyesi — mıntıka başına kopyalanır. Kendi geçişi olamaz; kopyalar bitince geçişi "${nodeName(fOwner)}" yapar.`
     : (n.routes ? "Ajan; yapılandırılmış çıktısındaki rota alanına göre dallanır (ör. uygulama / bitir)."
@@ -650,35 +643,6 @@ function render(){
 
     panel.appendChild(field("Sonraki düğüm", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true),
       "Tüm kopyalar bitince gidilecek düğüm (ör. Teftiş). Teftiş reddederse oraya bu düğümü ver: yalnızca raporda adı geçen mıntıkalar yeniden koşar."));
-    addDelete();
-    return;
-  }
-
-  if (isPr(n)){
-    const txt = (prop, label, hint, ph) => {
-      const i = document.createElement("input"); i.type = "text"; i.value = n[prop] || ""; i.placeholder = ph || "";
-      i.addEventListener("input", ()=>{ if (i.value.trim()) n[prop] = i.value.trim(); else delete n[prop]; mark(); if (prop === "targetBranch") drawGraph(); });
-      panel.appendChild(field(label, i, hint));
-    };
-    const box = (prop, label, hint) => {
-      const w = document.createElement("div"); w.className = "field";
-      const l = document.createElement("label"); l.style.cssText = "display:flex;align-items:center;gap:6px;font-size:13px";
-      const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!n[prop];
-      c.addEventListener("change", ()=>{ if (c.checked) n[prop] = true; else delete n[prop]; mark(); });
-      l.appendChild(c); l.append(label); w.appendChild(l);
-      const h = document.createElement("div"); h.className = "fhint"; h.textContent = hint; w.appendChild(h);
-      panel.appendChild(w);
-    };
-    txt("targetBranch", "Hedef dal", "Çekme isteğinin birleşeceği dal. Boşsa uzak deponun varsayılan dalı (genelde main/master/develop), o da yoksa o anki dal.", "boşsa varsayılan dal");
-    txt("branchPrefix", "Dal öneki", "Açılan dalın adı: önek + tarih + görevden kısa ad.", "kurmay/");
-    txt("tokenEnv", "Erişim anahtarının ortam değişkeni", "Kişisel erişim anahtarı (yetki: Kod — okuma ve yazma) bu ortam değişkeninden okunur; ayar dosyasına YAZILMAZ. Yoksa dal yine gönderilir ve isteği tek tıkla açacağın bağlantı verilir.", "AZURE_DEVOPS_PAT");
-    box("draft", "Taslak olarak aç", "İstek taslak açılır; gözden geçirenlere bildirim gitmez.");
-    box("returnToBase", "Gönderdikten sonra önceki dala dön", "Kapalıysa çalışma alanı yeni dalda kalır (değişiklikler gözünün önünde). Açıksa önceki dala dönülür; değişiklikler yalnızca isteğin dalında olur.");
-    txt("remote", "Uzak depo adı", "Gönderilecek uzak depo.", "origin");
-    txt("collectionUrl", "Koleksiyon adresi (gerekirse)", "Boşsa uzak depo adresinden çıkarılır. SSH ile çalışıyorsan ya da web adresi farklıysa yaz (ör. https://tfs.kurum/tfs/DefaultCollection).", "boşsa otomatik");
-    txt("apiVersion", "Sunucu arayüz sürümü", "2019 ve sonrası sunucular ile bulut için 5.0 yeterli; 2018 sürümü sunucu için 4.1.", "5.0");
-    panel.appendChild(field("Sonraki düğüm", targetSelect(n.next, (v)=>{ n.next=v; changed(); }, true),
-      "İstek açıldıktan (ya da açılamadıktan) sonra gidilecek düğüm; genelde (bitir)."));
     addDelete();
     return;
   }
@@ -860,8 +824,6 @@ $("ndAddBtn").addEventListener("click", async ()=>{
   let node;
   if ($("ndType").value === "command"){
     node = { type:"command", command:"mvn clean install -q", onSuccess:null, onFailure: cfg.workflow.entry };
-  } else if ($("ndType").value === "pr"){
-    node = { type:"pr", next:null };
   } else if ($("ndType").value === "fanout"){
     // Varsayılan işçi: saha (yoksa dallanmayan ilk ajan) — eklenir eklenmez sarılır
     node = { type:"fanout", agent:"", maxConcurrency:3, next:null };

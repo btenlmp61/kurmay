@@ -160,39 +160,7 @@ export interface FanoutNodeConfig {
   next: string | null;
 }
 
-/**
- * Çekme isteği düğümü — LLM değil, deterministik adım (src/pullRequest.ts): değişen
- * her git deposunda yeni dal açar, yalnızca ajanların değiştirdiği dosyaları
- * commit'ler, gönderir ve Azure DevOps / TFS'te çekme isteği açar. Açıp kapatmak
- * için "disabled" (kapalıyken akış "next"e geçer). Hata akışı düşürmez.
- */
-export interface PrNodeConfig {
-  type: "pr";
-  disabled?: boolean;
-  /** Hedef dal; boşsa uzak deponun varsayılan dalı (origin/HEAD), o da yoksa mevcut dal */
-  targetBranch?: string;
-  /** Yeni dalın öneki (varsayılan "kurmay/") */
-  branchPrefix?: string;
-  /** Taslak çekme isteği olarak aç */
-  draft?: boolean;
-  /** Erişim anahtarının (PAT) okunacağı ortam değişkeni (varsayılan AZURE_DEVOPS_PAT).
-   *  Anahtar config'e YAZILMAZ (config.json repoda izleniyor). Yoksa dal gönderilir,
-   *  çekme isteği oluşturma bağlantısı verilir. */
-  tokenEnv?: string;
-  /** Uzak depo adı (varsayılan "origin") */
-  remote?: string;
-  /** Koleksiyon/organizasyon web adresi (ör. https://tfs.kurum/tfs/DefaultCollection) —
-   *  boşsa uzak depo adresinden çıkarılır; SSH ya da farklı web adresinde gerekir */
-  collectionUrl?: string;
-  /** REST sürümü (varsayılan "5.0" — Azure DevOps Server 2019+ ve bulut) */
-  apiVersion?: string;
-  /** true ise gönderdikten sonra önceki dala dönülür (değişiklikler çekme isteğinin dalında kalır) */
-  returnToBase?: boolean;
-  /** Sonraki düğüm (null = akış biter) */
-  next: string | null;
-}
-
-export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | FanoutNodeConfig | PrNodeConfig;
+export type WorkflowNode = AgentNodeConfig | CommandNodeConfig | FanoutNodeConfig;
 
 export function isCommandNode(node: WorkflowNode): node is CommandNodeConfig {
   return (node as CommandNodeConfig).type === "command";
@@ -202,13 +170,9 @@ export function isFanoutNode(node: WorkflowNode): node is FanoutNodeConfig {
   return (node as FanoutNodeConfig).type === "fanout";
 }
 
-export function isPrNode(node: WorkflowNode): node is PrNodeConfig {
-  return (node as PrNodeConfig).type === "pr";
-}
-
-/** LLM olmayan kapı düğümleri (komut/fanout/çekme isteği) — persona/araç listesi yok */
-export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | FanoutNodeConfig | PrNodeConfig {
-  return isCommandNode(node) || isFanoutNode(node) || isPrNode(node);
+/** LLM olmayan kapı düğümleri (komut/fanout) — persona/araç listesi yok */
+export function isGateNode(node: WorkflowNode): node is CommandNodeConfig | FanoutNodeConfig {
+  return isCommandNode(node) || isFanoutNode(node);
 }
 
 /**
@@ -227,7 +191,7 @@ export function mainPath(workflow: WorkflowConfig): string[] {
     order.push(key);
     const forward: Array<string | null | undefined> = isCommandNode(node)
       ? [node.onSuccess]
-      : isFanoutNode(node) || isPrNode(node)
+      : isFanoutNode(node)
         ? [node.next]
         : [node.next, node.verdict?.onApprove, ...Object.values(node.routes?.cases ?? {}), node.routes?.default];
     for (const t of forward) if (t && !order.includes(t)) queue.push(t);
@@ -243,7 +207,7 @@ export function mainPath(workflow: WorkflowConfig): string[] {
  */
 export function passThroughTarget(node: WorkflowNode): string | null {
   if (isCommandNode(node)) return node.onSuccess;
-  if (isFanoutNode(node) || isPrNode(node)) return node.next;
+  if (isFanoutNode(node)) return node.next;
   if (node.verdict) return node.verdict.onApprove;
   if (node.routes) return node.routes.default ?? null;
   return node.next ?? null;

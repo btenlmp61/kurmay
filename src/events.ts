@@ -101,16 +101,6 @@ export type OrchestratorEvent =
   | { type: "build_module_finished"; module: string }
   | { type: "build_failed"; module: string; code: number }
   | { type: "build_finished"; order: string[] }
-  | { type: "pr_started"; repos: string[] }
-  | {
-      type: "pr_result";
-      repo: string;
-      status: "created" | "pushed" | "skipped" | "failed";
-      branch?: string;
-      target?: string;
-      url?: string;
-      message?: string;
-    }
   | { type: "run_scheduled"; agent: string; runAt: number }
   | { type: "run_resumed"; agent: string; source: "timer" | "terminal" | "web" }
   | { type: "run_schedule_cancelled"; agent: string; source: "timer" | "terminal" | "web" }

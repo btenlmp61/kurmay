@@ -6,7 +6,6 @@ import {
   isCommandNode,
   isFanoutNode,
   isGateNode,
-  isPrNode,
   reviewVerdictJsonSchema,
   type AgentDefinition,
   type AgentNodeConfig,
@@ -195,14 +194,6 @@ export function loadAgents(
 
     // Fanout da ajan değildir — yukarıda doğrulandı
     if (isFanoutNode(config)) continue;
-
-    // Çekme isteği düğümü ajan değildir — yalnızca kenarı doğrulanır
-    if (isPrNode(config)) {
-      if (config.next != null && !workflow.agents[config.next]) {
-        throw new Error(`"${key}" çekme isteği düğümü var olmayan bir düğüme işaret ediyor: "${config.next}"`);
-      }
-      continue;
-    }
 
     let mdPath = path.resolve(projectRoot, config.file);
     // Persona dosyaları yeniden adlandırıldı (Analist/Saha/Teftiş): eski adla yazılmış

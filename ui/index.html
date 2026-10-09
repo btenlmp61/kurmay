@@ -604,7 +604,6 @@ const ROLES = {
   analist: { ad: "Analist", ic: "◎", c: "arch" },
   saha: { ad: "Saha Timi", ic: "</>", c: "dev" },
   teftis: { ad: "Teftiş", ic: "✓", c: "rev" },
-  "cekme-istegi": { ad: "Çekme isteği", ic: "⇄", c: "other" },
 };
 // Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
 // harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
@@ -1591,21 +1590,6 @@ function handleEvent(e) {
     case "build_finished":
       addLog(e.ts, `derleme tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
       break;
-    // Çekme isteği adımı (yapay zekâ değil): her depo için sonuç + bağlantı
-    case "pr_started":
-      setStatus("çekme isteği", "run");
-      addLog(e.ts, `⇄ çekme isteği hazırlanıyor: ${e.repos.length ? e.repos.map((r) => esc(mintika(r))).join(", ") : "değişen depo yok"}`, "muted");
-      break;
-    case "pr_result": {
-      const yer = `<b>${esc(mintika(e.repo))}</b>`;
-      const link = (text) => (e.url && /^https?:\/\//.test(e.url) ? ` <a href="${esc(e.url)}" target="_blank" rel="noopener">${text}</a>` : "");
-      const dal = e.branch ? ` · <code>${esc(e.branch)}</code> → <code>${esc(e.target || "")}</code>` : "";
-      if (e.status === "created") addLog(e.ts, `⇄ ${yer}: çekme isteği açıldı ${esc(e.message || "")}${dal}${link("aç ↗")}`, "ok");
-      else if (e.status === "pushed") addLog(e.ts, `⇄ ${yer}: dal gönderildi, ${esc(e.message || "")}${dal}${link("çekme isteğini oluştur ↗")}`, "warn");
-      else if (e.status === "skipped") addLog(e.ts, `⇄ ${yer}: ${esc(e.message || "atlandı")}`, "muted");
-      else addLog(e.ts, `⇄ ${yer}: çekme isteği açılamadı — ${esc(e.message || "")}`, "err");
-      break;
-    }
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");

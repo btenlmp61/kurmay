@@ -1,14 +1,12 @@
 import path from "node:path";
 import { askUserApproval, fmtDate, waitForScheduledTime, type WebApprovalChannel } from "./approval.js";
 import { runBuild } from "./build.js";
-import { runPullRequests } from "./pullRequest.js";
 import type { EventBus } from "./events.js";
 import { extractVerdict } from "./verdict.js";
 import { runAgent } from "./runAgent.js";
 import {
   isCommandNode,
   isFanoutNode,
-  isPrNode,
   passThroughTarget,
   ReviewVerdictSchema,
   RunCancelledError,
@@ -391,25 +389,6 @@ export async function runWorkflow(
       continue;
     }
     consecutiveSkips = 0;
-
-    // Çekme isteği düğümü (LLM değil): değişen depolarda dal + commit + gönder + istek.
-    // Sonucu ne olursa olsun akış "next"e geçer — kod zaten yazılmış ve onaylanmış;
-    // açılamayan istek için panelde neden ve elle açma bağlantısı görünür.
-    if (isPrNode(node)) {
-      await runPullRequests(
-        node,
-        ctx.changedFiles,
-        {
-          task: ctx.task,
-          outputs: [...ctx.outputs.values()].map((o) => ({ name: o.name, structured: o.result.structured, text: o.result.text })),
-        },
-        cwd,
-        bus,
-        abortController.signal,
-      );
-      current = node.next;
-      continue;
-    }
 
     // Komut düğümü (LLM değil): değişen modülleri deterministik sırada build eder.
     // Başarılıysa onSuccess'e, ilk hata onFailure'a (build log'u geri bildirim olur).

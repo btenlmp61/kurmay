@@ -10,7 +10,7 @@ import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
 import { startUiServer, type ToggleKind, type UiServer } from "./server.js";
 import { SessionStore, type SessionEntry } from "./sessions.js";
-import { isCommandNode, isFanoutNode, isPrNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
+import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
 function parseArgs(argv: string[]): {
   task: string;
@@ -258,7 +258,6 @@ async function main() {
       Object.entries(nodes).flatMap(([k, n]) => (isFanoutNode(n) ? [[n.agent, k] as const] : [])),
     );
     const off = offOf(cfg);
-    const onPath = mainPath(cfg.workflow);
     // Diskteki beceri klasörleri + düğümlerde adı geçip diskte olmayanlar
     const skillNames = new Set(lsClaude("skills").filter((e) => e.isDirectory()).map((e) => e.name));
     for (const [, n] of agentNodes) for (const s of (n as { skills?: string[] }).skills ?? []) skillNames.add(s);
@@ -269,17 +268,6 @@ async function main() {
         type: n.type ?? "agent",
         disabled: !!n.disabled,
         description: agents.get(key)?.description ?? "",
-        // Akışın ileri yolunda mı — değilse açmak bir şey değiştirmez (sayfa uyarır)
-        onPath: onPath.includes(key),
-        ...(isCommandNode(n) ? { command: n.command } : {}),
-        // Çekme isteği: hedef dal ve erişim anahtarının ortamda olup olmadığı (değeri değil)
-        ...(isPrNode(n)
-          ? {
-              target: n.targetBranch || "",
-              tokenEnv: n.tokenEnv || "AZURE_DEVOPS_PAT",
-              tokenReady: !!process.env[n.tokenEnv || "AZURE_DEVOPS_PAT"],
-            }
-          : {}),
         ...(isFanoutNode(n) ? { worker: n.agent } : {}),
         ...(workerOf.has(key) ? { fanout: workerOf.get(key) } : {}),
       })),

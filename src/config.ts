@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { EFFORT_LEVELS, isCommandNode, isFanoutNode, isPrNode, type AppConfig, type EffortSetting, type McpServerJson, type ProviderConfig } from "./types.js";
+import { EFFORT_LEVELS, isCommandNode, isFanoutNode, type AppConfig, type EffortSetting, type McpServerJson, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -89,9 +89,9 @@ export function loadAppConfig(configPath: string): AppConfig {
   // Ajanların tools listesindeki mcp__ araçları tanımlı bir sunucuya işaret etmeli
   for (const [key, node] of Object.entries(cfg.workflow.agents)) {
     const type = (node as { type?: unknown }).type;
-    if (type !== undefined && type !== "agent" && type !== "command" && type !== "fanout" && type !== "pr") {
+    if (type !== undefined && type !== "agent" && type !== "command" && type !== "fanout") {
       throw new Error(
-        `config: "${key}" düğümünün tipi ${JSON.stringify(type)} tanınmıyor (agent | command | fanout | pr)` +
+        `config: "${key}" düğümünün tipi ${JSON.stringify(type)} tanınmıyor (agent | command | fanout)` +
           (type === "parallel" ? ' — paralel inceleme kaldırıldı; tek teftiş düğümü için "verdict" kullan' : ""),
       );
     }
@@ -103,19 +103,6 @@ export function loadAppConfig(configPath: string): AppConfig {
         throw new Error(`config: "${key}" komut düğümü için "command" (build komutu) zorunlu`);
       }
       continue; // komut düğümünün tools listesi yok
-    }
-    if (isPrNode(node)) {
-      for (const f of ["targetBranch", "branchPrefix", "tokenEnv", "remote", "collectionUrl", "apiVersion"] as const) {
-        if (node[f] !== undefined && typeof node[f] !== "string") {
-          throw new Error(`config: "${key}.${f}" metin olmalı (verilen: ${JSON.stringify(node[f])})`);
-        }
-      }
-      for (const f of ["draft", "returnToBase"] as const) {
-        if (node[f] !== undefined && typeof node[f] !== "boolean") {
-          throw new Error(`config: "${key}.${f}" true/false olmalı (verilen: ${JSON.stringify(node[f])})`);
-        }
-      }
-      continue; // çekme isteği bir kapı; araç listesi yok
     }
     if (isFanoutNode(node)) {
       const mc = node.maxConcurrency;

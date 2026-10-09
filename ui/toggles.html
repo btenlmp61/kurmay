@@ -112,7 +112,7 @@ for (const b of document.querySelectorAll(".tsw")) {
 applyThemeUI();
 
 // Görünen adlar — config anahtarları teknik kalır, ekranda Türkçe ad (panel/ayarlar ile aynı)
-const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş", "cekme-istegi":"Çekme isteği" };
+const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
 const ROLE_ICONS = { analist:["◎","var(--arch)"], saha:["</>","var(--dev)"], teftis:["✓","var(--rev)"] };
 let data = null;
 
@@ -154,21 +154,6 @@ function render() {
     tags: s.missing ? [`<span class="tag warn">dosyası yok</span>`] : [],
     on: !s.disabled,
   }));
-  // Otomatik adımlar (yapay zekâ değil): çekme isteği ve derleme komutları
-  const stepRows = data.agents.filter((a) => a.type === "pr" || a.type === "command").map((a) => {
-    const tags = [];
-    if (a.onPath === false) tags.push(`<span class="tag warn">akışa bağlı değil</span>`);
-    let sub;
-    if (a.type === "pr") {
-      sub = "Teftiş onayından sonra değişen her depoda yeni dal açar, ajanların dosyalarını gönderir ve çekme isteği açar" +
-        (a.target ? ` (hedef dal: ${a.target})` : "") + ". " +
-        (a.tokenReady ? "Erişim anahtarı tanımlı." : `Erişim anahtarı yok (${a.tokenEnv} ortam değişkeni) — dal gönderilir, isteği bağlantıdan sen açarsın.`);
-      if (!a.tokenReady) tags.push(`<span class="tag warn">anahtar yok</span>`);
-    } else {
-      sub = "Derleme: " + (a.command || "");
-    }
-    return row({ kind: "agent", name: a.key, title: nodeName(a.key), sub, icon: a.type === "pr" ? "⇄" : "⚒", color: "var(--teal)", tags, on: !a.disabled });
-  });
   const mcpRows = data.mcpServers.map((m) => row({
     kind: "mcp", name: m.name, title: m.name, icon: "🔌", color: "var(--dev)",
     sub: usedByText(m.usedBy), on: !m.disabled,
@@ -177,8 +162,6 @@ function render() {
     section("Ajanlar", agentRows,
       "Kapalı ajan akışta atlanır, akış onun ardından gelen adımla sürer. Saha Timi kapalıysa hiçbir mıntıkada kod yazılmaz.",
       "Akışta ajan yok.") +
-    (stepRows.length ? section("Otomatik adımlar", stepRows,
-      "Yapay zekâ kullanmayan, her seferinde aynı işi yapan adımlar. Kapalı adım atlanır, akış sonraki adımla sürer.", "") : "") +
     section("Beceriler", skillRows,
       "Kapalı beceri, ajanın ayarlarında listelenmiş olsa bile hiçbir ajana sunulmaz.",
       "Henüz beceri yok.") +
