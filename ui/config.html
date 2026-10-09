@@ -6,6 +6,7 @@
 <title>Kurmay</title>
 <link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
+<script src="/dirpicker.js" defer></script>
 <script>
 // Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
 // bir an için yanlış gelip (flash) sonra düzelir.
@@ -94,7 +95,8 @@ input[type=text], input[type=number], select { width:100%; }
   <div class="gbar">
     <div class="grow">
       <label class="minl">Çalışma dizini</label>
-      <input type="text" id="tdir" placeholder="D:\work\proje">
+      <div style="display:flex;gap:6px"><input type="text" id="tdir" placeholder="D:\work\proje" style="flex:1">
+      <button id="tdirPick" type="button" title="Klasör seç" style="min-height:auto;padding:4px 14px">📁 Gözat</button></div>
     </div>
     <div>
       <label class="minl">Başlangıç düğümü</label>
@@ -652,6 +654,13 @@ $("btnSave").addEventListener("click", save);
 
 // ── Çalışma dizini + entry + yeni düğüm ─────────────────────────────
 $("tdir").addEventListener("input", ()=>{ cfg.targetDir = $("tdir").value; markDirty(); $("dir").textContent = cfg.targetDir || "(çalışılan dizin)"; });
+// Klasör seçici (ui/dirpicker.js): seçilen yol alana yazılır, Kaydet ile config.json'a gider
+$("tdirPick").addEventListener("click", async ()=>{
+  const d = await openDirPicker($("tdir").value);
+  if (!d) return;
+  $("tdir").value = d;
+  $("tdir").dispatchEvent(new Event("input"));
+});
 
 // Bağlantı alanları: boş metin = tanımsız (loadAppConfig "" değerini yok sayar)
 for (const [id, alan] of [["cBaseUrl","baseUrl"],["cApiKey","apiKey"],["cModel","model"],["cModelsUrl","modelsUrl"]]){
