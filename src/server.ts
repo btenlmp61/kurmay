@@ -14,7 +14,7 @@ export interface UiServer {
 export interface UiServerOptions {
   /** Oturum çalışma zamanları — olay akışı, onay/zamanlama/iptal oturum başına */
   runtimes: RuntimeRegistry;
-  /** Panelden görev (POST /task). session verilirse o oturumda devam (architect
+  /** Panelden görev (POST /task). session verilirse o oturumda devam (analist
    *  konuşması sürdürülür), yoksa yeni oturum açılır. Kabul edilirse oturum id'si döner. */
   onTask?: (
     task: string,
@@ -41,7 +41,8 @@ export interface UiServerOptions {
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
   getModels?: () => Promise<{ current: string; required?: boolean; models: ModelInfo[]; error?: string }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
-  setModel?: (model: string) => { ok: boolean; error?: string; model?: string };
+  /** session verilirse yalnızca o oturumun modeli, yoksa genel varsayılan (config.json) değişir */
+  setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -53,7 +54,6 @@ export interface UiServerOptions {
  *
  *   GET  /          panel sayfası (ui/index.html)
  *   GET  /theme.css paylaşılan Material 3 tema (ui/theme.css)
- *   GET  /logo.svg  marka logosu — favicon + üst şerit (ui/logo.svg)
  *   GET  /events?session=ID  SSE: o oturumun geçmişi (diskteki kayıtlar dahil) + canlı akışı
  *   GET  /lobby     SSE: oturum listesi + durumları, her değişiklikte tam liste
  *   POST /approval  { session, approved, comment?, runAt? } — o oturumun bekleyen onayını çözer
@@ -73,7 +73,6 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
   const themeCssPath = path.join(uiDir, "theme.css");
-  const logoPath = path.join(uiDir, "logo.svg");
   const sseClients = new Set<http.ServerResponse>();
   const json = (res: http.ServerResponse, code: number, payload: unknown) => {
     res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
@@ -119,12 +118,6 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       return;
     }
 
-    if (req.method === "GET" && req.url === "/logo.svg") {
-      res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8" });
-      res.end(fs.readFileSync(logoPath));
-      return;
-    }
-
     // Oturumun olay akışı: önce geçmiş (servis yeniden başladıysa diskten), sonra canlı
     if (req.method === "GET" && url.pathname === "/events") {
       const rt = options.openSession(url.searchParams.get("session") ?? "");
@@ -154,7 +147,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "POST" && req.url === "/approval") {
       readJson(req, (parsed) => {
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         const rt = options.runtimes.peek(String(parsed.session ?? ""));
         const comment =
           typeof parsed.comment === "string" && parsed.comment.trim() ? parsed.comment.trim() : undefined;
@@ -172,9 +165,9 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "POST" && req.url === "/schedule") {
       readJson(req, (parsed) => {
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         if (parsed.action !== "run" && parsed.action !== "cancel") {
-          return json(res, 400, { ok: false, error: "action 'run' veya 'cancel' olmalı" });
+          return json(res, 400, { ok: false, error: "işlem 'şimdi çalıştır' ya da 'iptal' olmalı" });
         }
         const rt = options.runtimes.peek(String(parsed.session ?? ""));
         if (!rt?.resolveSchedule(parsed.action === "run" ? "run_now" : "cancelled")) {
@@ -253,7 +246,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           dir = String((JSON.parse(body) as { dir?: unknown }).dir ?? "").trim();
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
         if (!dir) {
@@ -288,14 +281,17 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => {
         let model = "";
+        let session: string | undefined;
         try {
-          model = String((JSON.parse(body) as { model?: unknown }).model ?? "").trim();
+          const parsed = JSON.parse(body) as { model?: unknown; session?: unknown };
+          model = String(parsed.model ?? "").trim();
+          if (typeof parsed.session === "string" && parsed.session) session = parsed.session;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
-        const r = options.setModel ? options.setModel(model) : { ok: false, error: "kapalı" };
+        const r = options.setModel ? options.setModel(model, session) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });
@@ -320,7 +316,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           disabled = parsed.disabled === true;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: false, error: "geçersiz JSON" }));
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
           return;
         }
         const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
@@ -370,7 +366,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
             error: "bu koşu görevini CLI'dan aldı; panelden görev vermek için sunucu modunda başlat (görev argümanı olmadan)",
           });
         }
-        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz JSON" });
+        if (!parsed) return json(res, 400, { ok: false, error: "geçersiz istek" });
         const task = typeof parsed.task === "string" ? parsed.task.trim() : "";
         if (!task) return json(res, 400, { ok: false, error: "görev boş olamaz" });
         const session = typeof parsed.session === "string" && parsed.session ? parsed.session : undefined;

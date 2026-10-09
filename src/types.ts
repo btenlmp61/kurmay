@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Reviewer kararının şeması — iş akışı yönlendirmesi bu nesneye göre yapılır.
+// Teftiş kararının şeması — iş akışı yönlendirmesi bu nesneye göre yapılır.
 // Structured output sayesinde API bu şemaya uymayan çıktı üretemez.
 export const ReviewVerdictSchema = z.object({
   approved: z.boolean(),
@@ -88,7 +88,7 @@ export interface AgentNodeConfig {
   /**
    * Structured çıktıdaki bir alanın değerine göre koşullu dallanma (next/verdict
    * yerine). Ajan rotayı structured output'ta ÖNERİR; geçişi orchestrator yapar.
-   * Örn. architect'in "route" alanı: "developer" → developer, "done" → akış biter.
+   * Örn. analistin "route" alanı: "implement" → saha-timi, "done" → akış biter.
    * cases'te olmayan/eksik değer default'a düşer (default yoksa akış biter).
    */
   routes?: {
@@ -100,7 +100,7 @@ export interface AgentNodeConfig {
 
 /**
  * Komut düğümü — LLM değil, deterministik bir build adımı. Yıldız topoloji için:
- * developer'ın değiştirdiği dosyalardan hangi repoların dokunulduğu OTOMATİK
+ * saha ajanının değiştirdiği dosyalardan hangi repoların dokunulduğu OTOMATİK
  * çıkarılır (dosyanın targetDir altındaki en üst klasörü = repo). "parent"
  * değiştiyse önce o build edilir, sonra değişen servisler ortak "command" ile.
  * Modül listesi tutulmaz. Exit code'a göre dallanır: hepsi başarılıysa onSuccess,
@@ -128,7 +128,7 @@ export interface CommandNodeConfig {
 }
 
 /**
- * Repo başına dağıtım düğümü — LLM değil, bir fan-out/fan-in kapısı. Architect'in
+ * Repo başına dağıtım düğümü — LLM değil, bir fan-out/fan-in kapısı. Analist'in
  * `file_plan`'ı repolara bölünür (dosyanın targetDir altındaki en üst klasörü =
  * repo, build.ts ile aynı kural) ve "agent" düğümünün her repo için AYRI bir
  * kopyası koşar; kaç kopya olacağına KOD karar verir (plan kaç repoya dokunuyorsa).
@@ -146,7 +146,7 @@ export interface FanoutNodeConfig {
    *  (Diğer düğümlerden farklı: atlanmaz — işi yapan ajan zaten bu düğümün içinde.
    *  Ajanın kendisini atlamak için işçi düğümü kapat.) */
   disabled?: boolean;
-  /** Repo başına çoğaltılacak ajan düğümü (ör. "developer"). Kendi kenarı olamaz. */
+  /** Repo başına çoğaltılacak ajan düğümü (ör. "saha"). Kendi kenarı olamaz. */
   agent: string;
   /** Aynı anda en fazla kaç kopya koşar. Yerel model sunucusu istekleri sırayla
    *  işliyorsa paralellik HIZ KAZANDIRMAZ, kuyruk ve zaman aşımı riski getirir —

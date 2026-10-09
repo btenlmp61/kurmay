@@ -1,7 +1,7 @@
 services:
-  yaver:
+  kurmay:
     build: .
-    container_name: yaver
+    container_name: kurmay
     ports:
       - "${PORT:-4141}:4141"
     environment:

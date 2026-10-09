@@ -5,6 +5,8 @@ export type OrchestratorEvent =
       type: "workflow_started";
       task: string;
       provider: string;
+      /** Bu koşunun modeli (oturuma özel ya da genel varsayılan; boş = sağlayıcı varsayılanı) */
+      model?: string;
       targetDir: string;
       entry: string;
       maxCycles: number;
@@ -32,7 +34,18 @@ export type OrchestratorEvent =
       /** true ise deneme resume ile yapılacak (ajan baştan başlamaz) */
       resumed: boolean;
     }
-  | { type: "tool_used"; agent: string; tool: string; detail: string }
+  | {
+      type: "tool_used";
+      agent: string;
+      tool: string;
+      detail: string;
+      /** Dosya araçlarında yol, Bash'te komut — panel kod dostu gösterir (dosya çipi / mini terminal) */
+      file?: string;
+      command?: string;
+      /** Düzenleme araçlarında yaklaşık satır sayısı (eski/yeni metinden) — panelde +N −M */
+      added?: number;
+      removed?: number;
+    }
   | {
       type: "agent_finished";
       agent: string;
@@ -41,7 +54,7 @@ export type OrchestratorEvent =
       /** Süre/tur/token ölçümü — panelde ajan satırının altında gösterilir */
       metrics?: AgentMetrics;
     }
-  // endsFlow: rota akışı bitiriyor (ör. architect route=done) — onaylanırsa
+  // endsFlow: rota akışı bitiriyor (ör. analist route=done) — onaylanırsa
   // sonraki adım yok, reddedilirse aynı ajan gerekçeyle yeniden koşar
   | {
       type: "approval_required";

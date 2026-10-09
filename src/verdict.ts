@@ -10,7 +10,7 @@ import {
 } from "./types.js";
 
 /**
- * Reviewer'ın serbest metin raporundan karar nesnesi çıkarır.
+ * Teftiş'in serbest metin raporundan karar nesnesi çıkarır.
  *
  * - Anthropic + ANTHROPIC_API_KEY tanımlıysa: doğrudan API + structured output;
  *   şema API tarafında zorlanır, geçersiz JSON gelmesi imkânsızdır.
@@ -63,7 +63,7 @@ async function extractWithStructuredOutput(
   );
 
   if (!response.parsed_output) {
-    throw new Error("Reviewer kararı ayrıştırılamadı (parsed_output boş)");
+    throw new Error("Teftiş kararı ayrıştırılamadı (parsed_output boş)");
   }
   return response.parsed_output;
 }
@@ -101,11 +101,11 @@ async function extractWithAgentSdk(
       if (message.subtype === "success" && message.structured_output !== undefined) {
         const parsed = ReviewVerdictSchema.safeParse(message.structured_output);
         if (parsed.success) return parsed.data;
-        throw new Error(`Reviewer kararı şemaya uymadı: ${parsed.error.message}`);
+        throw new Error(`Teftiş kararı şemaya uymadı: ${parsed.error.message}`);
       }
-      throw new Error(`Reviewer kararı çıkarılamadı: ${message.subtype}`);
+      throw new Error(`Teftiş kararı çıkarılamadı: ${message.subtype}`);
     }
   }
 
-  throw new Error("Reviewer kararı çıkarılamadı: sonuç mesajı gelmedi");
+  throw new Error("Teftiş kararı çıkarılamadı: sonuç mesajı gelmedi");
 }

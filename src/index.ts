@@ -50,7 +50,7 @@ function snapshotConfig(cfg: AppConfig): AppConfig {
 
 /**
  * Bir oturumda tek bir görevi baştan sona koşturur; olaylar oturumun kanalına,
- * kayıt runs/'a gider. Oturumun ilk görevi değilse architect konuşması sürdürülür
+ * kayıt runs/'a gider. Oturumun ilk görevi değilse analist konuşması sürdürülür
  * (resume) ve panel önceki görevleri ekranda tutar. runtime.startRun ilk await'ten
  * ÖNCE çağrılır — oturum anında "meşgul" olur, çift başlatma olamaz.
  */
@@ -76,7 +76,7 @@ async function executeRun(o: {
   const runLog = path.join(o.runsDir, logName);
   o.sessions.addRunLog(entry.id, logName, task);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
-  // entrySessionId: architect'in SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
+  // entrySessionId: analistin SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
   const sessionStore = { entrySessionId: entry.sdkSessionId };
 
   console.log(`\n🎯 [${entry.name}] Görev: ${task}`);
@@ -85,6 +85,7 @@ async function executeRun(o: {
       type: "workflow_started",
       task,
       provider: cfg.provider,
+      model: cfg.model,
       targetDir: cwd,
       entry: cfg.workflow.entry,
       maxCycles: cfg.workflow.maxCycles,
@@ -179,17 +180,21 @@ async function main() {
         task: rt?.task ?? e.lastTask,
         cwd: rt?.cwd,
         runs: e.runLogs?.length ?? 0,
+        model: e.model,
       };
     });
 
   /** Bir oturumda görev başlatır (oturum yoksa açar); arka planda koşar */
   const launch = (task: string, entry: SessionEntry | undefined, runAt?: number) => {
-    const e = entry ?? sessions.create(task);
+    // Yeni oturum o anki genel modelle açılır; sonra panelden yalnızca kendisi için değişebilir
+    const e = entry ?? sessions.create(task, cfg.model);
+    const runCfg = snapshotConfig(cfg);
+    if (e.model) runCfg.model = e.model;
     const runtime = runtimes.get(e.id, e.runLogs);
     const run = executeRun({
       task,
       // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
-      cfg: snapshotConfig(cfg),
+      cfg: runCfg,
       agents,
       cwd,
       runtime,
@@ -288,7 +293,7 @@ async function main() {
         const current = cfg.model ?? "";
         const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
         if (!cfg.modelsUrl) {
-          return { current, required, models: [], error: 'config\'te "modelsUrl" tanımlı değil' };
+          return { current, required, models: [], error: "model listesi adresi tanımlı değil — Teşkilat şemasındaki Bağlantı bölümünden ekle" };
         }
         try {
           return { current, required, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
@@ -296,7 +301,17 @@ async function main() {
           return { current, required, models: [], error: e instanceof Error ? e.message : String(e) };
         }
       },
-      setModel: (model) => {
+      setModel: (model, sessionId) => {
+        // Oturuma özel: config.json'a dokunmaz, yalnızca o oturumun sıradaki görevi etkilenir
+        if (sessionId) {
+          if (!sessions.get(sessionId)) return { ok: false, error: "oturum bulunamadı" };
+          if (!model && modelMissing(cfg)) {
+            return { ok: false, error: "Genel varsayılan model de seçili değil — bir model seç" };
+          }
+          sessions.setModel(sessionId, model);
+          runtimes.notify();
+          return { ok: true, model };
+        }
         const prev = fs.readFileSync(resolvedConfigPath, "utf8");
         try {
           const parsed = JSON.parse(prev) as Record<string, unknown>;
@@ -330,7 +345,7 @@ async function main() {
         try {
           const parsed = JSON.parse(prev) as AppConfig;
           const node = parsed.workflow?.agents?.[key];
-          if (!node) return { ok: false, error: `düğüm config dosyasında yok: ${key}` };
+          if (!node) return { ok: false, error: `düğüm ayar dosyasında yok: ${key}` };
           if (disabled) node.disabled = true;
           else delete node.disabled;
           fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
@@ -347,7 +362,8 @@ async function main() {
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, sessionId, runAt) => {
-            if (modelMissing(cfg)) {
+            const existing = sessionId ? sessions.get(sessionId) : undefined;
+            if (modelMissing({ ...cfg, model: existing?.model || cfg.model })) {
               return { ok: false, error: "Model seçilmedi — üst çubuktaki model listesinden bir model seç" };
             }
             if (!dirOk(cwd)) {
@@ -362,7 +378,7 @@ async function main() {
             if (busy.length >= maxParallel) {
               return {
                 ok: false,
-                error: `Aynı anda en fazla ${maxParallel} görev çalışabilir (config: maxParallelRuns) — biri bitince tekrar dene`,
+                error: `Aynı anda en fazla ${maxParallel} görev çalışabilir (ayar dosyasında değiştirilebilir) — biri bitince tekrar dene`,
               };
             }
             // Aynı dizine iki akış aynı anda yazarsa birbirini ezer — engellemiyoruz

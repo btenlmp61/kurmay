@@ -136,6 +136,13 @@ function validateEdges(
  * Config'deki iş akışı grafının referans verdiği md/kural/beceri dosyalarını
  * yükler ve tutarlılığı doğrular (kenarlar, dosya varlığı, araç gereksinimleri).
  */
+/** Eski persona dosya adı → yeni ad (2026-10-09 yeniden adlandırma) */
+const ESKI_PERSONA: Record<string, string> = {
+  "architect.md": "analist.md",
+  "developer.md": "saha.md",
+  "reviewer.md": "teftis.md",
+};
+
 export function loadAgents(
   workflow: WorkflowConfig,
   projectRoot: string,
@@ -143,7 +150,7 @@ export function loadAgents(
   const agents = new Map<string, AgentDefinition>();
 
   // Fanout işçileri: kenarsızdır, kendi md şemasını kullanır — her repo kopyası
-  // developer gibi çalışır. Döngüden ÖNCE toplanıyor (kenar doğrulaması kullanır).
+  // saha ajanı gibi çalışır. Döngüden ÖNCE toplanıyor (kenar doğrulaması kullanır).
   const workerOf = new Map<string, string>();
   for (const [key, config] of Object.entries(workflow.agents)) {
     if (!isFanoutNode(config)) continue;
@@ -177,7 +184,17 @@ export function loadAgents(
     // Fanout da ajan değildir — yukarıda doğrulandı
     if (isFanoutNode(config)) continue;
 
-    const mdPath = path.resolve(projectRoot, config.file);
+    let mdPath = path.resolve(projectRoot, config.file);
+    // Persona dosyaları yeniden adlandırıldı (Analist/Saha/Teftiş): eski adla yazılmış
+    // bir config (repo dışındaki --config dosyası gibi) bozulmasın diye yeni dosyaya yönlendir
+    if (!fs.existsSync(mdPath)) {
+      const yeni = ESKI_PERSONA[path.basename(mdPath)];
+      const aday = yeni && path.join(path.dirname(mdPath), yeni);
+      if (aday && fs.existsSync(aday)) {
+        console.warn(`⚠ "${key}": ${config.file} artık ${yeni} — config'teki yolu güncelle`);
+        mdPath = aday;
+      }
+    }
     if (!fs.existsSync(mdPath)) {
       throw new Error(`"${key}" ajanının md dosyası bulunamadı: ${mdPath}`);
     }

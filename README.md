@@ -1,18 +1,17 @@
-<img src="ui/logo.svg" width="76" alt="">
+# Kurmay
 
-# yaver
+*Kurmay: harekâtı planlayan, sahadaki birlikleri koordine eden heyet.* Burada da öyle:
+**Analist** kodu okuyup harekât planını çıkarır, **Saha Timi** planı mıntıkalarda (repolarda)
+uygular — her mıntıkada kuş kod adlı bir saha ajanı —, **Teftiş** işi denetler.
 
-*Yaver: yanından ayrılmayan yardımcı.* Logodaki kenetlenmiş iki el de bunu anlatır —
-iki ayrı taraf, tek kavrama.
-
-Md dosyalarıyla tanımlanan ajanları (architect → developer ⇄ reviewer) **deterministik** bir iş akışıyla koordine eden TypeScript orkestratörü.
+Md dosyalarıyla tanımlanan ajanları (Analist → Saha Timi ⇄ Teftiş) **deterministik** bir iş akışıyla koordine eden TypeScript orkestratörü.
 
 Kontrol akışı kodda, personalar md dosyalarında, tüm ayarlar tek `config.json`'da yaşar:
 
 - **Ajanlar** — `.claude/agents/*.md` dosyaları her ajanın system prompt'udur. İçlerinde "işin bitince X'i çağır" gibi talimat yoktur; geçişleri orkestratör yapar.
 - **Config** — `config.json` her şeyi tanımlar: sağlayıcı (Anthropic/Ollama), adres, token, model, hedef proje dizini ve iş akışı grafı (kim kimi çağırır, onay nerede beklenir, reject döngüsü kaç tur sürer).
 - **Yürütme** — Her ajan `@anthropic-ai/claude-agent-sdk` (`query()`) ile gerçek araçlarla (Read/Write/Edit/Bash) çalışır.
-- **Karar** — Reviewer'ın raporu structured output ile `{ approved, issues[] }` nesnesine çevrilir; dallanma bu boolean'a göre yapılır.
+- **Karar** — Teftiş'in raporu structured output ile `{ approved, issues[] }` nesnesine çevrilir; dallanma bu boolean'a göre yapılır.
 
 ## Kurulum
 
@@ -38,7 +37,7 @@ Not: `config.json`'daki `mcpServers` girdileri Windows'a özgüyse (`"command": 
 Tek seferlik bir görev koşturmak istersen `command:`'i ezebilirsin:
 
 ```sh
-docker compose run --rm yaver --cwd /workspace/target "Basit bir CLI todo uygulaması yaz"
+docker compose run --rm kurmay --cwd /workspace/target "Basit bir CLI todo uygulaması yaz"
 ```
 
 ## Kullanım
@@ -62,9 +61,9 @@ npm start -- "görev" --config config.ollama.json
 
 Akış:
 
-1. **architect** planı üretir → **senin onayın** beklenir (h dersen yorumunla yeniden planlar)
-2. **developer** planı koda döker
-3. **reviewer** kodu inceler → `REDDEDİLDİ` ise sorun listesi developer'a geri gider (en fazla `maxCycles` tur), `ONAYLANDI` ise akış biter
+1. **Analist** (`analist`) planı üretir → **senin onayın** beklenir (h dersen yorumunla yeniden planlar)
+2. **Saha Timi** (`saha-timi` → her mıntıkada bir `saha` ajanı) planı koda döker
+3. **Teftiş** (`teftis`) kodu inceler → `REDDEDİLDİ` ise sorun listesi saha timine geri gider (en fazla `maxCycles` tur), `ONAYLANDI` ise akış biter
 
 ## İzleme paneli
 
@@ -73,8 +72,8 @@ Akış başlarken `http://localhost:4141` adresinde bir izleme paneli açılır 
 - **Yeni görev kartı** — sunucu modunda görevleri buradan girersin; koşu sürerken gizlenir, bitince geri gelir (aynı anda tek koşu, meşgulken 409)
 - **Ajan hattı** — hangi ajan bekliyor/çalışıyor/bitti/reddetti
 - **Olay akışı** — ajan metinleri, araç kullanımları, kararlar (zaman damgalı)
-- **Reviewer kararı** — onay/red + sorun listesi (önem dereceleriyle)
-- **Onay kartı** — plan hazır olunca panelde belirir; **Onayla/Reddet** düğmeleri terminaldeki `e/h` sorusuyla yarışır, hangisi önce cevap verirse o geçerli olur. Red gerekçesi architect'e geri döner.
+- **Teftiş kararı** — onay/red + sorun listesi (önem dereceleriyle)
+- **Onay kartı** — plan hazır olunca panelde belirir; **Onayla/Reddet** düğmeleri terminaldeki `e/h` sorusuyla yarışır, hangisi önce cevap verirse o geçerli olur. Red gerekçesi Analist'e geri döner.
 
 Her koşunun tüm olayları ayrı bir `runs/<tarih>.jsonl` dosyasına da yazılır — geçmiş koşuları incelemek için.
 
@@ -89,7 +88,7 @@ HTTP arayüzü: `GET /` panel, `GET /events` SSE, `POST /approval` onay, `POST /
   "apiKey": "",
   "model": "",
   "targetDir": ".",
-  "workflow": { "entry": "architect", "maxCycles": 5, "agents": { ... } }
+  "workflow": { "entry": "analist", "maxCycles": 5, "agents": { ... } }
 }
 ```
 
@@ -153,7 +152,7 @@ Yeni ajan eklemek = bir md dosyası + `workflow.agents`'a bir düğüm:
 "tester": {
   "file": ".claude/agents/tester.md",
   "tools": ["Read", "Bash"],
-  "next": "reviewer"
+  "next": "teftis"
 }
 ```
 

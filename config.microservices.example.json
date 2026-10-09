@@ -8,22 +8,22 @@
   "mcpServers": {},
 
   "workflow": {
-    "entry": "architect",
+    "entry": "analist",
     "maxCycles": 5,
 
     "agents": {
-      "architect": {
-        "file": ".claude/agents/architect.md",
+      "analist": {
+        "file": ".claude/agents/analist.md",
         "tools": ["Read", "Glob", "Grep"],
         "requiresUserApproval": true,
         "routes": {
           "field": "route",
-          "cases": { "developer": "developer", "done": null },
-          "default": "developer"
+          "cases": { "implement": "saha", "done": null },
+          "default": "saha"
         }
       },
-      "developer": {
-        "file": ".claude/agents/developer.md",
+      "saha": {
+        "file": ".claude/agents/saha.md",
         "tools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
         "rules": ["genel"],
         "skills": ["test-yazimi"],
@@ -33,14 +33,14 @@
         "type": "command",
         "command": "mvn clean install -q",
         "parent": { "path": "common-events", "command": "mvn clean install" },
-        "onSuccess": "reviewer",
-        "onFailure": "developer"
+        "onSuccess": "teftis",
+        "onFailure": "saha"
       },
-      "reviewer": {
-        "file": ".claude/agents/reviewer.md",
+      "teftis": {
+        "file": ".claude/agents/teftis.md",
         "tools": ["Read", "Glob", "Grep", "Bash"],
         "rules": ["genel"],
-        "verdict": { "onApprove": null, "onReject": "developer" }
+        "verdict": { "onApprove": null, "onReject": "saha" }
       }
     }
   }

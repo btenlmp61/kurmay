@@ -69,7 +69,7 @@ export function loadAppConfig(configPath: string): AppConfig {
     if (type !== undefined && type !== "agent" && type !== "command" && type !== "fanout") {
       throw new Error(
         `config: "${key}" düğümünün tipi ${JSON.stringify(type)} tanınmıyor (agent | command | fanout)` +
-          (type === "parallel" ? ' — paralel inceleme kaldırıldı; tek reviewer için "verdict" kullan' : ""),
+          (type === "parallel" ? ' — paralel inceleme kaldırıldı; tek teftiş düğümü için "verdict" kullan' : ""),
       );
     }
     if (node.disabled !== undefined && typeof node.disabled !== "boolean") {

@@ -3,44 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>yaver izleme paneli</title>
-<link rel="icon" href="/logo.svg">
+<title>Kurmay</title>
+<link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
 <script>
 // Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
 // bir an için yanlış gelip (flash) sonra düzelir.
 (function () {
   try {
-    var t = localStorage.getItem("yaver-theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    var t;
+    try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
+    // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
+    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
+    if (t === "light") t = "evrak";
+    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
+    }
+    document.documentElement.dataset.theme = t;
   } catch (e) {}
 })();
 </script>
 <style>
-body { padding:28px; max-width:1700px; margin-inline:auto; }
-.layout { display:flex; gap:20px; align-items:flex-start; }
-.main { flex:1; min-width:0; }
-.sidebar { flex:0 0 260px; width:260px; background:var(--md-surface-container-low); border:1px solid var(--border); border-radius:var(--md-shape-lg); padding:14px; position:sticky; top:28px; max-height:calc(100vh - 56px); overflow:auto; }
-.sidebar.collapsed { flex-basis:auto; width:auto; }
-.sidebar.collapsed .sidebar-body { display:none; }
-.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
-.sidebar-head .label { margin:0; }
+/* ── "Ekip sohbeti" yerleşimi: solda oturumlar, ortada ekiple sohbet (ajan
+   mesajları + kartlar + yazma kutusu), sağda koşu özeti (repolar, değişen
+   dosyalar, oturum bilgisi). Orta sütun ekran boyu kadar, kendi içinde kayar. */
+body { overflow:hidden; }
+.layout { display:grid; grid-template-columns:272px minmax(0,1fr) 320px; height:100vh; }
+.main { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--chatBg);
+  background-image:radial-gradient(900px 420px at 85% -12%, color-mix(in srgb, var(--md-primary) 12%, transparent), transparent); }
+.mono { font-family:ui-monospace,"Cascadia Code",Consolas,monospace; }
+
+/* — Sol: marka + yeni görev + oturumlar — */
+.sidebar { background:var(--md-surface-container-low); border-right:1px solid var(--border); padding:18px 14px; overflow:auto; }
+.sidebar.collapsed { width:auto; }
+.sidebar.collapsed .sidebar-body, .sidebar.collapsed .brand-name { display:none; }
+.layout:has(.sidebar.collapsed) { grid-template-columns:64px minmax(0,1fr) 320px; }
+.sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 4px 18px; }
+.sidebar-head .brand { font:800 18px var(--font-ui); }
 .sidebar-head button { padding:2px 9px; font-size:13px; min-height:auto; }
-.sess { display:flex; align-items:center; gap:6px; padding:10px 12px; border-radius:var(--md-shape-full); cursor:pointer; border:1px solid transparent; margin-bottom:4px; position:relative; overflow:hidden; transition:background-color var(--md-motion); }
+.side-label { margin:18px 8px 8px; }
+.sess { display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:14px; cursor:pointer; margin-bottom:3px; position:relative; overflow:hidden; transition:background-color var(--md-motion), box-shadow var(--md-motion); }
 .sess:hover { background:var(--md-surface-container-high); }
-.sess.active { background:var(--blueBg); color:var(--md-on-primary-container); }
-.sess.active .meta { color:var(--md-on-primary-container); opacity:.75; }
+.sess.active { background:var(--md-surface-container-lowest); box-shadow:var(--md-elev-1); }
 .sess-main { flex:1; min-width:0; }
 .sess .nm { font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.sess .meta { font-size:11.5px; color:var(--muted); }
-.sess-new { font-weight:600; color:var(--md-primary); }
-.sess-new.active { background:var(--blueBg); color:var(--md-on-primary-container); }
+.sess .meta { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.sess-new { justify-content:center; font-weight:700; color:var(--md-on-primary); background:var(--md-primary); box-shadow:var(--md-elev-2); padding:11px 12px; }
+.sess-new:hover { background:var(--md-primary); filter:brightness(1.08); }
+.sess-new.active { background:var(--md-primary); color:var(--md-on-primary); }
 .sess-del { border:none; background:none; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 5px; border-radius:6px; opacity:0; min-height:auto; }
 .sess:hover .sess-del { opacity:1; }
 .sess-del:hover { color:var(--red); background:var(--redBg); }
 /* Oturum durumu rozeti — lobi akışından canlı gelir */
-.sess .st { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; margin-right:6px; }
-.sess .st::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.sess .st { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; margin-right:6px; padding:1px 8px; border-radius:999px; background:color-mix(in srgb, currentColor 13%, transparent); }
+.sess .st::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
 .st.running { color:var(--blue); }
 .st.running::before { animation:stPulse 1.2s ease-in-out infinite; }
 .st.approval, .st.scheduled { color:var(--amber); }
@@ -48,81 +64,220 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .st.failed, .st.cancelled { color:var(--red); }
 .st.idle { color:var(--muted); }
 @keyframes stPulse { 50% { opacity:.25; } }
-/* Üst şerit — M3 "top app bar": diğer kartlardan daha koyu bir yüzey tonu ve
-   daha belirgin gölge ile ayrışır, sayfanın geri kalanıyla aynı düz kart
-   olmaktan çıkar. Başlık de headline ölçeğinde — önceki sürümde 15px'lik
-   gövde metni büyüklüğündeydi ve "önemsiz" görünüyordu. */
-.card.hdr { background:var(--md-surface-container-high); box-shadow:var(--md-elev-2); }
-.hdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.hdr .task { font:var(--md-type-headline-sm); }
-.hdr .dir-wrap { margin-left:auto; display:flex; align-items:center; gap:6px; }
-.hdr .dir { font-size:12.5px; color:var(--muted); cursor:pointer; border-bottom:1px dashed transparent; }
-.hdr .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
-/* Hedef dizin diskte yok: kırmızı + uyarı işareti, tıklayınca düzenlenir */
-.hdr .dir.missing { color:var(--red); font-weight:600; }
-.hdr #dirInput { font-size:12.5px; padding:4px 10px; min-height:auto; width:260px; }
-.hdr #modelSel { font-size:12.5px; padding:4px 10px; min-height:auto; width:auto; max-width:240px; }
-.pipe { display:flex; align-items:stretch; gap:10px; }
-.pipe .arrow { align-self:center; color:var(--muted); }
-/* justify-content:center — fanout grubu yan hücrelerden uzun olduğunda sıralı
-   düğümler de onun boyuna gerilir; metin tepede kalmasın diye dikey ortalanır. */
-.node { flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center; padding:14px 8px; border-radius:var(--md-shape-md); border:1px solid var(--border); background:var(--md-surface-container-low); transition:background-color var(--md-motion), border-color var(--md-motion); }
-.node .nm { font-weight:700; font-size:15.5px; }
-/* Hattaki ana kutular sabit bir yükseklikte: paralel inceleme grubu kalkınca
-   kutular yalnızca içerik kadar kalıp ezik görünüyordu. Grup içindeki kopya
-   kutuları (fanout) bu kurala girmez — üst üste dizilirler. */
-.pipe > .node:not(.group) { min-height:96px; }
-.node .sub { font-size:12.5px; color:var(--muted); margin-top:4px; }
-.node.running { background:var(--blueBg); border-color:var(--blue); }
-.node.running .nm, .node.running .sub { color:var(--md-on-primary-container); }
-.node.done { background:var(--tealBg); border-color:var(--teal); }
-.node.done .nm, .node.done .sub { color:var(--md-on-secondary-container); }
-.node.rejected { background:var(--redBg); border-color:var(--red); }
-.node.rejected .nm, .node.rejected .sub { color:var(--md-on-error-container); }
-/* Paralel grup — dallar TEK bir hattın içinde üst üste. Sıralı düğümlerle aynı
-   genişlikte bir hücre olması bilinçli: okuyan "burada üç şey aynı anda oluyor"
-   görsün, üç ayrı adım sanmasın. */
-.node.group { display:flex; flex-direction:column; gap:6px; padding:8px; background:var(--md-surface-container); }
-.node.group > .glabel { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
-.node.group > .node { flex:none; padding:8px 6px; }
-.node.group > .node .nm { font-size:13px; }
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
-/* Ana görev başlatma butonu — M3 extended FAB: her zaman görünür elevation,
-   daha büyük dokunma alanı, belirgin birincil renk. */
-#btnStart { box-shadow:var(--md-elev-3); flex:none; }
-#btnStart:hover { box-shadow:var(--md-elev-3); }
-/* Dar ekran: sidebar sabit sütun olmaktan çıkıp üstte akar, agent hattı
-   dikey adım listesine döner (yatayda 3+ kutu+ok telefon genişliğine sığmaz). */
+
+/* — Avatar: rol rengi + işaret; küçük boyu fanout kopyaları ve hat için — */
+.av { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; flex:none; font-size:15px; font-weight:700; }
+.av.sm { width:24px; height:24px; font-size:11.5px; }
+.av.arch { background:var(--archBg); color:var(--arch); }
+.av.dev { background:var(--devBg); color:var(--dev); }
+.av.rev { background:var(--revBg); color:var(--rev); }
+.av.other { background:var(--othBg); color:var(--oth); }
+/* Geliştiricinin işareti "</>" — emoji klavye yerine kod işareti */
+.av.dev { font:800 11.5px/1 ui-monospace,"Cascadia Code",Consolas,monospace; letter-spacing:-.5px; }
+.av.dev.sm { font-size:8.5px; }
+
+/* — Orta üst: görev başlığı + ekip (ajan hattı) — */
+.chat-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--border);
+  background:color-mix(in srgb, var(--md-surface-container-lowest) 78%, transparent); backdrop-filter:blur(8px); }
+.ch-title { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 260px; }
+.ch-title .task { font:700 17px/1.3 var(--font-ui); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.pill.soft { background:var(--md-surface-container-high); color:var(--muted); }
+.pill.soft:empty { display:none; }
+#btnCancel { padding:6px 16px; min-height:36px; }
+.pipe { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+/* Başlıkta ekip tek satır: sığmazsa yatay kayar (fanout kopyaları çoğalınca başlık şişmesin) */
+.chat-head .pipe { order:3; flex:1 0 100%; flex-wrap:nowrap; overflow-x:auto; padding:2px 0 4px; scrollbar-width:thin; }
+.chat-head .pipe:empty { display:none; }
+.pill { white-space:nowrap; }
+.pipe .arrow { color:var(--muted); font-size:13px; }
+.node.mem { display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px; border:1px solid var(--border);
+  background:var(--md-surface-container-lowest); transition:border-color var(--md-motion), box-shadow var(--md-motion), opacity var(--md-motion); }
+.node.mem .nm { font:600 12.5px var(--font-ui); white-space:nowrap; }
+.node.mem .sub { font-size:11px; color:var(--muted); white-space:nowrap; display:flex; align-items:center; gap:5px; }
+.node.mem.pending { opacity:.6; }
+.node.mem.running { border-color:var(--md-primary); box-shadow:0 0 0 3px color-mix(in srgb, var(--md-primary) 16%, transparent); }
+.node.mem.done .sub { color:var(--teal); }
+.node.mem.rejected { border-color:var(--red); }
+.node.mem.rejected .sub { color:var(--red); }
+.node.mem.disabled { opacity:.45; border-style:dashed; }
+.node.mem.disabled .nm { text-decoration:line-through; }
+.node.group { display:flex; align-items:center; gap:4px; padding:3px 4px 3px 10px; border-radius:999px; border:1px dashed var(--border); background:var(--md-surface-container-low); }
+.node.group > .glabel { font:600 11px var(--font-ui); color:var(--muted); margin-right:4px; white-space:nowrap; }
+.node.group > .node.mem { padding:2px 10px 2px 2px; }
+/* Grup içindeki repo kopyaları kompakt: durum yazı yerine kenar rengiyle (ayrıntısı title'da) */
+.node.group > .node.mem .sub { display:none; }
+.node.group > .node.mem.done { border-color:var(--teal); }
+.node.group > .node.mem.running .nm::after { content:" …"; color:var(--md-primary); }
+.node.mem, .node.group { flex:none; }
+.pipe .node[data-agent], .node.group > .glabel[data-group] { cursor:pointer; }
+.pipe .node[data-agent]:hover { border-color:var(--md-primary); }
+.node.focus { box-shadow:0 0 0 2px var(--md-primary) !important; }
+.node.group > .glabel[data-group]:hover { color:var(--md-primary); }
+/* "Yazıyor…" üç nokta — çalışan ajan */
+.typing { display:inline-flex; gap:3px; align-items:center; }
+.typing i { width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.3; animation:typ 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay:.2s; } .typing i:nth-child(3) { animation-delay:.4s; }
+@keyframes typ { 30% { opacity:1; transform:translateY(-2px); } }
+
+/* — Sohbet: kullanıcı görevi sağda, ajan mesajları solda avatarla, sistem olayları ortada — */
+.chat { flex:1; overflow-y:auto; padding:22px 24px 12px; min-height:0; scroll-behavior:smooth; }
+#stream { display:flex; flex-direction:column; gap:14px; overflow-wrap:anywhere; }
+#stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
+.msg { display:flex; gap:12px; max-width:min(920px, 94%); align-items:flex-start; }
+.bub { flex:1; min-width:0; background:var(--bubble); border:1px solid var(--border); border-radius:6px 20px 20px 20px; padding:11px 16px 12px; box-shadow:0 2px 12px color-mix(in srgb, var(--md-primary) 6%, transparent); }
+.bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px var(--font-ui); margin-bottom:3px; }
+.bub .who small { font:400 11.5px var(--font-ui); color:var(--muted); }
+.bub .who .typing { color:var(--md-primary); }
+.bub .who .zone { font:600 11px var(--font-ui); padding:2px 9px; border-radius:999px; background:var(--devBg); color:var(--dev); }
+.bub .body > * + * { margin-top:8px; }
+.bub .txt { font-size:14px; line-height:1.6; }
+.bub .txt.md { max-width:none; }
+.bub .note { font-size:12.5px; color:var(--muted); }
+.bub .note.warn { color:var(--amber); }
+.bub .note.err { color:var(--red); }
+.acts { display:flex; flex-wrap:wrap; gap:6px; }
+.tchip { display:inline-flex; align-items:center; gap:6px; max-width:100%; font:12px/1.4 ui-monospace,"Cascadia Code",Consolas,monospace; padding:4px 11px; border-radius:999px;
+  background:var(--md-surface-container-high); color:var(--muted); }
+.tchip b { font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.plus { color:var(--teal); font-weight:600; } .minus { color:var(--red); font-weight:600; }
+.term { background:#1C1A2B; color:#DAD6F2; border-radius:12px; padding:8px 12px; font:12.5px/1.75 ui-monospace,"Cascadia Code",Consolas,monospace; overflow-x:auto; }
+.term .ps { color:#8DE3B4; user-select:none; margin-right:6px; }
+.bub details.structured summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.bub details.structured pre { white-space:pre-wrap; font-size:11.5px; margin:6px 0 2px; max-height:clamp(240px, 34vh, 520px); overflow-y:auto; background:var(--bg); border-radius:var(--md-shape-sm); padding:8px; }
+#stream > .sys { align-self:center; max-width:90%; text-align:center; font-size:12px; color:var(--muted); background:var(--md-surface-container-lowest); border:1px solid var(--border); padding:4px 14px; border-radius:14px; }
+#stream > .sys .t { opacity:.7; margin-right:6px; font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+#stream > .sys.ok { color:var(--teal); } #stream > .sys.err { color:var(--red); } #stream > .sys.warn { color:var(--amber); }
+#stream .flt-out { display:none !important; }
+.logfilter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; padding:6px 6px 6px 14px; border-radius:var(--md-shape-full); background:var(--blueBg); color:var(--md-on-primary-container); font-size:12.5px; position:sticky; top:-22px; z-index:2; }
+.logfilter b { font-family:ui-monospace,Consolas,monospace; }
+.logfilter button { margin-left:auto; min-height:auto; padding:3px 12px; font-size:12px; }
+/* Fanout kopyası etiketi (sistem satırlarında) — iç içe akan repo kayıtları ayırt edilsin */
+.atag { display:inline-block; margin-right:6px; padding:0 7px; border-radius:var(--md-shape-full); border:1px solid currentColor; color:var(--c); font-size:10.5px; line-height:1.6; }
+
+/* — Sohbet içindeki kartlar (cevap, onay, zamanlama, karar, build): mesaj gibi avatarlı — */
+#cards { display:flex; flex-direction:column; gap:14px; margin-top:14px; }
+#cards > .card { margin:0; max-width:min(980px, 100%); border-radius:6px 20px 20px 20px; background:var(--bubble); box-shadow:0 4px 18px color-mix(in srgb, var(--md-primary) 9%, transparent); }
+#cards > .card.hidden { display:none; }
+.card-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.card-head .label { margin:0; }
+.card-head .cicon { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--md-surface-container-high); font-size:16px; flex:none; }
+
+/* — Alt: yazma kutusu (görev kartı) — */
+.composer-wrap { padding:6px 24px 18px; }
+#taskCard { margin:0; border-radius:22px; background:var(--md-surface-container-lowest); box-shadow:0 8px 28px color-mix(in srgb, var(--md-primary) 12%, transparent); padding:14px 16px 12px; border:1px solid var(--border); }
+#taskCard .label { margin-bottom:8px; }
+#taskCard .row textarea { border:none; box-shadow:none; background:transparent; padding:8px 4px; font-size:15px; }
+#taskCard .row textarea:focus { box-shadow:none; }
+.composer-opts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
+.composer-opts select { min-height:34px; padding:4px 10px; font-size:13px; }
+.composer-opts .flow { margin-top:0; }
+#btnStart { flex:none; box-shadow:var(--md-elev-2); }
+
+/* — Sağ: koşu özeti — */
+.rail { background:var(--md-surface-container-low); border-left:1px solid var(--border); padding:16px; overflow:auto; }
+.rail-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:14px; }
+.rail-tools a { font-size:13px; color:var(--blue); text-decoration:none; font-weight:600; }
+.rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
+.rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
+.rbox .empty { font-size:12.5px; color:var(--muted); }
+.kv { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; margin:7px 0; min-width:0; }
+.kv > span:first-child { color:var(--muted); flex:none; }
+.kv b { font:600 12.5px ui-monospace,Consolas,monospace; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.kv.col { flex-direction:column; align-items:stretch; gap:4px; }
+.rail #modelSel { font-size:12.5px; padding:4px 10px; min-height:32px; max-width:190px; }
+.rail .dir-wrap { display:flex; align-items:center; gap:6px; min-width:0; }
+.rail .dir { font:12.5px ui-monospace,Consolas,monospace; color:var(--text); cursor:pointer; border-bottom:1px dashed var(--border); overflow-wrap:anywhere; }
+.rail .dir:hover { color:var(--blue); border-bottom-color:var(--blue); }
+.rail .dir.missing { color:var(--red); font-weight:600; }
+.rail #dirInput { font-size:12.5px; padding:4px 10px; min-height:32px; width:100%; min-width:0; }
+.frow { display:flex; align-items:center; gap:8px; font:12.5px ui-monospace,Consolas,monospace; margin:7px 0; min-width:0; }
+.frow .fn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; direction:rtl; text-align:left; }
+.ftag { font:700 10px system-ui,sans-serif; padding:2px 7px; border-radius:999px; flex:none; }
+.ftag.M { background:var(--amberBg); color:var(--amber); } .ftag.W { background:var(--tealBg); color:var(--teal); }
+.rrow { display:flex; align-items:center; gap:10px; font:12.5px ui-monospace,Consolas,monospace; margin:8px 0; }
+.rrow .nm { width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-ui); }
+.prog { flex:1; height:7px; border-radius:9px; background:var(--md-surface-container-high); overflow:hidden; }
+.prog > span { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg, var(--dev), var(--arch)); transition:width .4s; }
+.prog.running > span { width:55%; animation:indet 1.4s ease-in-out infinite alternate; }
+.prog.done > span { width:100%; background:var(--teal); }
+.prog.rejected > span { width:100%; background:var(--red); }
+.prog.pending > span { width:0; }
+@keyframes indet { from { width:20%; } to { width:80%; } }
+.grid { display:contents; }
+
+/* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
+/* Lacivert: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
+[data-theme="lacivert"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
+[data-theme="lacivert"] .chat-head { border-top:3px solid var(--md-primary); }
+[data-theme="lacivert"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
+[data-theme="lacivert"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
+[data-theme="lacivert"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
+[data-theme="lacivert"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
+[data-theme="lacivert"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
+[data-theme="lacivert"] :is(.label, .rbox h4) { letter-spacing:.14em; }
+[data-theme="lacivert"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
+[data-theme="lacivert"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
+[data-theme="lacivert"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
+
+/* Gizli Evrak: manila kâğıt, daktilo, bordo mürekkep; dosya sekmeleri, "GİZLİ" şeridi, onay mührü */
+[data-theme="evrak"] .main { background:var(--chatBg); }
+[data-theme="evrak"] .chat-head { border-top:22px solid var(--md-primary); position:relative; }
+[data-theme="evrak"] .chat-head::before { content:"GİZLİ  ·  HİZMETE ÖZEL  ·  KURMAY HAREKÂT DOSYASI"; position:absolute; top:-19px; left:24px; right:24px;
+  color:var(--md-on-primary); font:700 12px var(--font-ui); letter-spacing:.25em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+[data-theme="evrak"] .ch-title .task { font-weight:700; }
+[data-theme="evrak"] :is(.bub, #cards > .card) { border-radius:2px; box-shadow:0 1px 1px rgba(0,0,0,.08), 0 8px 18px rgba(60,40,10,.10); }
+[data-theme="evrak"] :is(button, .pill, .node.mem, .node.group, .tchip, .rbox, #taskCard, .av, .fchip, .ftag, .logfilter) { border-radius:3px; }
+[data-theme="evrak"] .sidebar { background:#D8C79A; }
+[data-theme="evrak"] .rail { background:#DED6C1; }
+[data-theme="evrak"] .sess { border-radius:2px 12px 0 0; background:#E8DAB2; border:1px solid #C9B47E; }
+[data-theme="evrak"] .sess:hover { background:#F0E4C2; }
+[data-theme="evrak"] .sess.active { background:var(--md-surface-container-lowest); box-shadow:0 3px 0 var(--md-primary); }
+[data-theme="evrak"] .sess.sess-new { background:var(--md-primary); color:var(--md-on-primary); border-color:var(--md-primary); border-radius:3px; }
+[data-theme="evrak"] #approval { position:relative; }
+[data-theme="evrak"] #approval::after { content:"ONAY BEKLİYOR"; position:absolute; top:20px; right:26px; transform:rotate(-8deg); pointer-events:none;
+  border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85; }
+[data-theme="evrak"] #stream > .me { background:var(--md-surface-container-lowest); color:var(--text); border:1px solid var(--md-outline-variant);
+  border-left:4px solid var(--md-primary); border-radius:2px; box-shadow:none; }
+[data-theme="evrak"] #stream > .me::before { content:"EMİR: "; font-weight:700; color:var(--md-primary); }
+
+/* Radar: gece görüşü; fosfor yeşili, tarama çizgileri, terminal dili */
+[data-theme="radar"] .main { background:radial-gradient(ellipse at 50% 30%, rgba(75,227,138,.07), transparent 65%),
+  repeating-linear-gradient(0deg, rgba(75,227,138,.035) 0 1px, transparent 1px 3px), var(--chatBg); }
+[data-theme="radar"] :is(.bub, #cards > .card, .rbox, #taskCard, .sess, .node.mem, .node.group, button, .pill, .tchip, .fchip, .av, .ftag, .term, .logfilter, #stream > .me) { border-radius:2px; }
+[data-theme="radar"] :is(.bub, #cards > .card) { box-shadow:0 0 0 1px rgba(75,227,138,.10), 0 0 18px rgba(75,227,138,.05); }
+[data-theme="radar"] :is(.bub .who, .ch-title .task, .sidebar-head .brand) { text-transform:uppercase; letter-spacing:.1em; text-shadow:0 0 8px rgba(75,227,138,.45); }
+[data-theme="radar"] :is(.bub .who small, .bub .who .zone) { text-transform:none; letter-spacing:0; text-shadow:none; }
+[data-theme="radar"] .av { box-shadow:0 0 0 1px currentColor inset; }
+[data-theme="radar"] #stream > .me { background:transparent; color:var(--text); border:1px solid var(--md-primary); box-shadow:none; }
+[data-theme="radar"] #stream > .me::before { content:"> "; color:var(--md-primary); }
+[data-theme="radar"] #stream > .sys { background:transparent; border:none; align-self:flex-start; text-align:left; padding:0; }
+[data-theme="radar"] #stream > .sys::before { content:"[SİSTEM] "; color:var(--md-outline); }
+[data-theme="radar"] button { text-transform:uppercase; letter-spacing:.08em; }
+[data-theme="radar"] .sess.active { box-shadow:0 0 0 1px var(--md-primary) inset; background:var(--md-surface-container); }
+[data-theme="radar"] .term { background:#020503; border:1px solid var(--md-outline-variant); }
+/* Dar ekran: önce sağ sütun sohbetin altına iner, telefonda her şey tek sütun */
+@media (max-width:1240px) {
+  body { overflow:auto; }
+  .layout, .layout:has(.sidebar.collapsed) { grid-template-columns:240px minmax(0,1fr); height:auto; min-height:100vh; }
+  .main { height:100vh; }
+  .rail { grid-column:2; border-left:none; border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px; align-items:start; }
+  .rail .rbox { margin:0; } .rail-tools { grid-column:1/-1; margin:0; }
+}
 @media (max-width:860px) {
-  body { padding:16px; }
-  .layout { flex-direction:column; }
-  .sidebar, .sidebar.collapsed { width:100%; flex-basis:auto; position:static; max-height:none; }
-  .hdr .dir-wrap { margin-left:0; width:100%; order:1; }
-  .hdr #dirInput { flex:1; width:auto; }
-  .pipe { flex-direction:column; }
-  .pipe .arrow { transform:rotate(90deg); padding:2px 0; }
-  /* Görev/red kutusu yanındaki buton dar ekranda metni sıkıştırıp taşırıyordu — alta düşsün.
-     Placeholder metni dar genişlikte 2 satıra sarabiliyor — kutu tek satırlık autoGrow
-     tabanına sabitliyse alt satır kırpılır; min-height'ı 2 satıra yükselt. */
+  .layout, .layout:has(.sidebar.collapsed) { grid-template-columns:1fr; }
+  .sidebar { border-right:none; border-bottom:1px solid var(--border); }
+  .main { height:auto; min-height:80vh; }
+  .chat { overflow:visible; padding:16px; }
+  .chat-head, .composer-wrap { padding-left:16px; padding-right:16px; }
+  .rail { grid-column:1; }
+  .msg, #stream > .me { max-width:100%; }
   #taskCard .row textarea, #approval .row textarea { flex-basis:100%; min-width:0; min-height:64px; }
 }
-/* Kutu yükseklikleri ekranla ölçeklenir: küçük ekranda eski sabit değer korunur,
-   büyük monitörde kendiliğinden açılır (alt sınır = eski değer, üst sınır = tavan) */
-/* overflow-wrap:anywhere — uzun Windows yolları (`D:\a\b\c...`) boşluk içermediği
-   için sarmıyor, kartı yatay taşırıyordu; `\` bölme fırsatı sayılmaz. */
-#stream { font-family:ui-monospace, Consolas, monospace; font-size:12px; line-height:1.9; max-height:clamp(380px, 46vh, 720px); overflow-y:auto; overflow-wrap:anywhere; }
-#stream .t { color:var(--muted); margin-right:8px; }
-#stream .muted { color:var(--muted); }
-#stream .ok { color:var(--teal); }
-#stream .err { color:var(--red); }
-#stream .warn { color:var(--amber); }
-#stream details.structured { margin:4px 0 8px; border:1px solid var(--border); border-radius:var(--md-shape-sm); padding:6px 10px; }
-#stream details.structured summary { cursor:pointer; color:var(--muted); font-size:11px; }
-#stream details.structured pre { white-space:pre-wrap; margin:6px 0 2px; max-height:clamp(260px, 34vh, 520px); overflow-y:auto; }
 .issue { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; font-size:13px; }
 .sev.low { background:var(--amberBg); color:var(--amber); }
 .sev.medium, .sev.high { background:var(--redBg); color:var(--red); }
-#approval, #schedule { border-color:var(--amber); }
+#approval, #schedule { border:1px solid var(--amber); }
 #buildModules { flex-wrap:wrap; }
 .bnode { padding:6px 12px; border-radius:var(--md-shape-md); border:1px solid var(--border); font-size:12px; background:transparent; }
 .bnode.running { background:var(--blueBg); border-color:var(--blue); color:var(--blue); }
@@ -171,6 +326,13 @@ body { padding:28px; max-width:1700px; margin-inline:auto; }
 .hunk.has-cmt .hcmt-toggle { color:var(--amber); border-color:var(--amber); }
 .hunk .hcmt-box { width:100%; flex:none; min-width:0; margin-top:5px; font-size:12px; }
 .rawjson { margin-top:8px; }
+/* Yapılandırılmış çıktının okunur görünümü (şema adları gösterilmez) */
+.sview-box { font-size:13.5px; line-height:1.55; margin:6px 0; }
+.sv-row { margin:4px 0; }
+.sv-k { display:inline-block; min-width:88px; margin-right:8px; font-size:11.5px; font-weight:700; letter-spacing:.04em; color:var(--muted); text-transform:uppercase; }
+ul.sview { margin:4px 0 4px 18px; padding:0; }
+ul.sview li { margin:3px 0; }
+ul.sview li > .sv-row:first-child { margin-top:0; }
 .rawjson summary { cursor:pointer; color:var(--muted); font-size:11px; }
 .rawjson pre { white-space:pre-wrap; font-size:11px; max-height:clamp(200px, 28vh, 420px); overflow-y:auto; background:var(--bg); border-radius:var(--md-shape-xs); padding:8px; margin-top:6px; }
 input[type=text], textarea { flex:1; min-width:200px; }
@@ -190,21 +352,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 .fchip.off { background:transparent; border-style:dashed; border-color:var(--border); color:var(--muted); }
 .fchip.off.skip .nm { text-decoration:line-through; }
 .fchip:disabled { cursor:wait; }
-/* Devre dışı düğüm: akış onu koşturmadan geçer — soluk, kesik kenar, üstü çizili */
-.node.disabled { opacity:.5; border-style:dashed; background:transparent; }
-/* Ajan kayıt süzgeci: hattaki kutuya tıkla → akışta yalnızca o ajanın satırları */
-.pipe .node[data-agent], .node.group > .glabel[data-group] { cursor:pointer; }
-.pipe .node[data-agent]:hover { border-color:var(--md-primary); }
-.node.focus { box-shadow:0 0 0 2px var(--md-primary); }
-.node.group > .glabel[data-group]:hover { color:var(--md-primary); }
-#stream .flt-out { display:none; }
-.logfilter { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:-4px 0 10px; padding:6px 6px 6px 14px; border-radius:var(--md-shape-full); background:var(--blueBg); color:var(--md-on-primary-container); font-size:12.5px; }
-.logfilter b { font-family:ui-monospace,Consolas,monospace; }
-.logfilter button { margin-left:auto; min-height:auto; padding:3px 12px; font-size:12px; }
-/* Fanout kopyasının satır etiketi — iç içe akan repo kayıtları ayırt edilsin */
-.atag { display:inline-block; margin-right:6px; padding:0 7px; border-radius:var(--md-shape-full); border:1px solid currentColor; color:var(--c); font-size:10.5px; line-height:1.6; }
-.node.disabled .nm { text-decoration:line-through; }
-/* Bilgi cevabı (architect route=done): Markdown biçimlendirilmiş okuma kartı.
+/* Bilgi cevabı (analist route=done): Markdown biçimlendirilmiş okuma kartı.
    Düz metin yığını yerine başlık/liste/tablo/kod — okuma yorgunluğunu azaltır. */
 #answerCard { border-color:var(--teal); }
 /* Şema gelmediğinde ajanın metni: düz <pre> yerine Markdown okuma kutusu */
@@ -239,156 +387,175 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <div class="layout">
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <span class="label">Oturumlar</span>
+    <span class="brand"><span class="brand-name">Kurmay</span></span>
     <button id="btnSidebar" title="Aç / kapat">⟨</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
-    <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni oturum</div>
+    <div class="sess sess-new active" data-id="" id="sessNew">＋ Yeni görev</div>
+    <div class="label side-label">Oturumlar</div>
     <div id="sessionList"></div>
   </div>
 </aside>
+
 <main class="main">
+  <header class="chat-head">
+    <div class="ch-title">
+      <span class="task" id="task">bağlanıyor…</span>
+      <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
+      <span class="pill soft" id="cycle"></span>
+    </div>
+    <div class="pipe" id="pipeline"></div>
+    <button id="btnCancel" class="hidden danger">■ Durdur</button>
+  </header>
 
-<div class="card hdr">
-  <span class="brand"><img class="brand-logo" src="/logo.svg" alt="">yaver</span>
-  <span class="task" id="task">bağlanıyor…</span>
-  <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
-  <span class="pill" id="provider" style="background:var(--bg);color:var(--muted)"></span>
-  <span class="pill" id="cycle" style="background:var(--bg);color:var(--muted)"></span>
-  <span class="dir-wrap">
-    <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
-    <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
-  </span>
-  <select id="modelSel" title="Model — sıradaki görevde kullanılır"></select>
-  <a href="/config" style="font-size:13px;color:var(--blue);text-decoration:none">⚙ Config</a>
-  <button id="btnTheme" class="icon" title="Tema değiştir"></button>
-  <button id="btnCancel" class="hidden danger">Durdur</button>
-</div>
-
-<div class="card hidden" id="taskCard">
-  <div class="label" id="taskCardTitle">Yeni görev</div>
-  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
-    <textarea id="taskInput" rows="1" placeholder="Örn: todo listesine filtreleme özelliği ekle"></textarea>
-    <button class="primary" id="btnStart">Başlat</button>
-  </div>
-  <div class="notice hidden" id="dirWarn" style="margin:10px 0 0;align-items:center">
-    <span>⚠</span>
-    <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
-    <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
-  </div>
-  <div class="row" id="taskWhen" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-    <span class="label" style="margin:0">Ne zaman başlasın?</span>
-    <select id="taskWhenPreset" style="width:auto">
-      <option value="0">Hemen</option>
-      <option value="30m">+30 dakika</option>
-      <option value="1h">+1 saat</option>
-      <option value="3h">+3 saat</option>
-      <option value="1d">Yarın (+1 gün)</option>
-      <option value="custom">Belirli tarih/saat…</option>
-    </select>
-    <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
-  </div>
-  <div class="notice hidden" id="modelWarn" style="margin:10px 0 0;align-items:center">
-    <span>⚠</span>
-    <span style="flex:1">Model seçilmedi — görev başlatmak için üst çubuktaki listeden bir model seç.</span>
-  </div>
-  <div class="flow" id="flowChips"></div>
-  <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
-  <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
-</div>
-
-<div class="card">
-  <div class="label">Ajan hattı</div>
-  <div class="pipe" id="pipeline"></div>
-</div>
-
-<div class="card hidden" id="answerCard">
-  <div class="label" id="answerTitle">Cevap</div>
-  <p class="lead" id="answerLead"></p>
-  <div class="md" id="answerBody"></div>
-  <div class="refs hidden" id="answerRefs"></div>
-</div>
-
-<div class="card hidden" id="approval">
-  <div class="label">Onay bekleniyor</div>
-  <div style="font-weight:600;margin-bottom:6px" id="approvalTitle"></div>
-  <div id="approvalText"></div>
-  <div class="row">
-    <button class="primary" id="btnApprove">Onayla</button>
-    <button id="btnReject">Reddet</button>
-    <textarea id="rejectComment" rows="1" placeholder="Red gerekçesi (isteğe bağlı)"></textarea>
-  </div>
-  <div class="row" id="when" style="margin-top:8px">
-    <span class="label">Ne zaman çalışsın?</span>
-    <select id="whenPreset">
-      <option value="0">Hemen</option>
-      <option value="30m">+30 dakika</option>
-      <option value="1h">+1 saat</option>
-      <option value="3h">+3 saat</option>
-      <option value="1d">Yarın (+1 gün)</option>
-      <option value="custom">Belirli tarih/saat…</option>
-    </select>
-    <input type="datetime-local" id="whenCustom" class="hidden">
-  </div>
-</div>
-
-<div class="card hidden" id="schedule">
-  <div class="label">Zamanlandı</div>
-  <div style="font-weight:600;margin-bottom:6px" id="scheduleTitle"></div>
-  <div class="row">
-    <button class="primary" id="btnRunNow">Şimdi çalıştır</button>
-    <button id="btnCancelSchedule">İptal et</button>
-  </div>
-</div>
-
-<div class="card hidden" id="buildCard">
-  <div class="label">Build (modül sırası)</div>
-  <div class="pipe" id="buildModules"></div>
-  <details class="rawjson" style="margin-top:10px"><summary>Build çıktısı</summary><pre id="buildLog"></pre></details>
-</div>
-
-<div class="grid">
-  <div class="card">
-    <div class="label">Olay akışı</div>
+  <div class="chat" id="chat">
     <div class="logfilter hidden" id="logFilter">
       <span id="logFilterText"></span>
       <button id="btnLogAll">Tümünü göster</button>
     </div>
     <div id="stream"></div>
-  </div>
-  <div class="card hidden" id="verdictCard">
-    <div class="label">Reviewer kararı</div>
-    <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
-    <div id="issues"></div>
-  </div>
-</div>
 
+    <div id="cards">
+      <div class="card hidden" id="answerCard">
+        <div class="card-head"><span id="answerAv"></span><div class="label" id="answerTitle">Cevap</div></div>
+        <p class="lead" id="answerLead"></p>
+        <div class="md" id="answerBody"></div>
+        <div class="refs hidden" id="answerRefs"></div>
+      </div>
+
+      <div class="card hidden" id="approval">
+        <div class="card-head"><span id="approvalAv"></span><div class="label">Onayın bekleniyor</div></div>
+        <div style="font-weight:600;margin-bottom:6px" id="approvalTitle"></div>
+        <div id="approvalText"></div>
+        <div class="row">
+          <button class="primary" id="btnApprove">Onayla</button>
+          <button id="btnReject">Reddet</button>
+          <textarea id="rejectComment" rows="1" placeholder="Red gerekçesi (isteğe bağlı)"></textarea>
+        </div>
+        <div class="row" id="when" style="margin-top:8px">
+          <span class="label">Ne zaman çalışsın?</span>
+          <select id="whenPreset">
+            <option value="0">Hemen</option>
+            <option value="30m">+30 dakika</option>
+            <option value="1h">+1 saat</option>
+            <option value="3h">+3 saat</option>
+            <option value="1d">Yarın (+1 gün)</option>
+            <option value="custom">Belirli tarih/saat…</option>
+          </select>
+          <input type="datetime-local" id="whenCustom" class="hidden">
+        </div>
+      </div>
+
+      <div class="card hidden" id="schedule">
+        <div class="card-head"><span class="cicon">⏰</span><div class="label">Zamanlandı</div></div>
+        <div style="font-weight:600;margin-bottom:6px" id="scheduleTitle"></div>
+        <div class="row">
+          <button class="primary" id="btnRunNow">Şimdi çalıştır</button>
+          <button id="btnCancelSchedule">İptal et</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="verdictCard">
+        <div class="card-head"><span id="verdictAv"></span><div class="label">Teftiş kararı</div></div>
+        <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
+        <div id="issues"></div>
+      </div>
+
+      <div class="card hidden" id="buildCard">
+        <div class="card-head"><span class="cicon">🔨</span><div class="label">Derleme (modül sırası)</div></div>
+        <div class="pipe" id="buildModules"></div>
+        <details class="rawjson" style="margin-top:10px"><summary>Derleme çıktısı</summary><pre id="buildLog"></pre></details>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer-wrap">
+    <div class="card hidden" id="taskCard">
+      <div class="label" id="taskCardTitle">Yeni görev</div>
+      <div class="notice hidden" id="dirWarn" style="margin:0 0 10px;align-items:center">
+        <span>⚠</span>
+        <span style="flex:1">Hedef dizin bulunamadı: <code id="dirWarnPath"></code> — görev başlatmak için geçerli bir dizin seç.</span>
+        <button id="btnDirFix" style="min-height:auto;padding:4px 12px;font-size:12.5px">Dizini değiştir</button>
+      </div>
+      <div class="notice hidden" id="modelWarn" style="margin:0 0 10px;align-items:center">
+        <span>⚠</span>
+        <span style="flex:1">Model seçilmedi — görev başlatmak için sağdaki listeden bir model seç.</span>
+      </div>
+      <div class="row" style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="taskInput" rows="1" placeholder="Ekibe bir görev ver… örn: todo listesine filtreleme ekle (Enter gönderir)"></textarea>
+        <button class="primary" id="btnStart">Başlat ➤</button>
+      </div>
+      <div class="composer-opts">
+        <span class="row" id="taskWhen" style="display:flex;gap:8px;align-items:center">
+          <span class="label" style="margin:0">⏰</span>
+          <select id="taskWhenPreset" style="width:auto">
+            <option value="0">Hemen</option>
+            <option value="30m">+30 dakika</option>
+            <option value="1h">+1 saat</option>
+            <option value="3h">+3 saat</option>
+            <option value="1d">Yarın (+1 gün)</option>
+            <option value="custom">Belirli tarih/saat…</option>
+          </select>
+          <input type="datetime-local" id="taskWhenCustom" class="hidden" style="flex:none;width:auto;min-width:0">
+        </span>
+        <div class="flow" id="flowChips"></div>
+      </div>
+      <div id="taskCtx" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      <div id="taskError" style="font-size:12px;color:var(--red);margin-top:6px"></div>
+    </div>
+  </div>
 </main>
+
+<aside class="rail">
+  <div class="rail-tools">
+    <a href="/config">⚙ Teşkilat şeması</a>
+    <div class="tswitch" role="radiogroup" aria-label="Tema">
+      <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
+      <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
+      <button class="tsw" data-t="radar" aria-label="Radar"></button>
+    </div>
+  </div>
+  <div class="rbox hidden" id="repoBox">
+    <h4>Mıntıkalar <span id="repoSum"></span></h4>
+    <div id="repoList"></div>
+  </div>
+  <div class="rbox">
+    <h4>Değişen dosyalar <span id="filesSum"></span></h4>
+    <div id="fileList"><div class="empty">Henüz dosya değişmedi</div></div>
+  </div>
+  <div class="rbox">
+    <h4>Oturum</h4>
+    <div class="kv"><span>Model</span><select id="modelSel" title="Model — sıradaki görevde kullanılır"></select></div>
+    <div class="kv col"><span>Hedef dizin</span>
+      <span class="dir-wrap">
+        <span class="dir" id="dir" title="Değiştirmek için tıkla"></span>
+        <input type="text" id="dirInput" class="hidden" placeholder="/hedef/proje/dizini">
+      </span>
+    </div>
+    <div class="kv"><span>Sağlayıcı</span><b id="provider">—</b></div>
+    <div class="kv"><span>Süre</span><b id="elapsed">—</b></div>
+    <div class="kv"><span>Jeton (girdi/çıktı)</span><b id="tokens">—</b></div>
+  </div>
+</aside>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 
-// Açık/koyu tema geçişi: <html data-theme> üstünde tutulur, localStorage'a
-// yazılır. Değer yoksa OS tercihi (theme.css'teki prefers-color-scheme) geçerli.
-function currentTheme() {
-  const explicit = document.documentElement.dataset.theme;
-  if (explicit === "light" || explicit === "dark") return explicit;
-  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+// Tema: yalnızca renk örnekleri (adlar görünmez). Seçim <html data-theme>'e uygulanır,
+// localStorage'a yazılır (sayfa başındaki betik okur; panel ve şema ortak)
+function applyThemeUI() {
+  for (const b of document.querySelectorAll(".tsw")) b.classList.toggle("on", b.dataset.t === document.documentElement.dataset.theme);
 }
-function renderThemeBtn() {
-  const dark = currentTheme() === "dark";
-  $("btnTheme").textContent = dark ? "☀️" : "🌙";
-  $("btnTheme").title = dark ? "Açık moda geç" : "Koyu moda geç";
+for (const b of document.querySelectorAll(".tsw")) {
+  b.addEventListener("click", () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    try { localStorage.setItem("kurmay-theme", b.dataset.t); } catch (e) {}
+    applyThemeUI();
+  });
 }
-$("btnTheme").addEventListener("click", () => {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("yaver-theme", next); } catch (e) {}
-  renderThemeBtn();
-});
-renderThemeBtn();
+applyThemeUI();
 
 let agents = [], states = {}, finished = false;
 // Fanout düğümü → repo kopyalarının anahtarları ("<ajan>@<repo>"); fanout_started'da dolar
@@ -425,6 +592,80 @@ document.addEventListener("pointerdown", (ev) => {
 
 const stateLabels = { pending: "bekliyor", running: "çalışıyor", done: "tamamlandı", rejected: "reddetti", disabled: "devre dışı" };
 
+// Kurmay heyeti: ajan anahtarının kökü ("saha@order" → saha) rolü belirler.
+// Teknik adlar (config/persona) değişmez — yalnızca panelde görünen adlar bunlar.
+// Tanınmayan ajanlar (config'e eklenen yeni personalar) adlarıyla, ortak renkle görünür.
+const ROLES = {
+  analist: { ad: "Analist", ic: "◎", c: "arch" },
+  saha: { ad: "Saha Timi", ic: "</>", c: "dev" },
+  teftis: { ad: "Teftiş", ic: "✓", c: "rev" },
+};
+// Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
+// harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
+const CODE_NAMES = ["Atmaca", "Doğan", "Şahin", "Kartal", "Kerkenez", "Turna", "Martı", "Leylek",
+  "Ebabil", "Karabatak", "Toygar", "Çaylak", "Kumru", "Saka", "Serçe", "Sığırcık"];
+let codeNames = {};           // kopya anahtarı ("saha@order") → kod adı
+function assignCodeName(key) {
+  if (codeNames[key]) return codeNames[key];
+  const repo = key.slice(key.indexOf("@") + 1);
+  let h = 0;
+  for (const ch of repo) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const kullanilan = new Set(Object.values(codeNames));
+  let i = h % CODE_NAMES.length;
+  for (let n = 0; n < CODE_NAMES.length && kullanilan.has(CODE_NAMES[i]); n++) i = (i + 1) % CODE_NAMES.length;
+  // Ad havuzu tükenirse sayı eklenir (Atmaca-2)
+  let ad = CODE_NAMES[i];
+  if (kullanilan.has(ad)) ad = `${ad}-${Object.keys(codeNames).length + 1}`;
+  return (codeNames[key] = ad);
+}
+const mintika = (repo) => (repo === "." ? "merkez" : repo);
+// Modelden/backend'den gelen teknik değerlerin ekrandaki Türkçe karşılıkları
+const ACTION_NAMES = { create: "yeni", created: "yeni", modify: "değişecek", modified: "değişti", delete: "silinecek", deleted: "silindi" };
+const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek" };
+const SOURCE_NAMES = { web: "panel", terminal: "terminal", timer: "zamanlayıcı" };
+const ROUTE_VALUES = { implement: "uygulama", done: "bitir", developer: "uygulama" }; // son değer: eski kayıtlar
+const TOOL_NAMES = { Read: "Dosya oku", Write: "Dosya yaz", Edit: "Düzenle", MultiEdit: "Çoklu düzenle", NotebookEdit: "Defter düzenle",
+  Glob: "Dosya bul", Grep: "Metin ara", Bash: "Komut", WebSearch: "İnternette ara", WebFetch: "Sayfa getir",
+  ToolSearch: "Araç bul", TodoWrite: "Yapılacaklar", Task: "Alt görev", Agent: "Alt görev" };
+function toolName(t) {
+  if (t.startsWith("mcp__")) return "Eklenti: " + t.split("__").slice(1).join(" · ");
+  return TOOL_NAMES[t] || t;
+}
+// Düğüm anahtarı ("saha-timi") → ekrandaki ad; dağıtım düğümü işçisinin takım adıyla görünür
+function nodeName(key) {
+  if (!key) return "";
+  if (fanoutMeta[key]) return roleOf(fanoutMeta[key].agent).ad;
+  return roleOf(key).ad;
+}
+// Orkestratör notlarındaki teknik adları çevir: "analist rotası: implement → saha-timi"
+function noteText(t) {
+  const rota = /^🧭 (\S+) rotası: (.+?) → (.+)$/u.exec(t);
+  if (rota) {
+    const deger = ROUTE_VALUES[rota[2]] || rota[2];
+    const hedef = rota[3].startsWith("akış biter") ? "akış biter" : nodeName(rota[3]);
+    return `🧭 ${roleOf(rota[1]).ad} rotası: ${deger} → ${hedef}`;
+  }
+  return t.replace(/^⚠ ([^\s:]+):/u, (_, k) => `⚠ ${roleOf(k).ad}:`).replace(/ \(error_[a-z_]+\)/g, "");
+}
+// Yeniden adlandırmadan (2026-10-09) önceki koşu kayıtlarındaki eski anahtarlar —
+// geçmiş oturumlar açıldığında da Türkçe adlarla görünsün
+const ESKI_ANAHTAR = { architect: "analist", developer: "saha", reviewer: "teftis" };
+function roleOf(key) {
+  const at = key.indexOf("@");
+  const ham = at < 0 ? key : key.slice(0, at);
+  const base = ESKI_ANAHTAR[ham] || ham;
+  const r = ROLES[base] || { ad: base, ic: (base[0] || "?").toUpperCase(), c: "other" };
+  return { ...r, base, repo: at < 0 ? "" : key.slice(at + 1) };
+}
+// Saha ajanı kod adıyla ("Atmaca"), diğerleri rol adıyla ("Analist") görünür
+function agentName(key) {
+  return roleOf(key).repo ? assignCodeName(key) : roleOf(key).ad;
+}
+function avatar(key, small) {
+  const r = roleOf(key);
+  return `<div class="av ${r.c}${small ? " sm" : ""}" title="${esc(key)}">${esc(r.ic)}</div>`;
+}
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
@@ -444,7 +685,7 @@ function startCountdown(agent, runAt) {
     const mm = Math.floor((s % 3600) / 60), ss = s % 60;
     const pad = (n) => String(n).padStart(2, "0");
     const kalan = (dd > 0 ? dd + "g " : "") + `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-    $("scheduleTitle").textContent = `${agent} → ${fmt(runAt)} · kalan ${kalan}`;
+    $("scheduleTitle").textContent = `${agentName(agent)} → ${fmt(runAt)} · kalan ${kalan}`;
   };
   tick();
   countdownTimer = setInterval(tick, 1000);
@@ -489,8 +730,8 @@ function markChanged(before, after) {
   return [outA.join(""), outB.join("")];
 }
 
-// Architect'in file_plan'i veya developer'ın changes'ı diff gibi render edilir.
-// Tanınmayan yapı (örn. reviewer kararı) için null döner.
+// Analist'in file_plan'i veya saha ajanının changes'ı diff gibi render edilir.
+// Tanınmayan yapı (örn. teftiş kararı) için null döner.
 // commentable=true (sadece onay kartı) her hunk'ın altına yorum kutusu ekler.
 function renderDiff(structured, commentable) {
   if (!structured || typeof structured !== "object") return null;
@@ -501,7 +742,7 @@ function renderDiff(structured, commentable) {
     const path = f.path || f.file || "?";
     const hunks = f.changes || f.hunks || [];
     if (!Array.isArray(hunks)) return "";
-    const act = f.action ? `<span class="act ${esc(f.action)}">${esc(f.action)}</span>` : "";
+    const act = f.action ? `<span class="act ${esc(f.action)}">${esc(ACTION_NAMES[f.action] || f.action)}</span>` : "";
     const sum = f.summary ? `<span class="diff-fsum">${esc(f.summary)}</span>` : "";
     const body = hunks.map((h) => {
       const loc = h.location ? `<div class="loc">@ ${esc(h.location)}</div>` : "";
@@ -535,7 +776,7 @@ const tok = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
 function fmtMetrics(m) {
   const sn = (ms) => (ms / 1000).toFixed(1) + "sn";
   const parts = [
-    `${sn(m.durationMs)} (API ${sn(m.apiDurationMs)})`,
+    `${sn(m.durationMs)} (modelde ${sn(m.apiDurationMs)})`,
     `${m.turns} tur`,
     `${tok(m.inputTokens)} girdi / ${tok(m.outputTokens)} çıktı`,
   ];
@@ -551,13 +792,13 @@ function fmtMetrics(m) {
 // Yapılandırılmış çıktı gelmediyse hangi yoldan düşüldüğü (runAgent → miss.reason)
 const MISS_TEXTS = {
   repair_text:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; aynı oturumda istenen onarım turunda da yine metinle döndü. " +
-    "Yerel modelde sık sebep bağlam penceresinin küçük olması: prompt'un başındaki araç tanımı kesiliyor " +
-    "(Ollama sunucu logunda <code>truncating input prompt</code> ara; çözüm <code>OLLAMA_CONTEXT_LENGTH</code> / <code>num_ctx</code>).",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; aynı oturumda istenen onarım turunda da yine metinle döndü. " +
+    "Yerel modelde sık sebep bağlam penceresinin küçük olması: talimatın başındaki araç tanımı kesiliyor — " +
+    "model sunucusunun bağlam uzunluğunu artırmayı dene.",
   repair_failed:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; istenen onarım turu da şemaya uygun çıktı üretemeden hatayla bitti.",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; istenen onarım turu da şemaya uygun çıktı üretemeden hatayla bitti.",
   no_session:
-    "Model StructuredOutput aracını çağırmadan metinle bitirdi; oturum kimliği alınamadığı için onarım turu denenemedi.",
+    "Model yapılandırılmış çıktı aracını çağırmadan metinle bitirdi; oturum kimliği alınamadığı için onarım turu denenemedi.",
   schemaless:
     "Model şemaya uygun çıktıyı üretemedi (şema denemeleri tükendi); ajan şemasız yeniden koşturuldu, bu yüzden yalnızca düz metin var.",
 };
@@ -579,7 +820,7 @@ function outputNotice(structured, diff, miss) {
   }
   const files = structured.file_plan || structured.changes;
   if (!Array.isArray(files) || files.length === 0) {
-    return kutu("Ajan somut değişiklik üretmedi — <code>file_plan</code> boş geldi.");
+    return kutu("Ajan somut değişiklik üretmedi — plan boş geldi.");
   }
   const hunks = files.flatMap((f) => (Array.isArray(f.changes) ? f.changes : f.hunks) || []);
   if (hunks.length === 0) {
@@ -618,10 +859,10 @@ function rawOutputHtml(text) {
   if (plan) {
     const diff = renderDiff(plan, true);
     const lead = typeof plan.summary === "string" && plan.summary ? `<p class="lead">${esc(plan.summary)}</p>` : "";
-    const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metne JSON olarak yazmış — ` +
-      `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (developer'a metin olarak gider, repo dağıtımı yapılmaz).</p>`;
-    if (diff) return not + lead + diff + rawTextDetails(text);
-    if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>` + rawTextDetails(text);
+    const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metnin içine yazmış — ` +
+      `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (saha timine metin olarak gider, mıntıka dağıtımı yapılmaz).</p>`;
+    if (diff) return not + lead + diff;
+    if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>`;
   }
   return `<div class="md rawmd">${renderMarkdown(text || "")}</div>` + rawTextDetails(text);
 }
@@ -630,8 +871,39 @@ function rawTextDetails(text) {
   return `<details class="rawjson"><summary>Ham metin</summary><pre>${esc(text || "")}</pre></details>`;
 }
 
-function rawJsonDetails(structured) {
-  return `<details class="rawjson"><summary>Ham JSON</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
+/**
+ * Yapılandırılmış çıktının okunur görünümü — şema alan adları (summary, changes,
+ * issues…) ASLA ekrana çıkmaz: bilinen alanlar Türkçe başlıkla, bilinmeyenler
+ * başlıksız yalnızca değerleriyle gösterilir. Ham JSON görünümü bilinçli olarak yok.
+ */
+const FIELD_LABELS = {
+  summary: "Özet", assumptions: "Varsayımlar", changes: "Değişiklikler", deviations: "Plandan sapmalar",
+  verification: "Doğrulama", issues: "Sorunlar", answer: "Cevap", references: "Kaynaklar",
+  file: "Dosya", path: "Dosya", action: "İşlem", description: "Açıklama", severity: "Önem",
+  location: "Yer", before: "Önce", after: "Sonra", rationale: "Gerekçe", note: "Not", line: "Satır",
+};
+const HIDDEN_FIELDS = new Set(["route", "approved", "file_plan"]); // kartta/akışta zaten anlatılıyor
+function valueText(k, v) {
+  if (k === "action") return ACTION_NAMES[v] || v;
+  if (k === "severity") return SEVERITY_NAMES[v] || v;
+  return v;
+}
+function structuredView(obj, depth = 0) {
+  if (obj === null || obj === undefined || obj === "") return "";
+  if (typeof obj !== "object") return esc(String(obj));
+  if (Array.isArray(obj)) {
+    if (!obj.length) return "";
+    return `<ul class="sview">${obj.map((x) => `<li>${structuredView(x, depth + 1)}</li>`).join("")}</ul>`;
+  }
+  const parts = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (HIDDEN_FIELDS.has(k) || v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) continue;
+    const ad = FIELD_LABELS[k];
+    const deger = typeof v === "object" ? structuredView(v, depth + 1) : esc(String(valueText(k, v)));
+    if (!deger) continue;
+    parts.push(ad ? `<div class="sv-row"><span class="sv-k">${ad}</span>${deger}</div>` : `<div class="sv-row">${deger}</div>`);
+  }
+  return parts.join("");
 }
 
 /**
@@ -731,7 +1003,7 @@ function renderMarkdown(md) {
   return out.join("");
 }
 
-/** Yapılandırılmış çıktıda bilgi cevabı var mı (architect route=done) */
+/** Yapılandırılmış çıktıda bilgi cevabı var mı (analist route=done) */
 function hasAnswer(structured) {
   return !!(structured && typeof structured.answer === "string" && structured.answer.trim());
 }
@@ -744,7 +1016,8 @@ function referencesHtml(refs) {
   }).join("");
 }
 function showAnswer(agent, structured) {
-  $("answerTitle").textContent = `${agent} · cevap`;
+  $("answerTitle").textContent = `${agentName(agent)} · cevap`;
+  $("answerAv").innerHTML = avatar(agent);
   $("answerLead").textContent = structured.summary || "";
   $("answerLead").classList.toggle("hidden", !structured.summary);
   $("answerBody").innerHTML = renderMarkdown(structured.answer);
@@ -785,15 +1058,18 @@ function nodeCell(a) {
   if (st === "running" && runningSince[a]) {
     sub = `${sub} · ${fmtElapsed(Math.floor((Date.now() - runningSince[a]) / 1000))}`;
   }
-  // Fanout kopyası "developer@repoA": hücrede repo adı yeter, grup etiketi ajanı söylüyor
-  const ad = a.includes("@") ? a.slice(a.indexOf("@") + 1) : a;
+  // Fanout kopyası "saha@repoA": kapsülde repo adı yeter, grup etiketi ajanı söylüyor
+  const r = roleOf(a);
+  const ad = r.repo ? `${agentName(a)} · ${mintika(r.repo)}` : r.ad;
   const odak = logFilter && logFilter.has(a) ? " focus" : "";
-  return `<div class="node ${st}${odak}" data-agent="${esc(a)}" title="${esc(a)} — tıkla: yalnızca bu ajanın kayıtları"><div class="nm">${esc(ad)}</div><div class="sub">${sub}</div></div>`;
+  const yaziyor = st === "running" ? '<span class="typing"><i></i><i></i><i></i></span>' : "";
+  return `<div class="node mem ${st}${odak}" data-agent="${esc(a)}" title="${esc(agentName(a))} · ${stateLabels[st]} — tıkla: yalnızca bu ajanın mesajları">` +
+    `${avatar(a, true)}<div><div class="nm">${esc(ad)}</div><div class="sub">${sub}${yaziyor}</div></div></div>`;
 }
 
 function renderPipeline() {
   // Bir fanout'un repo kopyaları hatta TEK hücre olarak çıkar: ilk kopyanın yerinde
-  // grup çizilir, diğerleri atlanır. Sıra "architect → [repoA|repoB] → reviewer" okunur.
+  // grup çizilir, diğerleri atlanır. Sıra "analist → [repoA|repoB] → teftis" okunur.
   const groupOf = {};                      // kopya anahtarı → fanout düğümü
   for (const [node, members] of Object.entries(groups)) {
     for (const m of members) groupOf[m] = node;
@@ -807,10 +1083,11 @@ function renderPipeline() {
     drawn.add(g);
     const inner = groups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
     const fm = fanoutMeta[g] || { agent: g, max: 0 };
-    const etiket = `${esc(fm.agent)} · repo başına${fm.max ? ` · en fazla ${fm.max}` : ""}`;
+    const etiket = `${esc(roleOf(fm.agent).ad)}${fm.max ? ` · ${fm.max}'li` : ""}`;
     cells.push(`<div class="node group"><div class="glabel" data-group="${esc(g)}" title="Tıkla: tüm repo kopyalarının kayıtları">${etiket}</div>${inner}</div>`);
   }
-  $("pipeline").innerHTML = cells.join('<div class="arrow">→</div>');
+  $("pipeline").innerHTML = cells.join('<div class="arrow">›</div>');
+  renderRepos();
 }
 
 // Çalışan ajan varken saniyede bir pipeline'ı yeniden çizer; kimse çalışmıyorsa durur
@@ -854,7 +1131,7 @@ let logFilter = null;
 let logFilterCount = 0;
 
 const TAG_COLORS = ["var(--blue)", "var(--teal)", "var(--amber)", "var(--md-secondary)"];
-// Fanout kopyası ("developer@repoA") satırlarının başına renkli repo etiketi
+// Fanout kopyası ("saha@repoA") satırlarının başına renkli repo etiketi
 function agentTag(agent) {
   const at = agent.indexOf("@");
   if (at < 0) return "";
@@ -865,6 +1142,12 @@ function agentTag(agent) {
 }
 
 // Satırı akışa ekler; süzgeç açıksa ve satır o ajana ait değilse gizli eklenir
+// Sohbet en alttaysa yeni mesajla birlikte kayar; kullanıcı yukarıda okuyorsa yerinde bırakılır
+function scrollChat(force) {
+  const c = $("chat");
+  if (force || replaying || c.scrollHeight - c.scrollTop - c.clientHeight < 160) c.scrollTop = c.scrollHeight;
+}
+
 function appendStream(el) {
   el.dataset.agent = logAgent;
   const s = $("stream");
@@ -874,21 +1157,157 @@ function appendStream(el) {
     return;
   }
   if (logFilter) { logFilterCount++; renderLogFilterBar(); }
-  s.scrollTop = s.scrollHeight;
+  scrollChat();
 }
 
+// Sistem olayı: sohbetin ortasında küçük kapsül (ajan mesajları balonlarda)
 function addLog(ts, html, cls) {
   const div = document.createElement("div");
-  if (cls) div.className = cls;
+  div.className = "sys" + (cls ? " " + cls : "");
   div.innerHTML = `<span class="t">${time(ts)}</span>${agentTag(logAgent)}${html}`;
   appendStream(div);
+}
+
+// ── Ajan mesaj balonları ───────────────────────────────────────────
+// Her ajan koşusu bir balon: başlıkta avatar+ad, içinde sırayla söyledikleri,
+// araç kapsülleri (📖 dosya, ✏️ +N −M) ve komutlar için mini terminal.
+let bubbles = {};             // ajan anahtarı → açık balon
+function bubbleOf(agent, ts) {
+  const mevcut = bubbles[agent];
+  if (mevcut && mevcut.isConnected) return mevcut;
+  const b = document.createElement("div");
+  b.className = "msg";
+  const repo = roleOf(agent).repo;
+  const yer = repo ? `<span class="zone" title="${esc(repo)}">📍 ${esc(mintika(repo))} mıntıkası</span>` : "";
+  b.innerHTML = `${avatar(agent)}<div class="bub"><div class="who">${esc(agentName(agent))}${yer}` +
+    `<small>${time(ts)}</small><span class="typing hidden"><i></i><i></i><i></i></span></div><div class="body"></div></div>`;
+  appendStream(b);
+  bubbles[agent] = b;
+  return b;
+}
+function bubbleAdd(b, el) {
+  b.querySelector(".body").appendChild(el);
+  scrollChat();
+}
+function bubbleNote(b, html, cls) {
+  const d = document.createElement("div");
+  d.className = "note" + (cls ? " " + cls : "");
+  d.innerHTML = html;
+  bubbleAdd(b, d);
+}
+// Balonun son öğesi istenen türdeyse ona ekle (art arda araçlar tek satırda toplansın)
+function lastOf(b, cls) {
+  const last = b.querySelector(".body").lastElementChild;
+  if (last && last.classList.contains(cls)) return last;
+  const el = document.createElement("div");
+  el.className = cls;
+  bubbleAdd(b, el);
+  return el;
+}
+const TOOL_ICONS = { Read: "📖", Write: "✨", Edit: "✏️", MultiEdit: "✏️", NotebookEdit: "✏️", Grep: "🔎", Glob: "🗂",
+  WebFetch: "🌐", WebSearch: "🌐", Task: "🧩", Agent: "🧩", TodoWrite: "📝", ToolSearch: "🧰", Bash: "💻" };
+// Uzun yolun son iki parçası ("…/fan/target") — tam yol title'da
+const shortDir = (p) => {
+  const parca = String(p || "").split(/[\\/]/).filter(Boolean);
+  return parca.length > 2 ? "…/" + parca.slice(-2).join("/") : String(p || "");
+};
+const baseName = (p) => String(p).split(/[\\/]/).filter(Boolean).pop() || String(p);
+function lineDelta(e) {
+  if (!e.added && !e.removed) return "";
+  return `${e.added ? ` <span class="plus">+${e.added}</span>` : ""}${e.removed ? ` <span class="minus">−${e.removed}</span>` : ""}`;
+}
+function bubbleTool(b, e) {
+  if (e.command) {
+    const t = lastOf(b, "term");
+    const line = document.createElement("div");
+    line.innerHTML = `<span class="ps">$</span>${esc(e.command)}`;
+    t.appendChild(line);
+    scrollChat();
+    return;
+  }
+  const isMcp = e.tool.startsWith("mcp__");
+  const ic = TOOL_ICONS[e.tool] || (isMcp ? "🔌" : "⚙");
+  const ad = isMcp ? e.tool.split("__").pop() : e.tool;
+  const label = e.file ? baseName(e.file)
+    : (e.tool === "Grep" || e.tool === "Glob") ? `"${e.detail}"`
+    : TOOL_ICONS[e.tool] && e.tool !== "Bash" ? e.detail : `${toolName(e.tool)}: ${e.detail}`;
+  const chip = document.createElement("span");
+  chip.className = "tchip";
+  chip.title = `${toolName(e.tool)}: ${e.file || e.detail}`;
+  chip.innerHTML = `${ic} <b>${esc(trunc(label, 70))}</b>${lineDelta(e)}`;
+  lastOf(b, "acts").appendChild(chip);
+  scrollChat();
+}
+
+// ── Sağ sütun: koşu özeti ─────────────────────────────────────────
+let changedFiles = new Map(); // yol → {added, removed, write}
+let runTokens = { in: 0, out: 0 };
+let runStart = 0, runEnd = 0, runDir = "";
+const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+function trackFile(e) {
+  if (!FILE_TOOLS.has(e.tool) || !e.file) return;
+  const f = changedFiles.get(e.file) || { added: 0, removed: 0, write: false };
+  f.added += e.added || 0;
+  f.removed += e.removed || 0;
+  if (e.tool === "Write") f.write = true;
+  changedFiles.set(e.file, f);
+  renderFiles();
+}
+function relPath(p) {
+  const d = runDir.replace(/[\\/]+$/, "");
+  return d && p.startsWith(d) ? p.slice(d.length).replace(/^[\\/]+/, "") : p;
+}
+function renderFiles() {
+  if (!changedFiles.size) {
+    $("fileList").innerHTML = '<div class="empty">Henüz dosya değişmedi</div>';
+    $("filesSum").innerHTML = "";
+    return;
+  }
+  let top = 0, eks = 0;
+  $("fileList").innerHTML = [...changedFiles].map(([p, f]) => {
+    top += f.added; eks += f.removed;
+    const tag = f.write ? '<span class="ftag W" title="yazıldı">Y</span>' : '<span class="ftag M" title="düzenlendi">D</span>';
+    return `<div class="frow" title="${esc(p)}">${tag}<span class="fn">${esc(relPath(p))}</span>` +
+      `${f.added ? `<span class="plus">+${f.added}</span>` : ""}${f.removed ? `<span class="minus">−${f.removed}</span>` : ""}</div>`;
+  }).join("");
+  $("filesSum").innerHTML = `${changedFiles.size} · <span class="plus">+${top}</span> <span class="minus">−${eks}</span>`;
+}
+function renderRepos() {
+  const gruplar = Object.values(groups).filter((g) => g.length);
+  $("repoBox").classList.toggle("hidden", !gruplar.length);
+  if (!gruplar.length) return;
+  const uyeler = gruplar.flat();
+  const biten = uyeler.filter((a) => states[a] === "done").length;
+  $("repoSum").textContent = `${biten}/${uyeler.length}`;
+  $("repoList").innerHTML = uyeler.map((a) => {
+    const st = states[a] || "pending";
+    const isaret = st === "done" ? "✓" : st === "rejected" ? "✗" : st === "running" ? "…" : "";
+    const repo = roleOf(a).repo;
+    return `<div class="rrow"><span class="nm" title="${esc(agentName(a))} · ${esc(mintika(repo || a))}"><b>${esc(agentName(a))}</b> · ${esc(mintika(repo || a))}</span>` +
+      `<div class="prog ${st}"><span></span></div><span style="width:12px">${isaret}</span></div>`;
+  }).join("");
+}
+function renderStats() {
+  $("tokens").textContent = runTokens.in || runTokens.out ? `${tok(runTokens.in)} / ${tok(runTokens.out)}` : "—";
+  if (!runStart) { $("elapsed").textContent = "—"; return; }
+  const bitis = runEnd || Date.now();
+  $("elapsed").textContent = fmtElapsed(Math.max(0, Math.floor((bitis - runStart) / 1000)));
+}
+setInterval(() => { if (runStart && !runEnd) renderStats(); }, 1000);
+function resetRail() {
+  changedFiles = new Map();
+  runTokens = { in: 0, out: 0 };
+  runStart = 0; runEnd = 0; runDir = "";
+  renderFiles();
+  renderStats();
+  $("repoBox").classList.add("hidden");
 }
 
 function renderLogFilterBar() {
   const bar = $("logFilter");
   bar.classList.toggle("hidden", !logFilter);
   if (!logFilter) return;
-  const adlar = [...logFilter].map(esc).join(", ");
+  const adlar = [...logFilter].map((k) => esc(agentName(k))).join(", ");
   $("logFilterText").innerHTML = `Yalnızca <b>${adlar}</b> · ${logFilterCount} kayıt`;
 }
 
@@ -904,8 +1323,7 @@ function setLogFilter(keys) {
   }
   renderLogFilterBar();
   if (agents.length) renderPipeline();
-  const s = $("stream");
-  s.scrollTop = s.scrollHeight;
+  scrollChat(true);
 }
 $("btnLogAll").addEventListener("click", () => setLogFilter(null));
 // Hattaki ajan kutusu → o ajan; fanout grup başlığı → grubun tüm repo kopyaları
@@ -934,7 +1352,7 @@ function handleEvent(e) {
       (e.disabled || []).forEach((a) => (states[a] = "disabled"));
       $("answerCard").classList.add("hidden");
       $("task").textContent = e.task;
-      $("provider").textContent = e.provider;
+      $("provider").textContent = e.provider === "ollama" ? "yerel sunucu" : "bulut";
       $("cycle").textContent = `tur 0/${e.maxCycles}`;
       if (logFilter) setLogFilter(null); // önceki koşunun süzgeci yeni koşuda yanıltır
       if (!e.resumed) $("stream").innerHTML = "";  // resume'da önceki konuşma ekranda kalsın
@@ -949,55 +1367,81 @@ function handleEvent(e) {
       $("btnCancel").classList.remove("hidden");
       setStatus("çalışıyor", "run");
       renderPipeline();
-      if (e.resumed) addLog(e.ts, "──────── aynı oturumda yeni görev ────────", "muted");
-      addLog(e.ts, `iş akışı başladı · 📁 ${esc(e.targetDir)}`);
+      bubbles = {};
+      codeNames = {};
+      resetRail();
+      runStart = Date.parse(e.ts) || Date.now();
+      runDir = e.targetDir || "";
+      renderStats();
+      if (e.resumed) addLog(e.ts, "aynı oturumda yeni görev", "muted");
+      {
+        const me = document.createElement("div");
+        me.className = "me";
+        me.textContent = e.task;
+        appendStream(me);
+      }
+      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
       renderPipeline();
-      addLog(e.ts, `⏭ <b>${esc(e.node)}</b> devre dışı — ` +
-        (fanoutMeta[e.node] ? `dağıtım yok, ${esc(e.to)} tek kopya koşuyor`
-          : `atlandı → ${e.to ? esc(e.to) : "akış biter"}`), "muted");
+      addLog(e.ts, `⏭ <b>${esc(nodeName(e.node))}</b> devre dışı — ` +
+        (fanoutMeta[e.node] ? `dağıtım yok, ${esc(agentName(e.to || ""))} tek kopya koşuyor`
+          : `atlandı → ${e.to ? esc(nodeName(e.to)) : "akış biter"}`), "muted");
       break;
     }
-    case "agent_started":
+    case "agent_started": {
       states[e.agent] = "running";
       runningSince[e.agent] = Date.now();
       ensurePipelineTicker();
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> başladı`);
+      delete bubbles[e.agent]; // her koşu yeni bir mesaj balonu açar
+      const b = bubbleOf(e.agent, e.ts);
+      b.querySelector(".who .typing").classList.remove("hidden");
       break;
-    case "agent_text":
-      addLog(e.ts, esc(trunc(e.text, 240)), "muted");
+    }
+    case "agent_text": {
+      const b = bubbleOf(e.agent, e.ts);
+      // Orkestratör notları (rota, onarım, dağıtım) küçük not; modelin sözü Markdown
+      if (/^(🧭|⚠|🔀)/u.test(e.text)) {
+        bubbleNote(b, esc(noteText(e.text)), e.text.startsWith("⚠") ? "warn" : "");
+      } else {
+        const d = document.createElement("div");
+        d.className = "txt md";
+        d.innerHTML = renderMarkdown(trunc(e.text, 2400));
+        bubbleAdd(b, d);
+      }
       break;
+    }
     case "agent_retrying": {
       // Bağlantı koptu — akış ölmedi, bekleyip yeniden deneyecek
       const kac = e.maxAttempts > 0 ? `${e.attempt}/${e.maxAttempts}` : `${e.attempt}`;
       const nasil = e.resumed ? "oturum sürdürülecek" : "oturum baştan";
-      addLog(
-        e.ts,
-        `🔌 <b>${esc(e.agent)}</b> bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ` +
-          `${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`,
-        "warn",
-      );
+      bubbleNote(bubbleOf(e.agent, e.ts),
+        `🔌 bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`, "warn");
       break;
     }
     case "tool_used":
       if (!e.detail) break;
-      addLog(e.ts, `⚙ ${esc(e.tool)}: ${esc(e.detail)}`, "muted");
+      bubbleTool(bubbleOf(e.agent, e.ts), e);
+      trackFile(e);
       break;
-    case "agent_finished":
+    case "agent_finished": {
       states[e.agent] = "done";
       delete runningSince[e.agent];
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> bitti`, "ok");
+      const b = bubbleOf(e.agent, e.ts);
+      b.querySelector(".who .typing").classList.add("hidden");
+      b.querySelector(".who small").textContent = e.metrics
+        ? `${time(e.ts)} · ${fmtMetrics(e.metrics)}` : `${time(e.ts)} · bitti`;
       if (e.metrics) {
-        addLog(e.ts, `📊 ${fmtMetrics(e.metrics)}`, "muted");
-        // Birden fazla model = arka planda ikinci bir model calismis
+        runTokens.in += e.metrics.inputTokens || 0;
+        runTokens.out += e.metrics.outputTokens || 0;
+        renderStats();
+        // Birden fazla model = arka planda ikinci bir model çalışmış
         if (e.metrics.perModel && e.metrics.perModel.length > 1) {
-          const kirilim = e.metrics.perModel
-            .map((p) => `${esc(p.model)}: ${tok(p.inputTokens)}/${tok(p.outputTokens)}`).join(" · ");
-          addLog(e.ts, `📊 ${kirilim}`, "muted");
+          bubbleNote(b, "📊 " + e.metrics.perModel
+            .map((p) => `${esc(p.model)}: ${tok(p.inputTokens)}/${tok(p.outputTokens)}`).join(" · "));
         }
       }
       if (hasAnswer(e.structured)) showAnswer(e.agent, e.structured);
@@ -1007,17 +1451,18 @@ function handleEvent(e) {
         const diff = renderDiff(e.structured);
         const inner = diff ? diff
           : hasAnswer(e.structured) ? `<div class="md" style="font:var(--md-type-body-md);margin:6px 0">${renderMarkdown(e.structured.answer)}</div>`
-          : `<pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
-        d.innerHTML = `<summary>${agentTag(e.agent)}${esc(e.agent)} yapılandırılmış çıktısı</summary>${inner}`;
-        appendStream(d);
+          : `<div class="sview-box">${structuredView(e.structured) || '<span class="sv-k">boş çıktı</span>'}</div>`;
+        d.innerHTML = `<summary>📦 yapılandırılmış çıktı</summary>${inner}`;
+        bubbleAdd(b, d);
       }
       break;
+    }
     case "approval_required": {
       // endsFlow: ajan "kod değişikliği gerekmiyor" dedi — onay akışı bitirir,
       // red ise gerekçeyle yeniden planlatır. Zamanlama burada anlamsız, gizlenir.
       $("approvalTitle").textContent = e.endsFlow
-        ? `${e.agent} kod değişikliği gerekmediğini söylüyor`
-        : `${e.agent} çıktısı onayını bekliyor`;
+        ? `${agentName(e.agent)} kod değişikliği gerekmediğini söylüyor`
+        : `${agentName(e.agent)} ${roleOf(e.agent).base === "analist" ? "harekât planı" : "çıktısı"} onayını bekliyor`;
       approvalEndsFlow = !!e.endsFlow;
       $("btnApprove").textContent = e.endsFlow ? "Bitir" : "Onayla";
       $("rejectComment").placeholder = e.endsFlow
@@ -1036,37 +1481,41 @@ function handleEvent(e) {
           `<p class="lead" style="color:var(--muted)">Cevap yukarıdaki kartta. Yeterliyse <b>Bitir</b>; ` +
           `aslında bir değişiklik istiyorsan gerekçeyle <b>yeniden planla</b>.</p>`;
       } else if (diff) {
-        $("approvalText").innerHTML = uyari + lead + diff + rawJsonDetails(e.structured);
+        $("approvalText").innerHTML = uyari + lead + diff;
       } else if (e.structured) {
         // Şema geldi ama içi boş: ham metin JSON'un kendisi olurdu — özet + ham JSON yeter
-        $("approvalText").innerHTML = uyari + lead + rawJsonDetails(e.structured);
+        $("approvalText").innerHTML = uyari + lead + `<div class="sview-box">${structuredView(e.structured)}</div>`;
       } else {
         $("approvalText").innerHTML = uyari + rawOutputHtml(e.output);
       }
       updateRejectLabel();
       resetWhen();
+      $("approvalAv").innerHTML = avatar(e.agent);
       $("approval").classList.remove("hidden");
+      scrollChat(true);
       setStatus("onay bekliyor", "warn");
-      addLog(e.ts, `${esc(e.agent)} onay bekliyor`, "warn");
+      addLog(e.ts, `${esc(agentName(e.agent))} onayını bekliyor`, "warn");
       break;
     }
     case "approval_resolved":
       $("approval").classList.add("hidden");
       setStatus("çalışıyor", "run");
-      addLog(e.ts, `onay: ${e.approved ? "verildi" : "reddedildi"} (${e.source})${e.comment ? " — " + esc(e.comment) : ""}`, e.approved ? "ok" : "err");
+      addLog(e.ts, `onay: ${e.approved ? "verildi" : "reddedildi"} (${SOURCE_NAMES[e.source] || e.source})${e.comment ? " — " + esc(e.comment) : ""}`, e.approved ? "ok" : "err");
       break;
     case "verdict": {
       states[e.agent] = e.approved ? "done" : "rejected";
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> kararı: ${e.approved ? "onay" : "red"} — ${esc(e.summary)}`,
+      addLog(e.ts, `<b>${esc(agentName(e.agent))}</b> kararı: ${e.approved ? "onay" : "iade"} — ${esc(e.summary)}`,
         e.approved ? "ok" : "err");
+      $("verdictAv").innerHTML = avatar(e.agent);
       $("verdictCard").classList.remove("hidden");
+      scrollChat(true);
       const head = $("verdictHead");
       head.textContent = e.approved ? "Onaylandı" : "Reddedildi";
       head.style.color = e.approved ? "var(--teal)" : "var(--red)";
       $("verdictSummary").textContent = e.summary;
       $("issues").innerHTML = e.issues.map((i) =>
-        `<div class="issue"><span class="sev ${i.severity}">${i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
+        `<div class="issue"><span class="sev ${i.severity}">${SEVERITY_NAMES[i.severity] || i.severity}</span><span>${esc(i.file)} — ${esc(i.description)}</span></div>`
       ).join("") || '<div style="font-size:13px;color:var(--muted)">Sorun bildirilmedi</div>';
       break;
     }
@@ -1082,24 +1531,26 @@ function handleEvent(e) {
       groups[e.node] = grup;
       fanoutMeta[e.node] = { agent: e.agent, max: e.maxConcurrency };
       keys.forEach((k) => (states[k] = "pending"));
+      keys.forEach(assignCodeName); // sıra belirleyici: çakışmada önce gelen adı alır
       renderPipeline();
-      addLog(e.ts, `🔀 <b>${esc(e.agent)}</b> ${keys.length} repoya dağıtıldı: ${e.workers.map((w) => esc(w.repo)).join(", ")}` +
+      addLog(e.ts, `🔀 <b>${esc(roleOf(e.agent).ad)}</b> ${keys.length} mıntıkaya dağıldı: ` +
+        e.workers.map((w) => `<b>${esc(agentName(w.key))}</b> → ${esc(mintika(w.repo))}`).join(", ") +
         (e.maxConcurrency ? ` — aynı anda en fazla ${e.maxConcurrency}` : "") +
-        (e.partial ? " (yalnızca geri bildirimdeki repolar)" : ""));
+        (e.partial ? " (yalnızca teftiş raporundaki mıntıkalar)" : ""));
       break;
     }
     case "fanout_finished":
       if (e.failed.length) {
         for (const f of e.failed) states[`${fanoutMeta[e.node]?.agent}@${f.repo}`] = "rejected";
         renderPipeline();
-        addLog(e.ts, `🔀 dağıtım hatası: ${e.failed.map((f) => `${esc(f.repo)} — ${esc(trunc(f.error, 160))}`).join("; ")}`, "err");
+        addLog(e.ts, `🔀 sahada hata: ${e.failed.map((f) => `${esc(agentName(`${fanoutMeta[e.node]?.agent}@${f.repo}`))} (${esc(mintika(f.repo))}) — ${esc(trunc(f.error, 160))}`).join("; ")}`, "err");
       } else {
-        addLog(e.ts, `🔀 ${e.repos.length} repo tamamlandı, sonuçlar birleştirildi`, "ok");
+        addLog(e.ts, `🔀 ${e.repos.length} mıntıka tamamlandı, saha raporları birleştirildi`, "ok");
       }
       break;
     case "cycle":
       $("cycle").textContent = `tur ${e.n}/${e.max}`;
-      addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(e.to)}`, "warn");
+      addLog(e.ts, `tur ${e.n}: sorunlar → ${esc(nodeName(e.to))}`, "warn");
       break;
     case "build_started":
       buildOrder = e.order; buildStates = {};
@@ -1107,8 +1558,8 @@ function handleEvent(e) {
       $("buildLog").textContent = "";
       $("buildCard").classList.remove("hidden");
       renderBuild();
-      setStatus("build", "run");
-      addLog(e.ts, e.order.length ? `build sırası: ${e.order.map(esc).join(" → ")}` : "build: değişen modül yok", "muted");
+      setStatus("derleme", "run");
+      addLog(e.ts, e.order.length ? `derleme sırası: ${e.order.map(esc).join(" → ")}` : "derleme: değişen modül yok", "muted");
       break;
     case "build_module_started":
       buildStates[e.module] = "running";
@@ -1128,15 +1579,16 @@ function handleEvent(e) {
     case "build_failed":
       buildStates[e.module] = "failed";
       renderBuild();
-      setStatus("build hatası", "err");
-      addLog(e.ts, `build başarısız: ${esc(e.module)} (çıkış ${e.code})`, "err");
+      setStatus("derleme hatası", "err");
+      addLog(e.ts, `derleme başarısız: ${esc(e.module)} (çıkış ${e.code})`, "err");
       break;
     case "build_finished":
-      addLog(e.ts, `build tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
+      addLog(e.ts, `derleme tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
       break;
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");
+      scrollChat(true);
       startCountdown(e.agent, e.runAt);
       setStatus("zamanlandı", "warn");
       addLog(e.ts, `${esc(e.agent)} → ${fmt(e.runAt)} için zamanlandı`, "warn");
@@ -1145,17 +1597,19 @@ function handleEvent(e) {
       $("schedule").classList.add("hidden");
       stopCountdown();
       setStatus("çalışıyor", "run");
-      addLog(e.ts, `zamanlama tamam (${esc(e.source)}) — devam ediliyor`, "ok");
+      addLog(e.ts, `zamanlama tamam (${esc(SOURCE_NAMES[e.source] || e.source)}) — devam ediliyor`, "ok");
       break;
     case "run_schedule_cancelled":
       scheduleCancelled = true;
       $("schedule").classList.add("hidden");
       stopCountdown();
       setStatus("iptal edildi", "err");
-      addLog(e.ts, `zamanlama iptal edildi (${esc(e.source)})`, "err");
+      addLog(e.ts, `zamanlama iptal edildi (${esc(SOURCE_NAMES[e.source] || e.source)})`, "err");
       break;
     case "workflow_finished":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       // Zamanlama iptaliyle biten koşu "tamamlandı" değil — iptal durumu korunur
@@ -1170,6 +1624,8 @@ function handleEvent(e) {
       break;
     case "workflow_cancelled":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       $("approval").classList.add("hidden");
@@ -1181,6 +1637,8 @@ function handleEvent(e) {
       break;
     case "workflow_failed":
       finished = true;
+      runEnd = Date.parse(e.ts) || Date.now();
+      renderStats();
       stopPipelineTicker();
       $("btnCancel").classList.add("hidden");
       setStatus("hata", "err");
@@ -1197,8 +1655,8 @@ function toLocalInput(d) {
 }
 
 // Zaman seçici çifti (preset + datetime-local) iki yerde var: onay kartında
-// (plan onaylanınca developer ne zaman başlasın) ve görev kartında (görevin
-// kendisi — architect dahil — ne zaman başlasın). Aynı kod ikisine bağlanır.
+// (plan onaylanınca saha timi ne zaman başlasın) ve görev kartında (görevin
+// kendisi — analist dahil — ne zaman başlasın). Aynı kod ikisine bağlanır.
 // "Belirli tarih/saat…" seçilince native picker'ı göster, alt sınırı ve
 // varsayılanı (şimdi+1 saat) ayarla
 function bindWhen(presetId, customId, onChange) {
@@ -1359,7 +1817,7 @@ function updateTaskCtx() {
   const s = sessionsById[viewSessionId];
   $("taskCardTitle").textContent = s ? "Bu oturumda yeni görev" : "Yeni görev";
   $("taskCtx").textContent = s
-    ? `↩ Oturum sürdürülecek: ${s.name} (architect önceki konuşmayı hatırlar)`
+    ? `↩ Oturum sürdürülecek: ${s.name} (Analist önceki konuşmayı hatırlar)`
     : "＋ Yeni oturum açılacak — diğer oturumlar koşmaya devam eder";
 }
 
@@ -1368,6 +1826,9 @@ function resetView() {
   agents = []; states = {}; groups = {}; fanoutMeta = {};
   logFilter = null; logFilterCount = 0;
   renderLogFilterBar();
+  bubbles = {};
+  codeNames = {};
+  resetRail();
   finished = false; scheduleCancelled = false; approvalEndsFlow = false;
   stopCountdown();
   stopPipelineTicker();
@@ -1393,7 +1854,7 @@ function renderSessions() {
     n.classList.toggle("active", (n.dataset.id || "") === viewSessionId));
   // Sekme başlığında onay bekleyen oturum sayısı — başka sekmedeyken de fark edilsin
   const bekleyen = list.filter((s) => s.status === "approval").length;
-  document.title = bekleyen ? `(${bekleyen}) yaver — onay bekliyor` : "yaver";
+  document.title = bekleyen ? `(${bekleyen}) Kurmay — onay bekliyor` : "Kurmay";
 }
 
 // İzlenen oturum boştaysa (görev tutmuyorsa) görev kartı açılır, koşuyorsa gizlenir
@@ -1409,6 +1870,7 @@ function openSession(id) {
   resetView();
   renderSessions();
   updateTaskCtx();
+  applyViewModel();
   if (!viewSessionId) {
     viewBusy = false;
     $("task").textContent = "yeni oturum";
@@ -1441,8 +1903,7 @@ function openSession(id) {
       }
     }
     syncTaskCard();
-    const st = $("stream");
-    st.scrollTop = st.scrollHeight;
+    scrollChat(true);
   });
   es.onerror = () => {
     if (es && es.readyState === EventSource.CLOSED) setStatus("oturum bulunamadı", "err");
@@ -1492,6 +1953,7 @@ lobby.onmessage = (m) => {
   if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
   renderSessions();
   updateTaskCtx();
+  if (viewModel() !== currentModel) applyViewModel(); // başka sekmeden değişmiş olabilir
 };
 
 // Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
@@ -1572,7 +2034,21 @@ $("btnDirFix").addEventListener("click", showDirEditor);
 
 // Model seçimi: liste config'teki modelsUrl'den sunucu üzerinden çekilir (API
 // anahtarı tarayıcıya hiç gelmez). Seçim config.json'a yazılır, sıradaki görev kullanır.
-let currentModel = "";
+let currentModel = "";   // izlenen oturumun (ya da taslakta genel varsayılanın) modeli
+let globalModel = "";    // yeni oturumların varsayılanı (config.json)
+let modelList = [], modelListError;
+
+// Model oturuma özeldir: oturum seçiliyse onun modeli, taslakta genel varsayılan
+function viewModel() {
+  const s = sessionsById[viewSessionId];
+  return (s && s.model) || globalModel;
+}
+function applyViewModel() {
+  currentModel = viewModel();
+  fillModelSelect(modelList, modelListError);
+  updateStartGate();
+}
+
 function fillModelSelect(models, error) {
   const sel = $("modelSel");
   // Ollama'da "varsayılan" model yok — boş seçenek "seçilmedi" uyarısı olur
@@ -1592,16 +2068,19 @@ function fillModelSelect(models, error) {
   sel.value = currentModel;
   const eksik = modelRequired && !currentModel;
   sel.title = error ? `Model listesi alınamadı: ${error}`
-    : eksik ? "Model seçilmedi — görev başlatmak için bir model seç" : "Model — sıradaki görevde kullanılır";
+    : eksik ? "Model seçilmedi — görev başlatmak için bir model seç"
+    : viewSessionId ? "Bu oturumun modeli — oturumdaki sıradaki görevde kullanılır (diğer oturumlar etkilenmez)"
+    : "Yeni oturumların varsayılan modeli";
   sel.style.borderColor = error || eksik ? "var(--red)" : "";
 }
 async function loadModels() {
   try {
     const data = await (await fetch("/models")).json();
-    currentModel = data.current || "";
+    globalModel = data.current || "";
     modelRequired = !!data.required;
-    fillModelSelect(data.models || [], data.error);
-    updateStartGate();
+    modelList = data.models || [];
+    modelListError = data.error;
+    applyViewModel();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
   }
@@ -1612,14 +2091,20 @@ $("modelSel").addEventListener("change", async () => {
     const res = await fetch("/model", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, session: viewSessionId || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
-      currentModel = model;
-      updateStartGate();
-      $("modelSel").style.borderColor = modelRequired && !model ? "var(--red)" : "";
-      addLog(new Date().toISOString(), `🧠 model değiştirildi: ${esc(model || "varsayılan")} — sıradaki görevde geçerli`, "ok");
+      const s = sessionsById[viewSessionId];
+      if (s) {
+        if (model) s.model = model; else delete s.model;
+      } else {
+        globalModel = model;
+      }
+      applyViewModel();
+      addLog(new Date().toISOString(), s
+        ? `🧠 bu oturumun modeli: ${esc(model || "genel varsayılan")} — oturumdaki sıradaki görevde geçerli`
+        : `🧠 yeni oturumların varsayılan modeli: ${esc(model || "varsayılan")}`, "ok");
     } else {
       alert(data.error || "model kaydedilemedi");
       $("modelSel").value = currentModel;
@@ -1632,24 +2117,26 @@ $("modelSel").addEventListener("change", async () => {
 loadModels();
 
 // Akış çipleri: ana yoldaki düğümler sırayla; tıklayınca kapanır/açılır. Kalıcıdır
-// (config.json'a yazılır) — ör. küçük işler için architect'i kapatıp doğrudan developer'a ver.
+// (config.json'a yazılır) — ör. küçük işler için analisti kapatıp doğrudan saha timine ver.
 async function loadFlow() {
   let wf = { nodes: [] };
   try { wf = await (await fetch("/workflow")).json(); } catch {}
   const el = $("flowChips");
   if (!wf.nodes || !wf.nodes.length) { el.innerHTML = ""; return; }
+  // Komut düğümleri teknik adıyla, ajan/fanout düğümleri heyetteki adıyla
+  const flowName = (n) => n.type === "command" ? n.key : roleOf(n.type === "fanout" ? n.agent : n.key).ad;
   const chips = wf.nodes.map((n) => {
     const fan = n.type === "fanout";
     const durum = fan
-      ? (n.disabled ? `${esc(n.agent)} · tek kopya` : `${esc(n.agent)} · repo başına`)
+      ? (n.disabled ? "tek ajan" : "mıntıka başına")
       : (n.disabled ? "atlanır" : n.type === "command" ? "komut" : "açık");
     const ipucu = fan
       ? (n.disabled ? "Dağıtım kapalı — tıkla: repo başına dağıt" : "Tıkla: dağıtımı kapat, tek kopya koşsun")
       : (n.disabled ? "Kapalı — tıkla: aç" : "Tıkla: bu adımı atla");
     return `<button class="fchip${n.disabled ? " off" : ""}${n.disabled && !fan ? " skip" : ""}" data-node="${esc(n.key)}" ` +
-      `data-off="${n.disabled ? 1 : 0}" title="${ipucu}"><span class="nm">${esc(n.key)}</span><small>${durum}</small></button>`;
+      `data-off="${n.disabled ? 1 : 0}" title="${esc(n.key)} — ${ipucu}"><span class="nm">${esc(flowName(n))}</span><small>${durum}</small></button>`;
   });
-  const atlanan = wf.nodes.filter((n) => n.disabled && n.type !== "fanout").map((n) => n.key);
+  const atlanan = wf.nodes.filter((n) => n.disabled && n.type !== "fanout").map(flowName);
   el.innerHTML = `<span class="lbl">Akış:</span>` + chips.join("<span>→</span>") +
     (atlanan.length ? `<span style="margin-left:6px">— ${atlanan.map(esc).join(", ")} atlanacak</span>` : "");
 }
@@ -1687,7 +2174,7 @@ async function startTask() {
   if (!task) return;
   if (dirMissing) { $("taskError").textContent = "Hedef dizin bulunamadı — önce geçerli bir dizin seç"; return; }
   if (modelRequired && !currentModel) { $("taskError").textContent = "Model seçilmedi — üst çubuktan bir model seç"; return; }
-  // Zamanlanmış görev: architect dahil tüm akış seçilen saatte başlar
+  // Zamanlanmış görev: analist dahil tüm akış seçilen saatte başlar
   const runAt = readRunAt("taskWhenPreset", "taskWhenCustom");
   if ($("taskWhenPreset").value !== "0" && runAt === undefined) {
     $("taskError").textContent = "Seçilen zaman geçmişte ya da geçersiz";
