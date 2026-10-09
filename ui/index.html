@@ -176,7 +176,8 @@ body { overflow:hidden; }
 /* — Sağ: koşu özeti — */
 .rail { background:var(--md-surface-container-low); border-left:1px solid var(--border); padding:16px; overflow:auto; }
 .rail-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:14px; }
-.rail-tools a { font-size:13px; color:var(--blue); text-decoration:none; font-weight:600; }
+.rail-tools a { font-size:17px; line-height:1; color:var(--muted); text-decoration:none; }
+.rail-tools a:hover { color:var(--blue); }
 .rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
 .rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
@@ -509,7 +510,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 
 <aside class="rail">
   <div class="rail-tools">
-    <a href="/config">⚙ Teşkilat şeması</a>
+    <a href="/config" title="Teşkilat şeması" aria-label="Teşkilat şeması">⚙</a>
     <div class="tswitch" role="radiogroup" aria-label="Tema">
       <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
       <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
