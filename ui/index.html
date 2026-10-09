@@ -326,6 +326,13 @@ body { overflow:hidden; }
 .hunk.has-cmt .hcmt-toggle { color:var(--amber); border-color:var(--amber); }
 .hunk .hcmt-box { width:100%; flex:none; min-width:0; margin-top:5px; font-size:12px; }
 .rawjson { margin-top:8px; }
+/* Yapılandırılmış çıktının okunur görünümü (şema adları gösterilmez) */
+.sview-box { font-size:13.5px; line-height:1.55; margin:6px 0; }
+.sv-row { margin:4px 0; }
+.sv-k { display:inline-block; min-width:88px; margin-right:8px; font-size:11.5px; font-weight:700; letter-spacing:.04em; color:var(--muted); text-transform:uppercase; }
+ul.sview { margin:4px 0 4px 18px; padding:0; }
+ul.sview li { margin:3px 0; }
+ul.sview li > .sv-row:first-child { margin-top:0; }
 .rawjson summary { cursor:pointer; color:var(--muted); font-size:11px; }
 .rawjson pre { white-space:pre-wrap; font-size:11px; max-height:clamp(200px, 28vh, 420px); overflow-y:auto; background:var(--bg); border-radius:var(--md-shape-xs); padding:8px; margin-top:6px; }
 input[type=text], textarea { flex:1; min-width:200px; }
@@ -850,8 +857,8 @@ function rawOutputHtml(text) {
     const lead = typeof plan.summary === "string" && plan.summary ? `<p class="lead">${esc(plan.summary)}</p>` : "";
     const not = `<p class="lead" style="color:var(--muted);font-size:13px">Model planı araç yerine metnin içine yazmış — ` +
       `metinden çıkarılıp gösteriliyor. Akış bunu yapılandırılmış çıktı olarak almadı (developer'a metin olarak gider, repo dağıtımı yapılmaz).</p>`;
-    if (diff) return not + lead + diff + rawTextDetails(text);
-    if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>` + rawTextDetails(text);
+    if (diff) return not + lead + diff;
+    if (hasAnswer(plan)) return not + `<div class="md rawmd">${renderMarkdown(plan.answer)}</div>`;
   }
   return `<div class="md rawmd">${renderMarkdown(text || "")}</div>` + rawTextDetails(text);
 }
@@ -860,8 +867,39 @@ function rawTextDetails(text) {
   return `<details class="rawjson"><summary>Ham metin</summary><pre>${esc(text || "")}</pre></details>`;
 }
 
-function rawJsonDetails(structured) {
-  return `<details class="rawjson"><summary>Ham veri</summary><pre>${esc(JSON.stringify(structured, null, 2))}</pre></details>`;
+/**
+ * Yapılandırılmış çıktının okunur görünümü — şema alan adları (summary, changes,
+ * issues…) ASLA ekrana çıkmaz: bilinen alanlar Türkçe başlıkla, bilinmeyenler
+ * başlıksız yalnızca değerleriyle gösterilir. Ham JSON görünümü bilinçli olarak yok.
+ */
+const FIELD_LABELS = {
+  summary: "Özet", assumptions: "Varsayımlar", changes: "Değişiklikler", deviations: "Plandan sapmalar",
+  verification: "Doğrulama", issues: "Sorunlar", answer: "Cevap", references: "Kaynaklar",
+  file: "Dosya", path: "Dosya", action: "İşlem", description: "Açıklama", severity: "Önem",
+  location: "Yer", before: "Önce", after: "Sonra", rationale: "Gerekçe", note: "Not", line: "Satır",
+};
+const HIDDEN_FIELDS = new Set(["route", "approved", "file_plan"]); // kartta/akışta zaten anlatılıyor
+function valueText(k, v) {
+  if (k === "action") return ACTION_NAMES[v] || v;
+  if (k === "severity") return SEVERITY_NAMES[v] || v;
+  return v;
+}
+function structuredView(obj, depth = 0) {
+  if (obj === null || obj === undefined || obj === "") return "";
+  if (typeof obj !== "object") return esc(String(obj));
+  if (Array.isArray(obj)) {
+    if (!obj.length) return "";
+    return `<ul class="sview">${obj.map((x) => `<li>${structuredView(x, depth + 1)}</li>`).join("")}</ul>`;
+  }
+  const parts = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (HIDDEN_FIELDS.has(k) || v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) continue;
+    const ad = FIELD_LABELS[k];
+    const deger = typeof v === "object" ? structuredView(v, depth + 1) : esc(String(valueText(k, v)));
+    if (!deger) continue;
+    parts.push(ad ? `<div class="sv-row"><span class="sv-k">${ad}</span>${deger}</div>` : `<div class="sv-row">${deger}</div>`);
+  }
+  return parts.join("");
 }
 
 /**
@@ -1409,7 +1447,7 @@ function handleEvent(e) {
         const diff = renderDiff(e.structured);
         const inner = diff ? diff
           : hasAnswer(e.structured) ? `<div class="md" style="font:var(--md-type-body-md);margin:6px 0">${renderMarkdown(e.structured.answer)}</div>`
-          : `<pre>${esc(JSON.stringify(e.structured, null, 2))}</pre>`;
+          : `<div class="sview-box">${structuredView(e.structured) || '<span class="sv-k">boş çıktı</span>'}</div>`;
         d.innerHTML = `<summary>📦 yapılandırılmış çıktı</summary>${inner}`;
         bubbleAdd(b, d);
       }
@@ -1439,10 +1477,10 @@ function handleEvent(e) {
           `<p class="lead" style="color:var(--muted)">Cevap yukarıdaki kartta. Yeterliyse <b>Bitir</b>; ` +
           `aslında bir değişiklik istiyorsan gerekçeyle <b>yeniden planla</b>.</p>`;
       } else if (diff) {
-        $("approvalText").innerHTML = uyari + lead + diff + rawJsonDetails(e.structured);
+        $("approvalText").innerHTML = uyari + lead + diff;
       } else if (e.structured) {
         // Şema geldi ama içi boş: ham metin JSON'un kendisi olurdu — özet + ham JSON yeter
-        $("approvalText").innerHTML = uyari + lead + rawJsonDetails(e.structured);
+        $("approvalText").innerHTML = uyari + lead + `<div class="sview-box">${structuredView(e.structured)}</div>`;
       } else {
         $("approvalText").innerHTML = uyari + rawOutputHtml(e.output);
       }
