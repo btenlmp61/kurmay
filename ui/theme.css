@@ -1,4 +1,4 @@
-/* yaver — Material Design 3 tema (paylaşılan): renk rolleri, tipografi, şekil,
+/* Kurmay — Material Design 3 tema (paylaşılan): renk rolleri, tipografi, şekil,
    elevation ve temel bileşenler (buton/alan/pill/kart). Kütüphanesiz — düz CSS
    custom property + seçici. Her iki panel (index.html, config.html) bunu
    <link> ile kullanır; sayfaya özgü kurallar (diff/hunk, graf SVG, sidebar…)
@@ -148,7 +148,7 @@ h1,h2 { font:var(--md-type-headline-sm); margin:0; }
 }
 [data-theme="dark"] .card { border-color:var(--md-outline-variant); box-shadow:none; }
 
-/* Marka kilidi — üst şeritte logo + "yaver". Bilerek headline'dan küçük:
+/* Marka kilidi — üst şeritte logo + "Kurmay". Bilerek headline'dan küçük:
    index.html'de yanındaki görev metni, config.html'de h1 sayfanın asıl
    başlığıdır; marka kimlik işareti olarak durur, onlarla yarışmaz. */
 .brand { display:inline-flex; align-items:center; gap:8px; flex:none;

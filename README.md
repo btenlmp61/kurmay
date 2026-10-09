@@ -1,9 +1,11 @@
 <img src="ui/logo.svg" width="76" alt="">
 
-# yaver
+# Kurmay
 
-*Yaver: yanından ayrılmayan yardımcı.* Logodaki kenetlenmiş iki el de bunu anlatır —
-iki ayrı taraf, tek kavrama.
+*Kurmay: harekâtı planlayan, sahadaki birlikleri koordine eden heyet.* Burada da öyle:
+**Analist** kodu okuyup harekât planını çıkarır, **Saha Timi** planı mıntıkalarda (repolarda)
+uygular — her mıntıkada kuş kod adlı bir saha ajanı —, **Teftiş** işi denetler. Logodaki
+kenetlenmiş eller ekibin dayanışmasını anlatır.
 
 Md dosyalarıyla tanımlanan ajanları (architect → developer ⇄ reviewer) **deterministik** bir iş akışıyla koordine eden TypeScript orkestratörü.
 
@@ -38,7 +40,7 @@ Not: `config.json`'daki `mcpServers` girdileri Windows'a özgüyse (`"command": 
 Tek seferlik bir görev koşturmak istersen `command:`'i ezebilirsin:
 
 ```sh
-docker compose run --rm yaver --cwd /workspace/target "Basit bir CLI todo uygulaması yaz"
+docker compose run --rm kurmay --cwd /workspace/target "Basit bir CLI todo uygulaması yaz"
 ```
 
 ## Kullanım

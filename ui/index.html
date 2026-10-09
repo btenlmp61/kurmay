@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>yaver izleme paneli</title>
+<title>Kurmay</title>
 <link rel="icon" href="/logo.svg">
 <link rel="stylesheet" href="/theme.css">
 <script>
@@ -11,7 +11,7 @@
 // bir an için yanlış gelip (flash) sonra düzelir.
 (function () {
   try {
-    var t = localStorage.getItem("yaver-theme");
+    var t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); // eski ad: yaver
     if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
   } catch (e) {}
 })();
@@ -140,6 +140,7 @@ body { overflow:hidden; }
 .bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px system-ui,"Segoe UI",sans-serif; margin-bottom:3px; }
 .bub .who small { font:400 11.5px system-ui,"Segoe UI",sans-serif; color:var(--muted); }
 .bub .who .typing { color:var(--md-primary); }
+.bub .who .zone { font:600 11px system-ui,"Segoe UI",sans-serif; padding:2px 9px; border-radius:999px; background:var(--devBg); color:var(--dev); }
 .bub .body > * + * { margin-top:8px; }
 .bub .txt { font-size:14px; line-height:1.6; }
 .bub .txt.md { max-width:none; }
@@ -207,7 +208,7 @@ body { overflow:hidden; }
 .ftag { font:700 10px system-ui,sans-serif; padding:2px 7px; border-radius:999px; flex:none; }
 .ftag.M { background:var(--amberBg); color:var(--amber); } .ftag.W { background:var(--tealBg); color:var(--teal); }
 .rrow { display:flex; align-items:center; gap:10px; font:12.5px ui-monospace,Consolas,monospace; margin:8px 0; }
-.rrow .nm { width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rrow .nm { width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:system-ui,"Segoe UI",sans-serif; }
 .prog { flex:1; height:7px; border-radius:9px; background:var(--md-surface-container-high); overflow:hidden; }
 .prog > span { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg, var(--dev), var(--arch)); transition:width .4s; }
 .prog.running > span { width:55%; animation:indet 1.4s ease-in-out infinite alternate; }
@@ -340,7 +341,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <div class="layout">
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <span class="brand"><img class="brand-logo" src="/logo.svg" alt=""><span class="brand-name">yaver</span></span>
+    <span class="brand"><img class="brand-logo" src="/logo.svg" alt=""><span class="brand-name">Kurmay</span></span>
     <button id="btnSidebar" title="Aç / kapat">⟨</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
@@ -409,7 +410,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
       </div>
 
       <div class="card hidden" id="verdictCard">
-        <div class="card-head"><span id="verdictAv"></span><div class="label">İnceleme kararı</div></div>
+        <div class="card-head"><span id="verdictAv"></span><div class="label">Teftiş kararı</div></div>
         <div style="font-weight:600;margin-bottom:8px" id="verdictHead"></div>
         <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="verdictSummary"></div>
         <div id="issues"></div>
@@ -466,7 +467,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <button id="btnTheme" class="icon" title="Tema değiştir"></button>
   </div>
   <div class="rbox hidden" id="repoBox">
-    <h4>Repo ilerlemesi <span id="repoSum"></span></h4>
+    <h4>Mıntıkalar <span id="repoSum"></span></h4>
     <div id="repoList"></div>
   </div>
   <div class="rbox">
@@ -507,7 +508,7 @@ function renderThemeBtn() {
 $("btnTheme").addEventListener("click", () => {
   const next = currentTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("yaver-theme", next); } catch (e) {}
+  try { localStorage.setItem("kurmay-theme", next); } catch (e) {}
   renderThemeBtn();
 });
 renderThemeBtn();
@@ -547,22 +548,42 @@ document.addEventListener("pointerdown", (ev) => {
 
 const stateLabels = { pending: "bekliyor", running: "çalışıyor", done: "tamamlandı", rejected: "reddetti", disabled: "devre dışı" };
 
-// Ekip üyeleri: ajan anahtarının kökü ("developer@order" → developer) rolü belirler.
+// Kurmay heyeti: ajan anahtarının kökü ("developer@order" → developer) rolü belirler.
+// Teknik adlar (config/persona) değişmez — yalnızca panelde görünen adlar bunlar.
 // Tanınmayan ajanlar (config'e eklenen yeni personalar) adlarıyla, ortak renkle görünür.
 const ROLES = {
-  architect: { ad: "Mimar", ic: "◇", c: "arch" },
-  developer: { ad: "Geliştirici", ic: "</>", c: "dev" },
-  reviewer: { ad: "İnceleyici", ic: "✓", c: "rev" },
+  architect: { ad: "Analist", ic: "◎", c: "arch" },
+  developer: { ad: "Saha Timi", ic: "</>", c: "dev" },
+  reviewer: { ad: "Teftiş", ic: "✓", c: "rev" },
 };
+// Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
+// harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
+const CODE_NAMES = ["Atmaca", "Doğan", "Şahin", "Kartal", "Kerkenez", "Turna", "Martı", "Leylek",
+  "Ebabil", "Karabatak", "Toygar", "Çaylak", "Kumru", "Saka", "Serçe", "Sığırcık"];
+let codeNames = {};           // kopya anahtarı ("developer@order") → kod adı
+function assignCodeName(key) {
+  if (codeNames[key]) return codeNames[key];
+  const repo = key.slice(key.indexOf("@") + 1);
+  let h = 0;
+  for (const ch of repo) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const kullanilan = new Set(Object.values(codeNames));
+  let i = h % CODE_NAMES.length;
+  for (let n = 0; n < CODE_NAMES.length && kullanilan.has(CODE_NAMES[i]); n++) i = (i + 1) % CODE_NAMES.length;
+  // Ad havuzu tükenirse sayı eklenir (Atmaca-2)
+  let ad = CODE_NAMES[i];
+  if (kullanilan.has(ad)) ad = `${ad}-${Object.keys(codeNames).length + 1}`;
+  return (codeNames[key] = ad);
+}
+const mintika = (repo) => (repo === "." ? "merkez" : repo);
 function roleOf(key) {
   const at = key.indexOf("@");
   const base = at < 0 ? key : key.slice(0, at);
   const r = ROLES[base] || { ad: base, ic: (base[0] || "?").toUpperCase(), c: "other" };
   return { ...r, base, repo: at < 0 ? "" : key.slice(at + 1) };
 }
+// Saha ajanı kod adıyla ("Atmaca"), diğerleri rol adıyla ("Analist") görünür
 function agentName(key) {
-  const r = roleOf(key);
-  return r.repo ? `${r.ad} · ${r.repo}` : r.ad;
+  return roleOf(key).repo ? assignCodeName(key) : roleOf(key).ad;
 }
 function avatar(key, small) {
   const r = roleOf(key);
@@ -932,7 +953,7 @@ function nodeCell(a) {
   }
   // Fanout kopyası "developer@repoA": kapsülde repo adı yeter, grup etiketi ajanı söylüyor
   const r = roleOf(a);
-  const ad = r.repo || r.ad;
+  const ad = r.repo ? `${agentName(a)} · ${mintika(r.repo)}` : r.ad;
   const odak = logFilter && logFilter.has(a) ? " focus" : "";
   const yaziyor = st === "running" ? '<span class="typing"><i></i><i></i><i></i></span>' : "";
   return `<div class="node mem ${st}${odak}" data-agent="${esc(a)}" title="${esc(agentName(a))} · ${stateLabels[st]} — tıkla: yalnızca bu ajanın mesajları">` +
@@ -955,7 +976,7 @@ function renderPipeline() {
     drawn.add(g);
     const inner = groups[g].filter((b) => agents.includes(b)).map(nodeCell).join("");
     const fm = fanoutMeta[g] || { agent: g, max: 0 };
-    const etiket = `${esc(roleOf(fm.agent).ad)} ekibi${fm.max ? ` · ${fm.max}'li` : ""}`;
+    const etiket = `${esc(roleOf(fm.agent).ad)}${fm.max ? ` · ${fm.max}'li` : ""}`;
     cells.push(`<div class="node group"><div class="glabel" data-group="${esc(g)}" title="Tıkla: tüm repo kopyalarının kayıtları">${etiket}</div>${inner}</div>`);
   }
   $("pipeline").innerHTML = cells.join('<div class="arrow">›</div>');
@@ -1049,7 +1070,9 @@ function bubbleOf(agent, ts) {
   if (mevcut && mevcut.isConnected) return mevcut;
   const b = document.createElement("div");
   b.className = "msg";
-  b.innerHTML = `${avatar(agent)}<div class="bub"><div class="who">${esc(agentName(agent))}` +
+  const repo = roleOf(agent).repo;
+  const yer = repo ? `<span class="zone" title="${esc(repo)}">📍 ${esc(mintika(repo))} mıntıkası</span>` : "";
+  b.innerHTML = `${avatar(agent)}<div class="bub"><div class="who">${esc(agentName(agent))}${yer}` +
     `<small>${time(ts)}</small><span class="typing hidden"><i></i><i></i><i></i></span></div><div class="body"></div></div>`;
   appendStream(b);
   bubbles[agent] = b;
@@ -1152,7 +1175,8 @@ function renderRepos() {
   $("repoList").innerHTML = uyeler.map((a) => {
     const st = states[a] || "pending";
     const isaret = st === "done" ? "✓" : st === "rejected" ? "✗" : st === "running" ? "…" : "";
-    return `<div class="rrow"><span class="nm" title="${esc(a)}">${esc(roleOf(a).repo || a)}</span>` +
+    const repo = roleOf(a).repo;
+    return `<div class="rrow"><span class="nm" title="${esc(agentName(a))} · ${esc(repo || a)}"><b>${esc(agentName(a))}</b> · ${esc(mintika(repo || a))}</span>` +
       `<div class="prog ${st}"><span></span></div><span style="width:12px">${isaret}</span></div>`;
   }).join("");
 }
@@ -1237,6 +1261,7 @@ function handleEvent(e) {
       setStatus("çalışıyor", "run");
       renderPipeline();
       bubbles = {};
+      codeNames = {};
       resetRail();
       runStart = Date.parse(e.ts) || Date.now();
       runDir = e.targetDir || "";
@@ -1248,7 +1273,7 @@ function handleEvent(e) {
         me.textContent = e.task;
         appendStream(me);
       }
-      addLog(e.ts, `ekip işe koyuldu · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
+      addLog(e.ts, `harekât başladı · <span title="${esc(e.targetDir)}">📁 ${esc(shortDir(e.targetDir))}</span>${e.model ? ` · 🧠 ${esc(e.model)}` : ""}`);
       break;
     case "node_skipped": {
       states[e.node] = "disabled";
@@ -1329,8 +1354,8 @@ function handleEvent(e) {
       // endsFlow: ajan "kod değişikliği gerekmiyor" dedi — onay akışı bitirir,
       // red ise gerekçeyle yeniden planlatır. Zamanlama burada anlamsız, gizlenir.
       $("approvalTitle").textContent = e.endsFlow
-        ? `${e.agent} kod değişikliği gerekmediğini söylüyor`
-        : `${e.agent} çıktısı onayını bekliyor`;
+        ? `${agentName(e.agent)} kod değişikliği gerekmediğini söylüyor`
+        : `${agentName(e.agent)} ${roleOf(e.agent).base === "architect" ? "harekât planı" : "çıktısı"} onayını bekliyor`;
       approvalEndsFlow = !!e.endsFlow;
       $("btnApprove").textContent = e.endsFlow ? "Bitir" : "Onayla";
       $("rejectComment").placeholder = e.endsFlow
@@ -1362,7 +1387,7 @@ function handleEvent(e) {
       $("approval").classList.remove("hidden");
       scrollChat(true);
       setStatus("onay bekliyor", "warn");
-      addLog(e.ts, `${esc(e.agent)} onay bekliyor`, "warn");
+      addLog(e.ts, `${esc(agentName(e.agent))} onayını bekliyor`, "warn");
       break;
     }
     case "approval_resolved":
@@ -1373,7 +1398,7 @@ function handleEvent(e) {
     case "verdict": {
       states[e.agent] = e.approved ? "done" : "rejected";
       renderPipeline();
-      addLog(e.ts, `<b>${esc(e.agent)}</b> kararı: ${e.approved ? "onay" : "red"} — ${esc(e.summary)}`,
+      addLog(e.ts, `<b>${esc(agentName(e.agent))}</b> kararı: ${e.approved ? "onay" : "iade"} — ${esc(e.summary)}`,
         e.approved ? "ok" : "err");
       $("verdictAv").innerHTML = avatar(e.agent);
       $("verdictCard").classList.remove("hidden");
@@ -1399,19 +1424,21 @@ function handleEvent(e) {
       groups[e.node] = grup;
       fanoutMeta[e.node] = { agent: e.agent, max: e.maxConcurrency };
       keys.forEach((k) => (states[k] = "pending"));
+      keys.forEach(assignCodeName); // sıra belirleyici: çakışmada önce gelen adı alır
       renderPipeline();
-      addLog(e.ts, `🔀 <b>${esc(e.agent)}</b> ${keys.length} repoya dağıtıldı: ${e.workers.map((w) => esc(w.repo)).join(", ")}` +
+      addLog(e.ts, `🔀 <b>${esc(roleOf(e.agent).ad)}</b> ${keys.length} mıntıkaya dağıldı: ` +
+        e.workers.map((w) => `<b>${esc(agentName(w.key))}</b> → ${esc(mintika(w.repo))}`).join(", ") +
         (e.maxConcurrency ? ` — aynı anda en fazla ${e.maxConcurrency}` : "") +
-        (e.partial ? " (yalnızca geri bildirimdeki repolar)" : ""));
+        (e.partial ? " (yalnızca teftiş raporundaki mıntıkalar)" : ""));
       break;
     }
     case "fanout_finished":
       if (e.failed.length) {
         for (const f of e.failed) states[`${fanoutMeta[e.node]?.agent}@${f.repo}`] = "rejected";
         renderPipeline();
-        addLog(e.ts, `🔀 dağıtım hatası: ${e.failed.map((f) => `${esc(f.repo)} — ${esc(trunc(f.error, 160))}`).join("; ")}`, "err");
+        addLog(e.ts, `🔀 sahada hata: ${e.failed.map((f) => `${esc(agentName(`${fanoutMeta[e.node]?.agent}@${f.repo}`))} (${esc(mintika(f.repo))}) — ${esc(trunc(f.error, 160))}`).join("; ")}`, "err");
       } else {
-        addLog(e.ts, `🔀 ${e.repos.length} repo tamamlandı, sonuçlar birleştirildi`, "ok");
+        addLog(e.ts, `🔀 ${e.repos.length} mıntıka tamamlandı, saha raporları birleştirildi`, "ok");
       }
       break;
     case "cycle":
@@ -1693,6 +1720,7 @@ function resetView() {
   logFilter = null; logFilterCount = 0;
   renderLogFilterBar();
   bubbles = {};
+  codeNames = {};
   resetRail();
   finished = false; scheduleCancelled = false; approvalEndsFlow = false;
   stopCountdown();
@@ -1719,7 +1747,7 @@ function renderSessions() {
     n.classList.toggle("active", (n.dataset.id || "") === viewSessionId));
   // Sekme başlığında onay bekleyen oturum sayısı — başka sekmedeyken de fark edilsin
   const bekleyen = list.filter((s) => s.status === "approval").length;
-  document.title = bekleyen ? `(${bekleyen}) yaver — onay bekliyor` : "yaver";
+  document.title = bekleyen ? `(${bekleyen}) Kurmay — onay bekliyor` : "Kurmay";
 }
 
 // İzlenen oturum boştaysa (görev tutmuyorsa) görev kartı açılır, koşuyorsa gizlenir
@@ -1988,18 +2016,20 @@ async function loadFlow() {
   try { wf = await (await fetch("/workflow")).json(); } catch {}
   const el = $("flowChips");
   if (!wf.nodes || !wf.nodes.length) { el.innerHTML = ""; return; }
+  // Komut düğümleri teknik adıyla, ajan/fanout düğümleri heyetteki adıyla
+  const flowName = (n) => n.type === "command" ? n.key : roleOf(n.type === "fanout" ? n.agent : n.key).ad;
   const chips = wf.nodes.map((n) => {
     const fan = n.type === "fanout";
     const durum = fan
-      ? (n.disabled ? `${esc(n.agent)} · tek kopya` : `${esc(n.agent)} · repo başına`)
+      ? (n.disabled ? "tek ajan" : "mıntıka başına")
       : (n.disabled ? "atlanır" : n.type === "command" ? "komut" : "açık");
     const ipucu = fan
       ? (n.disabled ? "Dağıtım kapalı — tıkla: repo başına dağıt" : "Tıkla: dağıtımı kapat, tek kopya koşsun")
       : (n.disabled ? "Kapalı — tıkla: aç" : "Tıkla: bu adımı atla");
     return `<button class="fchip${n.disabled ? " off" : ""}${n.disabled && !fan ? " skip" : ""}" data-node="${esc(n.key)}" ` +
-      `data-off="${n.disabled ? 1 : 0}" title="${ipucu}"><span class="nm">${esc(n.key)}</span><small>${durum}</small></button>`;
+      `data-off="${n.disabled ? 1 : 0}" title="${esc(n.key)} — ${ipucu}"><span class="nm">${esc(flowName(n))}</span><small>${durum}</small></button>`;
   });
-  const atlanan = wf.nodes.filter((n) => n.disabled && n.type !== "fanout").map((n) => n.key);
+  const atlanan = wf.nodes.filter((n) => n.disabled && n.type !== "fanout").map(flowName);
   el.innerHTML = `<span class="lbl">Akış:</span>` + chips.join("<span>→</span>") +
     (atlanan.length ? `<span style="margin-left:6px">— ${atlanan.map(esc).join(", ")} atlanacak</span>` : "");
 }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>yaver config editörü</title>
+<title>Kurmay · config editörü</title>
 <link rel="icon" href="/logo.svg">
 <link rel="stylesheet" href="/theme.css">
 <script>
@@ -11,7 +11,7 @@
 // bir an için yanlış gelip (flash) sonra düzelir.
 (function () {
   try {
-    var t = localStorage.getItem("yaver-theme");
+    var t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); // eski ad: yaver
     if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
   } catch (e) {}
 })();
@@ -67,7 +67,7 @@ input[type=text], input[type=number], select { width:100%; }
 <body>
 
 <div class="hdr">
-  <span class="brand"><img class="brand-logo" src="/logo.svg" alt="">yaver</span>
+  <span class="brand"><img class="brand-logo" src="/logo.svg" alt="">Kurmay</span>
   <h1>Config editörü</h1>
   <span class="pill" id="prov" style="background:var(--bg);color:var(--muted)"></span>
   <span class="pill" id="dir" style="background:var(--bg);color:var(--muted)"></span>
@@ -142,7 +142,7 @@ function renderThemeBtn() {
 $("btnTheme").addEventListener("click", () => {
   const next = currentTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("yaver-theme", next); } catch (e) {}
+  try { localStorage.setItem("kurmay-theme", next); } catch (e) {}
   renderThemeBtn();
 });
 renderThemeBtn();

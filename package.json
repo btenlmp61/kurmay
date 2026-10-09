@@ -1,5 +1,5 @@
 {
-  "name": "yaver",
+  "name": "kurmay",
   "version": "0.1.0",
   "description": "Md tanımlı ajanları (architect/developer/reviewer) deterministik bir iş akışıyla koordine eden orkestratör",
   "type": "module",

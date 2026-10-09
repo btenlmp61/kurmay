@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "yaver-serve", "runtimeExecutable": "npm", "runtimeArgs": ["run", "serve"], "port": 4141 }
+    { "name": "kurmay-serve", "runtimeExecutable": "npm", "runtimeArgs": ["run", "serve"], "port": 4141 }
   ]
 }
