@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { EFFORT_LEVELS, isCommandNode, isFanoutNode, type AppConfig, type EffortSetting, type ProviderConfig } from "./types.js";
+import { EFFORT_LEVELS, isCommandNode, isFanoutNode, type AppConfig, type EffortSetting, type McpServerJson, type ProviderConfig } from "./types.js";
 
 /**
  * Tek config dosyasını yükler ve doğrular: sağlayıcı bilgileri (adres, token,
@@ -52,6 +52,18 @@ export function loadAppConfig(configPath: string): AppConfig {
     }
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
       throw new Error(`config: "retry.${key}" negatif olmayan bir sayı olmalı (verilen: ${JSON.stringify(value)})`);
+    }
+  }
+
+  if (
+    cfg.disabledSkills !== undefined &&
+    (!Array.isArray(cfg.disabledSkills) || cfg.disabledSkills.some((s) => typeof s !== "string"))
+  ) {
+    throw new Error(`config: "disabledSkills" beceri adlarından oluşan bir liste olmalı (verilen: ${JSON.stringify(cfg.disabledSkills)})`);
+  }
+  for (const [name, server] of Object.entries(cfg.mcpServers ?? {})) {
+    if (server.disabled !== undefined && typeof server.disabled !== "boolean") {
+      throw new Error(`config: "mcpServers.${name}.disabled" true/false olmalı (verilen: ${JSON.stringify(server.disabled)})`);
     }
   }
 
@@ -112,6 +124,32 @@ export function loadAppConfig(configPath: string): AppConfig {
   }
 
   return cfg;
+}
+
+/**
+ * Ajan koşusuna verilecek MCP sunucuları: kapalılar çıkarılır, "disabled" alanı
+ * SDK'ye gitmez (Claude Code'un sunucu şemasında yok). Hiç açık sunucu yoksa undefined.
+ */
+export function activeMcpServers(cfg: ProviderConfig): Record<string, McpServerJson> | undefined {
+  const active: Record<string, McpServerJson> = {};
+  for (const [name, server] of Object.entries(cfg.mcpServers ?? {})) {
+    if (server.disabled) continue;
+    const { disabled: _, ...rest } = server;
+    active[name] = rest as McpServerJson;
+  }
+  return Object.keys(active).length > 0 ? active : undefined;
+}
+
+/** Kapalı MCP sunucularının adları */
+export function disabledMcpServers(cfg: ProviderConfig): string[] {
+  return Object.entries(cfg.mcpServers ?? {})
+    .filter(([, s]) => s.disabled)
+    .map(([name]) => name);
+}
+
+/** "mcp__<sunucu>" ya da "mcp__<sunucu>__<araç>" aracı kapalı bir sunucuya mı ait? */
+export function isOffMcpTool(tool: string, offServers: readonly string[]): boolean {
+  return tool.startsWith("mcp__") && offServers.includes(tool.slice(5).split("__")[0]);
 }
 
 /**

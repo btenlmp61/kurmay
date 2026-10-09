@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
+import { isOffMcpTool } from "./config.js";
 import {
   isCommandNode,
   isFanoutNode,
@@ -45,6 +46,14 @@ function loadSkill(name: string, projectRoot: string, agentKey: string): LoadedS
     absPath: skillPath,
     content: content.trim(),
   };
+}
+
+/** Beceri klasörünün SKILL.md başlığı (Aç/Kapat sayfası için); dosya yoksa undefined */
+export function skillInfo(name: string, projectRoot: string): { name: string; description: string } | undefined {
+  const skillPath = path.resolve(projectRoot, ".claude", "skills", name, "SKILL.md");
+  if (!fs.existsSync(skillPath)) return undefined;
+  const { data } = matter(fs.readFileSync(skillPath, "utf8"));
+  return { name: (data.name as string) ?? name, description: (data.description as string) ?? "" };
 }
 
 /**
@@ -146,6 +155,8 @@ const ESKI_PERSONA: Record<string, string> = {
 export function loadAgents(
   workflow: WorkflowConfig,
   projectRoot: string,
+  /** Aç/Kapat sayfasında kapatılan beceriler ve MCP sunucuları — prompt'a girmez */
+  off: { skills?: readonly string[]; mcpServers?: readonly string[] } = {},
 ): Map<string, AgentDefinition> {
   const agents = new Map<string, AgentDefinition>();
 
@@ -203,7 +214,9 @@ export function loadAgents(
     validateEdges(key, config, workflow, workerOf.get(key) ?? null);
 
     const rules = (config.rules ?? []).map((name) => loadRule(name, projectRoot, key));
-    const skills = (config.skills ?? []).map((name) => loadSkill(name, projectRoot, key));
+    const skills = (config.skills ?? [])
+      .filter((name) => !off.skills?.includes(name))
+      .map((name) => loadSkill(name, projectRoot, key));
 
     // Tembel yüklenen beceri, ajanın dosyayı okuyabilmesini gerektirir
     if (skills.some((s) => !s.inline) && !config.tools.includes("Read")) {
@@ -235,7 +248,7 @@ export function loadAgents(
         content.trim(),
         rules,
         skills,
-        config.tools.filter((t) => t.startsWith("mcp__")),
+        config.tools.filter((t) => t.startsWith("mcp__") && !isOffMcpTool(t, off.mcpServers ?? [])),
       ),
       outputSchema,
       config,

@@ -223,9 +223,14 @@ export interface WorkflowConfig {
 
 /** MCP sunucu tanımı — Claude Code'un .mcp.json formatıyla birebir aynı.
  *  stdio: { command, args?, env? }  |  uzak: { type: "http"|"sse", url, headers? } */
-export type McpServerJson =
+export type McpServerJson = (
   | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
-  | { type: "http" | "sse"; url: string; headers?: Record<string, string> };
+  | { type: "http" | "sse"; url: string; headers?: Record<string, string> }
+) & {
+  /** true ise sunucu KAPALI: başlatılmaz, ajanların araç listesinden ve prompt'undan
+   *  çıkar (bkz. activeMcpServers). Aç/Kapat sayfasından canlı değiştirilir. */
+  disabled?: boolean;
+};
 
 /**
  * Maliyet ve süre sınırları — hepsi opsiyonel, verilenler Claude Code alt
@@ -299,6 +304,9 @@ export interface ProviderConfig {
   /** MCP sunucuları. Bir ajanın bu sunucuların araçlarını kullanabilmesi için
    *  tools listesine "mcp__<sunucu>" (tümü) veya "mcp__<sunucu>__<araç>" eklenmeli */
   mcpServers?: Record<string, McpServerJson>;
+  /** Kapalı beceriler (.claude/skills/<ad>): hiçbir ajanın prompt'una girmez, ajan
+   *  düğümünde listelenmiş olsa bile. Aç/Kapat sayfasından canlı değiştirilir. */
+  disabledSkills?: string[];
   /** Maliyet/süre sınırları (opsiyonel) — yavaş yerel modeller için */
   limits?: LimitsConfig;
   /** Bağlantı koptuğunda yeniden deneme (opsiyonel) — verilmezse sınırsız denenir */

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
-import { buildAgentEnv } from "./config.js";
+import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
 import {
@@ -186,6 +186,9 @@ async function executeQuery(
     hooks = { ...hooks, PreToolUse: [...(hooks?.PreToolUse ?? []), ...scope.PreToolUse!] };
   }
   const result: AgentRunResult = { text: "" };
+  // Aç/Kapat sayfasında kapatılan MCP sunucuları başlatılmaz, araçları da listeden çıkar
+  const mcpServers = activeMcpServers(cfg);
+  const offMcp = disabledMcpServers(cfg);
 
   let iterator;
   try {
@@ -200,14 +203,12 @@ async function executeQuery(
       // Claude Code'un varsayılan system prompt'u korunur, md içeriği eklenir —
       // böylece araç kullanımı davranışı bozulmaz.
       systemPrompt: { type: "preset", preset: "claude_code", append: agent.systemPrompt },
-      allowedTools: agent.config.tools,
+      allowedTools: agent.config.tools.filter((t) => !isOffMcpTool(t, offMcp)),
       permissionMode: "acceptEdits",
       ...(useSchema && agent.outputSchema
         ? { outputFormat: { type: "json_schema" as const, schema: agent.outputSchema } }
         : {}),
-      ...(cfg.mcpServers && Object.keys(cfg.mcpServers).length > 0
-        ? { mcpServers: cfg.mcpServers as Record<string, McpServerConfig> }
-        : {}),
+      ...(mcpServers ? { mcpServers: mcpServers as Record<string, McpServerConfig> } : {}),
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),

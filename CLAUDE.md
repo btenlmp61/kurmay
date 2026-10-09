@@ -1,4 +1,8 @@
-# Kurmay
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Kurmay
 
 > **Ad değişikliği (2026-10-09):** proje eskiden **yaver** idi. Panelde, `package.json`'da, README'de, docker-compose'da (`kurmay` servisi/konteyneri) ve launch.json'da artık **Kurmay**. GitHub reposu (`yigitalptrpn/yaver`) ve kullanıcının disk klasörü (`D:/work/yaver`) DEĞİŞMEDİ — config.json'daki hook yolu bu yüzden hâlâ `D:/work/yaver/...`; klasör yeniden adlandırılırsa o yol da güncellenmeli (yoksa analist'in yazma engeli sessizce kalkar). Tema tercihi `kurmay-theme` anahtarında, eski `yaver-theme` de okunur.
 >
@@ -19,7 +23,11 @@ npm start -- "görev"     # tek görev modu: çalıştırır ve çıkar
 npm run serve            # sunucu modu: panel açılır, görevler panelden girilir, servis açık kalır
 npm run serve -- --port 4242   # ikinci servis: farklı port (araya `--` ŞART, aşağıya bak)
 npm run typecheck        # tsc --noEmit
+npm start -- "görev" --at +30m        # görevi zamanla (+2h, +1d, "2026-07-10 14:00")
+docker compose up --build             # .env'den PORT/TARGET_DIR/ANTHROPIC_*; hedef /workspace/target'a bağlanır
 ```
+
+`start` ve `serve` AYNI script'tir (`tsx src/index.ts`, derleme adımı yok): bayrak olmayan argüman varsa tek görev, yoksa sunucu modu. **Test paketi ve linter YOK** — tek otomatik kontrol `npm run typecheck`. Aşağıdaki "sahte API ile doğrulandı" notlarındaki sahte Anthropic API sunucusu ve Playwright betikleri repoya girmedi; gerekirse yeniden yazılır (`env -i` tuzağı için "Kritik bilinenler"e bak).
 
 Bayraklar: `--config <dosya>`, `--cwd <hedef dizin>`, `--port <n>`, `--no-ui`. Örnek configler: `config.microservices.example.json` (build düğümlü, çok-repo), `config.hooks.example.json` (hook'lu).
 
@@ -38,6 +46,15 @@ Model seçiciyle aynı desen: config kökünde `effort` (genel varsayılan, yeni
 ### Düğüm devre dışı bırakma (`disabled`)
 
 Her düğüm türünde `"disabled": true` olabilir. Akış o düğüme gelince **koşturmadan geçer**, başarı yönünden devam eder (`passThroughTarget`, src/types.ts): komut → `onSuccess`, verdict → `onApprove`, routes → `default`, next → `next` (fanout istisna: kapalıyken dağıtım kapanır, aşağıya bak). Kapalı entry de atlanır (o koşuda resume/onay entry'ye bağlı olduğu için devreye girmez). Kapalı düğümlerin geçer kenarları döngü kurarsa (A→B→A) koşu hata verir (art arda atlama sayısı > düğüm sayısı). **Canlı**: config editöründeki "Devre dışı" kutusu `POST /node-disabled` çağırır — Kaydet/restart BEKLEMEZ, `config.json`'a yazar ve bellekteki `cfg.workflow`'a uygular; çalışan koşu etkilenmez çünkü her koşu `snapshotConfig` ile workflow'un `structuredClone`'unu alır. Panelde kapalı düğüm soluk/kesik/üstü çizili, atlanınca `node_skipped` olayı akışa düşer. **Görev kartında akış çipleri** (`GET /workflow` → `mainPath`: entry'den ileri kenarlarla BFS, geri dönüş kenarları ve fanout işçisi hariç): tıkla → aynı `/node-disabled` ile kapat/aç — ör. küçük iş için analist'i kapat, iş planlamasız doğrudan saha'a gider (plan olmadığı için fanout tek kopya koşar). Silme değil, geçici kapatma: tekrar tıklayınca aynı ayarlarla açılır (config.json'a yazıldığı için restart sonrası da kalır). Atlanan düğümler `ctx.skipped`'e girer ve sonraki ajanların prompt'una "# Not: atlanan adımlar … çıktı (ör. plan) gelmeyecek, görevi doğrudan ele al" eklenir — saha personası "plana sadık kal" dediği için gerekli. Gerçek orchestrator + SDK + sahte API ile doğrulandı (entry kapalı, kapalı döngü, hepsi açık; paralel senaryoları paralel inceleme kaldırılmadan önceydi).
+
+### Aç/Kapat sayfası (`/toggles`, 2026-10-09)
+
+Panelin sağ üstündeki 🎛 simgesi (ipucu "Aç / Kapat") → iPhone "Ayarlar" görünümlü gruplu liste, her satırda açma/kapama anahtarı (`ui/toggles.html`, `role=switch` checkbox). Üç bölüm: **Ajanlar** (yalnızca `type: agent` düğümleri; fanout işçisi takım adıyla, ör. "Saha Timi" — kapatınca dağıtım tamamen atlanır), **Beceriler** (`.claude/skills` klasörleri + düğümlerde adı geçenler), **Eklentiler** (`mcpServers`). Her satırda "Kullanan: …". Anahtar değişince `POST /toggle {kind: agent|skill|mcp, name, disabled}` hemen yazar (Kaydet/restart yok), hata olursa anahtar geri döner.
+
+- **Config alanları**: ajan → mevcut düğüm `disabled` (`setNodeDisabled`, görev kartındaki akış çipleriyle aynı); beceri → üst düzey `disabledSkills: string[]` (boşalınca alan silinir); eklenti → `mcpServers.<ad>.disabled: true`.
+- **Etkisi**: kapalı beceri `loadAgents(..., off)` ile hiçbir ajanın prompt'una girmez; kapalı eklenti `activeMcpServers` ile SDK'ye gitmez (`disabled` alanı da soyulur — Claude Code şemasında yok), `mcp__<ad>` araçları `allowedTools`'tan ve prompt'taki "MCP araçların" listesinden çıkar.
+- **Canlılık**: `index.ts`'te `agents` artık `let` — beceri/eklenti değişince prompt'lar yeniden derlenir. `cfg.disabledSkills`/`cfg.mcpServers` yerinde değiştirilmez, YENİ nesneyle değiştirilir: çalışan koşunun `{...cfg}` kopyası eskisini tutar, sıradaki görev yenisini görür. Servis açıkken config editöründen eklenen yeni eklenti restart'a kadar bu sayfada açılıp kapatılamaz (hata mesajı söyler).
+- Sahte servisle doğrulandı (uçlar + config.json yazımı + prompt/araç süzgeci + Playwright üç tema ve 375px). **Gerçek ajan koşusunda denenmedi.**
 
 ### Bilgi cevabı (analist `route=done`)
 
@@ -82,10 +99,14 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 | `src/approval.ts` | Onay yarışı (terminal/web); ayrıca **zamanlama** (`runAt`, waitForScheduledTime) ve **iptal sinyali** (RunCancelledError) |
 | `src/verdict.ts` | YEDEK: teftis kararı structured gelmezse metinden çıkarır |
 | `src/events.ts` | EventBus: tüm adımlar tipli olay; terminal/panel/JSONL dinler. Yeni olaylar: build_*, run_scheduled/resumed, workflow_cancelled, workflow_started.resumed |
-| `src/server.ts` | Node http (bağımlılıksız). Uçlar: GET `/`,`/events?session=`(SSE),`/lobby`(SSE),`/config`,`/config-data`,`/sessions`,`/target-dir`,`/models`,`/workflow`; POST `/task`,`/approval`,`/schedule`,`/cancel`,`/session-delete`,`/agent-md`,`/config`,`/target-dir`,`/model`,`/effort`,`/node-disabled` |
+| `src/server.ts` | Node http (bağımlılıksız). Uçlar: GET `/`,`/events?session=`(SSE),`/lobby`(SSE),`/config`,`/config-data`,`/sessions`,`/target-dir`,`/models`,`/workflow`; POST `/task`,`/approval`,`/schedule`,`/cancel`,`/session-delete`,`/agent-md`,`/config`,`/target-dir`,`/model`,`/effort`,`/node-disabled`; Aç/Kapat: GET `/toggles`,`/toggles-data`, POST `/toggle` |
 | `src/models.ts` | Model listesi: config'teki `modelsUrl`'e GET, `apiKey` başlıkta (`Authorization: Bearer` + `x-api-key`). Yanıt biçimleri: `{data:[{id,display_name?}]}` (OpenAI/Anthropic), `{models:[{name}]}` (Ollama), düz dizi |
 | `ui/index.html` | İzleme paneli — **"ekip sohbeti" tasarımı (2026-10-09)**: 3 sütun (sol oturumlar / orta sohbet / sağ koşu özeti `.rail`: repo ilerlemesi, değişen dosyalar `trackFile` (Write/Edit/MultiEdit, `tool_used.added/removed` +N −M), model seçici, hedef dizin, süre, token). Ajan mesajları avatarlı balon (`bubbleOf`/`bubbleTool`: araç kapsülü 📖✏️🔎, Bash `tool_used.command` → mini terminal), görev sağda `.me` balonu, sistem olayları ortada `.sys` kapsül; kartlar (`#cards`: cevap/onay/zamanlama/karar/build) sohbetin altında avatarlı; görev kartı alttaki yazma kutusu; ajan hattı başlıkta ekip kapsülleri (`roleOf`: analist=Analist ◎, saha=Saha Timi </> + kuş kod adı, teftis=Teftiş ✓ — üstteki "Panelde görünen adlar"). Görünüm 3 TEMA (aşağıda "Temalar"). Önceki: sol **oturum sidebar'ı** (canlı durum rozetli, seç→o oturumu izle/sürdür, × sil; **varsayılan açık**; ayrıntı "Çoklu oturum"), ajan hattı (**çalışan ajanda canlı süre sayacı**), olay akışı (**ajan süzgeci**: hattaki kutuya tıkla → akışta yalnızca o ajanın satırları, fanout grup başlığı → tüm repo kopyaları, tekrar tıkla/"Tümünü göster" → kapat; her satır `data-agent` taşır — `handle` sarmalayıcısı olayın `agent` alanını `logAgent`'a koyar, `addLog`/`appendStream` onu kullanır; fanout kopyası satırlarında renkli repo etiketi `.atag`), onay+diff kartı (**before/after yan yana**, değişen kelimeler `markChanged` ile vurgulu, **hunk başına yorum** → red gerekçesine toplanır, **boş/kısmi çıktıda `outputNotice` uyarısı** — "panel mi kaybetti, model mi boş gönderdi" ayrımı), **zamanlama kartı+geri sayım**, **build kartı**, **Durdur**, üstte **hedef dizin** (tıkla→düzenle, `/target-dir`), ⚙ Config bağlantısı. Görev ve red gerekçesi alanları **auto-grow textarea** (Enter gönderir, Shift+Enter satır açar). **Görev kutusu boşken seçenekler (zaman, akış çipleri, oturum notu) gizli** — dizüstünde (1366×657) sohbet ekranın yarısına iniyordu; yazınca açılır, zamanlama seçili ya da kapalı adım varsa hep görünür (yalnızca CSS `:has`; odağa bağlanamaz çünkü kart açılınca kutu otomatik odaklanıyor). **Mesaj balonları (`.msg` %94) ve kartlar (`#cards > .card` %100) sabit piksel üst sınırı TAŞIMAZ** — eskiden 920/980px idi, kullanıcının 32" monitöründe orta sütunun yarısında kalıyordu. Kütüphanesiz, koyu-mod |
 | `ui/config.html` | **Config editörü** (`/config`): SVG iş-akışı grafı + düğüm özellik/kenar düzenleme + düğüm ekle/sil + doğrulamalı kaydetme |
+| `src/index.ts` | Giriş noktası: argüman ayrıştırma (`--config/--cwd/--port/--no-ui/--at`, geri kalan = görev metni), targetDir önceliği, tek görev / sunucu modu seçimi |
+| `src/types.ts` | Config + workflow düğüm tipleri, `passThroughTarget`, `AgentMetrics`, `StructuredMiss` |
+| `ui/theme.css` | Tema başına renk/yazı tipi/rol rengi değişkenleri (panel + ayar sayfası ortak, `GET /theme.css`) |
+| `ui/toggles.html` | **Aç/Kapat sayfası** (`/toggles`): ajan/beceri/eklenti anahtarları (yukarıda "Aç/Kapat sayfası") |
 | `src/config.ts` / `src/agents.ts` | Config yükleme+doğrulama; graf düğümlerini/kuralları/becerileri yükler, kenarları doğrular |
 | `.claude/launch.json` | Preview: `kurmay-serve` (port 4141) |
 | `runs/*.jsonl`, `runs/sessions.json` | Koşu olay kaydı + oturum kataloğu (ikisi de .gitignore'da) |
@@ -163,7 +184,6 @@ Kodda engel yok — `--port` çalışıyor, iki servis (4242 + 4343) paralel aya
 
 ## Açık işler (kaldığımız yer — 2026-07-24)
 
-- **Working tree KİRLİ — maliyet/panel oturumu commit edilmedi**: şema küçültme (saha `hunks` kaldırıldı, analist `technical_decisions`/`steps`/`risks` kaldırıldı, `before` → çapa), `limits` (config→env), **ölçüm** (`AgentMetrics`), panel (geniş yerleşim, oturum sidebar'ı varsayılan kapalı, before/after yan yana + `markChanged` kelime vurgusu). **2026-07-24 eklenenler**: auto-grow textarea (görev + red gerekçesi) ve **hunk başına yorum → red gerekçesine birleştirme** (sadece `ui/index.html`). Son commit hâlâ `fb0bbdf md updated.`
 - **HANGİ CONFIG?** Repodaki üç config'in de `provider=anthropic`, `baseUrl=""` — hiçbiri yerele yönlenmiyor. Kullanıcı Qwen ile çalıştığını söylüyor → ya `--config` ile repo dışı bir dosya, ya ortamdan `ANTHROPIC_BASE_URL`. **`limits` `config.json`'a yazıldı; gerçekte kullanılan config o değilse ayar ulaşmıyor.** Doğrulanmadı.
 - **Bu oturumun kazançları ÖLÇÜLMEDİ** — şema küçültme ve `limits` tahminle yapıldı; `structuredOutputRetries:2` ve `apiTimeoutMs:30dk` makul başlangıç, kanıt değil. Artık ölçüm var: ilk gerçek koşuda bak.
 - **Aktif `config.json`**: analist(routes) → **saha-timi (fanout: saha repo başına, en fazla 3)** → **teftis (verdict: onay → biter, red → saha-timi)**; `jetbrains-index-mcp-server` (mcpServers) + `arama` kuralı (semantik arama tercihi, Grep/Glob fallback); **build düğümü YOK**. **Paralel inceleme (`type:"parallel"`, security/tests/style dalları) ve `stage` (`git add -A`) düğümü KALDIRILDI** (2026-10-07, kullanılamadı) — tek `teftis` geri geldi. Eski bir configte `"type":"parallel"` kalırsa `loadAppConfig` açık hata verir (tanınan tipler: agent | command | fanout).
