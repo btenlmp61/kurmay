@@ -293,7 +293,7 @@ async function main() {
         const current = cfg.model ?? "";
         const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
         if (!cfg.modelsUrl) {
-          return { current, required, models: [], error: "model listesi adresi tanımlı değil — Teşkilat şemasındaki Bağlantı bölümünden ekle" };
+          return { current, required, models: [], error: "model listesi adresi tanımlı değil — ⚙ Ayarlar sayfasındaki Bağlantı bölümünden ekle" };
         }
         try {
           return { current, required, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
