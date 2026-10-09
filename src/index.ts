@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { checkAgentMd, composeAgentMd, frontDescription, resolveAgentMd, splitAgentMd } from "./agentMd.js";
 import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
 import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
@@ -377,6 +378,41 @@ async function main() {
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, tpl);
         return { ok: true, file: rel };
+      },
+      getAgentMd: (file) => {
+        const abs = resolveAgentMd(configRoot, file);
+        if (!abs) return { ok: false, error: "yalnızca rol tanımı klasöründeki dosyalar açılabilir" };
+        if (!fs.existsSync(abs)) return { ok: false, error: `dosya bulunamadı: ${file}` };
+        const raw = fs.readFileSync(abs, "utf8");
+        const parts = splitAgentMd(raw);
+        return { ok: true, file, raw, body: parts.body, description: frontDescription(parts.front) };
+      },
+      // Persona kaydı: dosyaya yazılır, tüm ajanlar yeniden yüklenip doğrulanır
+      // (bozuk ön bölüm, eksik kural/beceri…) — hata olursa eski içerik geri konur.
+      // Başarılıysa sıradaki görev yeni talimatla başlar; çalışan koşu etkilenmez.
+      saveAgentMd: (file, edit) => {
+        const abs = resolveAgentMd(configRoot, file);
+        if (!abs) return { ok: false, error: "yalnızca rol tanımı klasöründeki dosyalar kaydedilebilir" };
+        if (!fs.existsSync(abs)) return { ok: false, error: `dosya bulunamadı: ${file}` };
+        const prev = fs.readFileSync(abs, "utf8");
+        let next: string;
+        if (edit.raw !== undefined) {
+          next = prev.includes("\r\n") ? edit.raw.replace(/\r?\n/g, "\r\n") : edit.raw.replace(/\r\n/g, "\n");
+        } else {
+          if (!edit.body?.trim()) return { ok: false, error: "talimat metni boş olamaz" };
+          next = composeAgentMd(splitAgentMd(prev), edit.body, edit.description ?? "", path.basename(abs, ".md"));
+        }
+        if (next === prev) return { ok: true };
+        const invalid = checkAgentMd(next);
+        if (invalid) return { ok: false, error: invalid };
+        try {
+          fs.writeFileSync(abs, next);
+          agents = loadAgents(cfg.workflow, configRoot, offOf(cfg));
+          return { ok: true };
+        } catch (e) {
+          fs.writeFileSync(abs, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
       },
       saveConfig: (text): string | null => {
         const prev = fs.readFileSync(resolvedConfigPath, "utf8");

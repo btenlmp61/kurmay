@@ -76,6 +76,10 @@ export interface UiServerOptions {
   saveConfig?: (raw: string) => string | null;
   /** Yeni ajan düğümü için şablon persona .md oluşturur */
   createAgentMd?: (name: string) => { ok: boolean; file?: string; error?: string };
+  /** Rol tanımı (persona .md) dosyası: ham metin + talimat metni + kısa açıklama */
+  getAgentMd?: (file: string) => { ok: boolean; file?: string; raw?: string; body?: string; description?: string; error?: string };
+  /** Rol tanımını kaydeder: ya talimat metni + açıklama (ön bölüm korunur) ya da dosyanın tamamı */
+  saveAgentMd?: (file: string, edit: { body?: string; description?: string; raw?: string }) => { ok: boolean; error?: string };
   /** Şu an kullanılan hedef proje dizini (GET /target-dir) */
   getTargetDir?: () => string;
   /** Hedef dizini değiştirir: doğrular, çalışan sürece uygular, config.json'a yazar */
@@ -119,6 +123,8 @@ export interface UiServerOptions {
  *   POST /effort      { effort: string, session? } — oturumun ya da genel akıl yürütme derinliği
  *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
+ *   GET  /agent-md?file=  { raw, body, description } — rol tanımı dosyası (.claude/agents/*.md)
+ *   POST /agent-md-save   { file, body, description } | { file, raw } — doğrulayıp kaydeder (canlı)
  *   GET  /toggles       Aç/Kapat sayfası (ui/toggles.html)
  *   GET  /toggles-data  { entry, agents[], skills[], mcpServers[] } — açık/kapalı durumları
  *   POST /toggle        { kind: "agent"|"skill"|"mcp", name, disabled } — açar/kapatır (canlı + config.json)
@@ -254,6 +260,24 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
     if (req.method === "GET" && req.url === "/config-data") {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(options.getConfigData?.() ?? { raw: "{}", rules: [], skills: [], agents: [] }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/agent-md") {
+      const r = options.getAgentMd?.(url.searchParams.get("file") ?? "") ?? { ok: false, error: "kapalı" };
+      return json(res, r.ok ? 200 : 400, r);
+    }
+
+    if (req.method === "POST" && req.url === "/agent-md-save") {
+      readJson(req, (parsed) => {
+        const file = typeof parsed?.file === "string" ? parsed.file : "";
+        if (!parsed || !file) return json(res, 400, { ok: false, error: "geçersiz istek" });
+        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+        const r = options.saveAgentMd
+          ? options.saveAgentMd(file, { body: str(parsed.body), description: str(parsed.description), raw: str(parsed.raw) })
+          : { ok: false, error: "kapalı" };
+        json(res, r.ok ? 200 : 400, r);
+      });
       return;
     }
 

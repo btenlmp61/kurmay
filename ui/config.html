@@ -66,6 +66,22 @@ input[type=text], input[type=number], select { width:100%; }
 .tybadge.entry { background:var(--tealBg); color:var(--teal); }
 #msg { font-size:13px; }
 .mono { font-family:ui-monospace,Consolas,monospace; }
+/* Rol tanımı düzenleyicisi (persona .md) — büyük pencere */
+.mdd { border:none; padding:0; width:min(1000px, calc(100vw - 32px)); max-height:calc(100vh - 32px);
+  background:var(--md-surface-container); color:var(--text); border-radius:var(--md-shape-lg); box-shadow:var(--md-elev-3); }
+.mdd::backdrop { background:rgba(0,0,0,.45); }
+.mdd-in { display:flex; flex-direction:column; gap:10px; padding:18px 22px; }
+.mdd-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:var(--md-type-title-md); }
+.mdd-h .sp, .mdd-foot .sp { flex:1; }
+.mdd-adv { display:flex; align-items:center; gap:6px; font:var(--md-type-body-md); color:var(--muted); cursor:pointer; }
+#mdText { width:100%; height:min(58vh, 640px); resize:vertical; font:13px/1.55 ui-monospace,Consolas,monospace !important; tab-size:2; white-space:pre-wrap; }
+#mdDesc { width:100%; }
+.mdd-foot { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+#mdErr { font-size:12.5px; color:var(--red); overflow-wrap:anywhere; }
+.mdfile { display:flex; gap:8px; align-items:center; }
+.mdfile .mono { flex:1; min-width:0; font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; }
+.mdfile button { min-height:auto; padding:5px 14px; font-size:13px; flex:none; }
+
 /* Dar ekran: graf + özellik paneli yan yana sığmaz, alt alta akar */
 @media (max-width:900px) {
   body { padding:12px; }
@@ -172,6 +188,23 @@ input[type=text], input[type=number], select { width:100%; }
   </div>
 </div>
 
+<dialog id="mdDlg" class="mdd" aria-labelledby="mdTitle">
+  <div class="mdd-in">
+    <div class="mdd-h">
+      <span id="mdTitle"></span><span class="sp"></span>
+      <label class="mdd-adv" title="Üst bölüm (çıktı şeması) dahil dosyanın tamamı"><input type="checkbox" id="mdRaw"> Dosyanın tamamı</label>
+    </div>
+    <div id="mdDescRow"><label class="minl" for="mdDesc">Kısa açıklama</label><input type="text" id="mdDesc" placeholder="Ajanın ne yaptığı — tek cümle"></div>
+    <div><label class="minl" for="mdText" id="mdTextLbl">Talimat metni</label><textarea id="mdText" spellcheck="false"></textarea></div>
+    <div class="fhint" id="mdHint"></div>
+    <div class="mdd-foot">
+      <span id="mdErr"></span><span class="sp"></span>
+      <button type="button" id="mdCancel">Vazgeç</button>
+      <button type="button" class="primary" id="mdSave">Kaydet</button>
+    </div>
+  </div>
+</dialog>
+
 <script>
 const $ = (id) => document.getElementById(id);
 
@@ -210,6 +243,79 @@ document.addEventListener("pointerdown", (ev) => {
 });
 
 let cfg = null, meta = { rules:[], skills:[], agents:[] }, selected = null, dirty = false;
+
+// ── Rol tanımı düzenleyicisi ─────────────────────────────────────────────────
+// Varsayılan: talimat metni + kısa açıklama (üst bölüm — ad, çıktı şeması — sunucuda
+// aynen korunur, ekranda görünmez). "Dosyanın tamamı" ile ham dosya düzenlenir.
+// Kayıt sunucuda doğrulanır; bozuksa reddedilir, dosya değişmez.
+let md = null;        // { file, title, raw, body, description }
+let mdDirty = false;
+const MD_HINT = "Kayıt hemen geçerli olur: sıradaki görev yeni talimatla başlar, çalışan görev etkilenmez. Kısayol: Ctrl+S.";
+const MD_HINT_RAW = "Dikkat: --- satırları arasındaki üst bölümde çıktı şeması var; alan adlarını ve değerlerini değiştirme, akış bunlara göre çalışır. Bozuk kayıt kabul edilmez.";
+function fillMdEditor(){
+  const raw = $("mdRaw").checked;
+  $("mdDescRow").classList.toggle("hidden", raw);
+  $("mdTextLbl").textContent = raw ? "Dosya" : "Talimat metni";
+  $("mdText").value = raw ? md.raw : md.body;
+  $("mdDesc").value = md.description || "";
+  $("mdHint").textContent = raw ? MD_HINT_RAW : MD_HINT;
+  $("mdErr").textContent = "";
+  mdDirty = false;
+}
+async function loadMd(file){
+  const r = await fetch("/agent-md?file=" + encodeURIComponent(file));
+  const d = await r.json().catch(()=>({}));
+  if (!r.ok || !d.ok) throw new Error(d.error || "dosya okunamadı");
+  return d;
+}
+async function openMdEditor(file, title){
+  if (!file) return;
+  let d;
+  try { d = await loadMd(file); }
+  catch (e){ $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(e.message)}</span>`; return; }
+  md = { file, title, raw: d.raw, body: d.body, description: d.description };
+  $("mdTitle").textContent = `Rol tanımı — ${title}`;
+  $("mdRaw").checked = false;
+  fillMdEditor();
+  $("mdDlg").showModal();
+  $("mdText").focus();
+  $("mdText").setSelectionRange(0, 0);
+  $("mdText").scrollTop = 0;
+}
+const confirmDiscard = ()=> !mdDirty || confirm("Kaydedilmemiş değişiklikler kaybolacak. Devam edilsin mi?");
+function closeMdEditor(){ if (confirmDiscard()){ mdDirty = false; $("mdDlg").close(); } }
+async function saveMd(){
+  if (!md) return;
+  const raw = $("mdRaw").checked;
+  const body = raw ? { file: md.file, raw: $("mdText").value }
+    : { file: md.file, body: $("mdText").value, description: $("mdDesc").value };
+  $("mdSave").disabled = true; $("mdErr").textContent = "";
+  try {
+    const r = await fetch("/agent-md-save", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body) });
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || "kaydedilemedi");
+    mdDirty = false;
+    $("mdDlg").close();
+    $("msg").innerHTML = `<span style="color:var(--teal)">✓ "${esc(md.title)}" rol tanımı kaydedildi — sıradaki görevde geçerli</span>`;
+  } catch (e){
+    $("mdErr").textContent = "✗ " + e.message;
+  } finally {
+    $("mdSave").disabled = false;
+  }
+}
+$("mdText").addEventListener("input", ()=>{ mdDirty = true; });
+$("mdDesc").addEventListener("input", ()=>{ mdDirty = true; });
+$("mdRaw").addEventListener("change", async ()=>{
+  if (!confirmDiscard()){ $("mdRaw").checked = !$("mdRaw").checked; return; }
+  try { const d = await loadMd(md.file); Object.assign(md, { raw: d.raw, body: d.body, description: d.description }); } catch {}
+  fillMdEditor();
+});
+$("mdSave").addEventListener("click", saveMd);
+$("mdCancel").addEventListener("click", closeMdEditor);
+$("mdDlg").addEventListener("cancel", (ev)=>{ ev.preventDefault(); closeMdEditor(); }); // Esc
+$("mdDlg").addEventListener("keydown", (ev)=>{
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s"){ ev.preventDefault(); saveMd(); }
+});
 
 // Görünen adlar — config anahtarları (analist, saha…) teknik kalır, ekranda tam Türkçe ad
 const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
@@ -571,10 +677,14 @@ function render(){
     return;
   }
 
-  // agent: rol tanımı dosyası (salt-okunur)
-  const f = document.createElement("input"); f.type="text"; f.value = n.file||""; f.disabled = true;
-  panel.appendChild(field("Rol tanımı dosyası (salt okunur)", f,
-    "Ajanın kim olduğunu ve nasıl davranacağını anlatan talimat dosyası."));
+  // agent: rol tanımı dosyası — "Düzenle" büyük düzenleyiciyi açar (anında kaydedilir)
+  const fWrap = document.createElement("div"); fWrap.className = "mdfile";
+  const fName = document.createElement("span"); fName.className = "mono"; fName.textContent = n.file || "";
+  const fBtn = document.createElement("button"); fBtn.type = "button"; fBtn.textContent = "✎ Düzenle";
+  fBtn.addEventListener("click", ()=> openMdEditor(n.file, nodeName(key)));
+  fWrap.append(fName, fBtn);
+  panel.appendChild(field("Rol tanımı", fWrap,
+    "Ajanın kim olduğunu ve nasıl davranacağını anlatan talimat. Kayıt hemen geçerli olur, üstteki Kaydet'i beklemez."));
 
   // requiresUserApproval
   const chk = document.createElement("input"); chk.type="checkbox"; chk.checked = !!n.requiresUserApproval;
