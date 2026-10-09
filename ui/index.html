@@ -4,15 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kurmay</title>
-<link rel="icon" href="/logo.svg">
+<link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
 <script>
 // Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
 // bir an için yanlış gelip (flash) sonra düzelir.
 (function () {
   try {
-    var t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); // eski ad: yaver
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    var t;
+    try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
+    // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
+    if (t === "dark") t = "teskilat";
+    if (t === "light") t = "evrak";
+    if (t !== "teskilat" && t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "teskilat" : "evrak";
+    }
+    document.documentElement.dataset.theme = t;
   } catch (e) {}
 })();
 </script>
@@ -20,24 +27,6 @@
 /* ── "Ekip sohbeti" yerleşimi: solda oturumlar, ortada ekiple sohbet (ajan
    mesajları + kartlar + yazma kutusu), sağda koşu özeti (repolar, değişen
    dosyalar, oturum bilgisi). Orta sütun ekran boyu kadar, kendi içinde kayar. */
-:root {
-  /* Ajan rolleri — her ekip üyesinin kendi rengi/avatarı (mesaj, hat, sidebar) */
-  --arch:#6A4BDB; --archBg:#ECE6FF; --dev:#1F7AE0; --devBg:#E1EEFF;
-  --rev:#12925F; --revBg:#D9F5E8; --oth:#B0601F; --othBg:#FFEBDC;
-  --bubble:var(--md-surface-container-lowest); --chatBg:var(--md-surface);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --arch:#C9BBFF; --archBg:#3A2D6E; --dev:#8CC4FF; --devBg:#173A60;
-    --rev:#7FDDB2; --revBg:#174331; --oth:#FFB98C; --othBg:#4B2C15;
-    --bubble:var(--md-surface-container); --chatBg:var(--md-surface-container-lowest);
-  }
-}
-:root[data-theme="dark"] {
-  --arch:#C9BBFF; --archBg:#3A2D6E; --dev:#8CC4FF; --devBg:#173A60;
-  --rev:#7FDDB2; --revBg:#174331; --oth:#FFB98C; --othBg:#4B2C15;
-  --bubble:var(--md-surface-container); --chatBg:var(--md-surface-container-lowest);
-}
 body { overflow:hidden; }
 .layout { display:grid; grid-template-columns:272px minmax(0,1fr) 320px; height:100vh; }
 .main { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--chatBg);
@@ -50,8 +39,7 @@ body { overflow:hidden; }
 .sidebar.collapsed .sidebar-body, .sidebar.collapsed .brand-name { display:none; }
 .layout:has(.sidebar.collapsed) { grid-template-columns:64px minmax(0,1fr) 320px; }
 .sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 4px 18px; }
-.sidebar-head .brand { font:800 18px system-ui,"Segoe UI",sans-serif; }
-.sidebar-head .brand-logo { width:34px; height:34px; padding:5px; border-radius:11px; background:var(--md-surface-container-lowest); box-shadow:var(--md-elev-1); }
+.sidebar-head .brand { font:800 18px var(--font-ui); }
 .sidebar-head button { padding:2px 9px; font-size:13px; min-height:auto; }
 .side-label { margin:18px 8px 8px; }
 .sess { display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:14px; cursor:pointer; margin-bottom:3px; position:relative; overflow:hidden; transition:background-color var(--md-motion), box-shadow var(--md-motion); }
@@ -92,7 +80,7 @@ body { overflow:hidden; }
 .chat-head { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--border);
   background:color-mix(in srgb, var(--md-surface-container-lowest) 78%, transparent); backdrop-filter:blur(8px); }
 .ch-title { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 260px; }
-.ch-title .task { font:700 17px/1.3 system-ui,"Segoe UI",sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.ch-title .task { font:700 17px/1.3 var(--font-ui); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .pill.soft { background:var(--md-surface-container-high); color:var(--muted); }
 .pill.soft:empty { display:none; }
 #btnCancel { padding:6px 16px; min-height:36px; }
@@ -104,7 +92,7 @@ body { overflow:hidden; }
 .pipe .arrow { color:var(--muted); font-size:13px; }
 .node.mem { display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px; border:1px solid var(--border);
   background:var(--md-surface-container-lowest); transition:border-color var(--md-motion), box-shadow var(--md-motion), opacity var(--md-motion); }
-.node.mem .nm { font:600 12.5px system-ui,"Segoe UI",sans-serif; white-space:nowrap; }
+.node.mem .nm { font:600 12.5px var(--font-ui); white-space:nowrap; }
 .node.mem .sub { font-size:11px; color:var(--muted); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .node.mem.pending { opacity:.6; }
 .node.mem.running { border-color:var(--md-primary); box-shadow:0 0 0 3px color-mix(in srgb, var(--md-primary) 16%, transparent); }
@@ -114,7 +102,7 @@ body { overflow:hidden; }
 .node.mem.disabled { opacity:.45; border-style:dashed; }
 .node.mem.disabled .nm { text-decoration:line-through; }
 .node.group { display:flex; align-items:center; gap:4px; padding:3px 4px 3px 10px; border-radius:999px; border:1px dashed var(--border); background:var(--md-surface-container-low); }
-.node.group > .glabel { font:600 11px system-ui,"Segoe UI",sans-serif; color:var(--muted); margin-right:4px; white-space:nowrap; }
+.node.group > .glabel { font:600 11px var(--font-ui); color:var(--muted); margin-right:4px; white-space:nowrap; }
 .node.group > .node.mem { padding:2px 10px 2px 2px; }
 /* Grup içindeki repo kopyaları kompakt: durum yazı yerine kenar rengiyle (ayrıntısı title'da) */
 .node.group > .node.mem .sub { display:none; }
@@ -137,10 +125,10 @@ body { overflow:hidden; }
 #stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
 .msg { display:flex; gap:12px; max-width:min(920px, 94%); align-items:flex-start; }
 .bub { flex:1; min-width:0; background:var(--bubble); border:1px solid var(--border); border-radius:6px 20px 20px 20px; padding:11px 16px 12px; box-shadow:0 2px 12px color-mix(in srgb, var(--md-primary) 6%, transparent); }
-.bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px system-ui,"Segoe UI",sans-serif; margin-bottom:3px; }
-.bub .who small { font:400 11.5px system-ui,"Segoe UI",sans-serif; color:var(--muted); }
+.bub .who { display:flex; align-items:center; gap:8px; font:700 13.5px var(--font-ui); margin-bottom:3px; }
+.bub .who small { font:400 11.5px var(--font-ui); color:var(--muted); }
 .bub .who .typing { color:var(--md-primary); }
-.bub .who .zone { font:600 11px system-ui,"Segoe UI",sans-serif; padding:2px 9px; border-radius:999px; background:var(--devBg); color:var(--dev); }
+.bub .who .zone { font:600 11px var(--font-ui); padding:2px 9px; border-radius:999px; background:var(--devBg); color:var(--dev); }
 .bub .body > * + * { margin-top:8px; }
 .bub .txt { font-size:14px; line-height:1.6; }
 .bub .txt.md { max-width:none; }
@@ -190,7 +178,7 @@ body { overflow:hidden; }
 .rail-tools { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-bottom:14px; }
 .rail-tools a { font-size:13px; color:var(--blue); text-decoration:none; font-weight:600; }
 .rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
-.rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px system-ui,"Segoe UI",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
 .rbox .empty { font-size:12.5px; color:var(--muted); }
 .kv { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; margin:7px 0; min-width:0; }
@@ -208,7 +196,7 @@ body { overflow:hidden; }
 .ftag { font:700 10px system-ui,sans-serif; padding:2px 7px; border-radius:999px; flex:none; }
 .ftag.M { background:var(--amberBg); color:var(--amber); } .ftag.W { background:var(--tealBg); color:var(--teal); }
 .rrow { display:flex; align-items:center; gap:10px; font:12.5px ui-monospace,Consolas,monospace; margin:8px 0; }
-.rrow .nm { width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:system-ui,"Segoe UI",sans-serif; }
+.rrow .nm { width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-ui); }
 .prog { flex:1; height:7px; border-radius:9px; background:var(--md-surface-container-high); overflow:hidden; }
 .prog > span { display:block; height:100%; border-radius:9px; background:linear-gradient(90deg, var(--dev), var(--arch)); transition:width .4s; }
 .prog.running > span { width:55%; animation:indet 1.4s ease-in-out infinite alternate; }
@@ -217,6 +205,58 @@ body { overflow:hidden; }
 .prog.pending > span { width:0; }
 @keyframes indet { from { width:20%; } to { width:80%; } }
 .grid { display:contents; }
+.rail-tools select { min-height:34px; padding:4px 10px; font-size:13px; }
+
+/* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
+/* Teşkilat: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
+[data-theme="teskilat"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
+[data-theme="teskilat"] .chat-head { border-top:3px solid var(--md-primary); }
+[data-theme="teskilat"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
+[data-theme="teskilat"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
+[data-theme="teskilat"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
+[data-theme="teskilat"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
+[data-theme="teskilat"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
+[data-theme="teskilat"] :is(.label, .rbox h4) { letter-spacing:.14em; }
+[data-theme="teskilat"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
+[data-theme="teskilat"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
+[data-theme="teskilat"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
+
+/* Gizli Evrak: manila kâğıt, daktilo, bordo mürekkep; dosya sekmeleri, "GİZLİ" şeridi, onay mührü */
+[data-theme="evrak"] .main { background:var(--chatBg); }
+[data-theme="evrak"] .chat-head { border-top:22px solid var(--md-primary); position:relative; }
+[data-theme="evrak"] .chat-head::before { content:"GİZLİ  ·  HİZMETE ÖZEL  ·  KURMAY HAREKÂT DOSYASI"; position:absolute; top:-19px; left:24px; right:24px;
+  color:var(--md-on-primary); font:700 12px var(--font-ui); letter-spacing:.25em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+[data-theme="evrak"] .ch-title .task { font-weight:700; }
+[data-theme="evrak"] :is(.bub, #cards > .card) { border-radius:2px; box-shadow:0 1px 1px rgba(0,0,0,.08), 0 8px 18px rgba(60,40,10,.10); }
+[data-theme="evrak"] :is(button, .pill, .node.mem, .node.group, .tchip, .rbox, #taskCard, .av, .fchip, .ftag, .logfilter) { border-radius:3px; }
+[data-theme="evrak"] .sidebar { background:#D8C79A; }
+[data-theme="evrak"] .rail { background:#DED6C1; }
+[data-theme="evrak"] .sess { border-radius:2px 12px 0 0; background:#E8DAB2; border:1px solid #C9B47E; }
+[data-theme="evrak"] .sess:hover { background:#F0E4C2; }
+[data-theme="evrak"] .sess.active { background:var(--md-surface-container-lowest); box-shadow:0 3px 0 var(--md-primary); }
+[data-theme="evrak"] .sess.sess-new { background:var(--md-primary); color:var(--md-on-primary); border-color:var(--md-primary); border-radius:3px; }
+[data-theme="evrak"] #approval { position:relative; }
+[data-theme="evrak"] #approval::after { content:"ONAY BEKLİYOR"; position:absolute; top:20px; right:26px; transform:rotate(-8deg); pointer-events:none;
+  border:3px double var(--md-error); color:var(--md-error); padding:4px 12px; font:800 15px/1 var(--font-ui); letter-spacing:.2em; opacity:.85; }
+[data-theme="evrak"] #stream > .me { background:var(--md-surface-container-lowest); color:var(--text); border:1px solid var(--md-outline-variant);
+  border-left:4px solid var(--md-primary); border-radius:2px; box-shadow:none; }
+[data-theme="evrak"] #stream > .me::before { content:"EMİR: "; font-weight:700; color:var(--md-primary); }
+
+/* Radar: gece görüşü; fosfor yeşili, tarama çizgileri, terminal dili */
+[data-theme="radar"] .main { background:radial-gradient(ellipse at 50% 30%, rgba(75,227,138,.07), transparent 65%),
+  repeating-linear-gradient(0deg, rgba(75,227,138,.035) 0 1px, transparent 1px 3px), var(--chatBg); }
+[data-theme="radar"] :is(.bub, #cards > .card, .rbox, #taskCard, .sess, .node.mem, .node.group, button, .pill, .tchip, .fchip, .av, .ftag, .term, .logfilter, #stream > .me) { border-radius:2px; }
+[data-theme="radar"] :is(.bub, #cards > .card) { box-shadow:0 0 0 1px rgba(75,227,138,.10), 0 0 18px rgba(75,227,138,.05); }
+[data-theme="radar"] :is(.bub .who, .ch-title .task, .sidebar-head .brand) { text-transform:uppercase; letter-spacing:.1em; text-shadow:0 0 8px rgba(75,227,138,.45); }
+[data-theme="radar"] :is(.bub .who small, .bub .who .zone) { text-transform:none; letter-spacing:0; text-shadow:none; }
+[data-theme="radar"] .av { box-shadow:0 0 0 1px currentColor inset; }
+[data-theme="radar"] #stream > .me { background:transparent; color:var(--text); border:1px solid var(--md-primary); box-shadow:none; }
+[data-theme="radar"] #stream > .me::before { content:"> "; color:var(--md-primary); }
+[data-theme="radar"] #stream > .sys { background:transparent; border:none; align-self:flex-start; text-align:left; padding:0; }
+[data-theme="radar"] #stream > .sys::before { content:"[SİSTEM] "; color:var(--md-outline); }
+[data-theme="radar"] button { text-transform:uppercase; letter-spacing:.08em; }
+[data-theme="radar"] .sess.active { box-shadow:0 0 0 1px var(--md-primary) inset; background:var(--md-surface-container); }
+[data-theme="radar"] .term { background:#020503; border:1px solid var(--md-outline-variant); }
 /* Dar ekran: önce sağ sütun sohbetin altına iner, telefonda her şey tek sütun */
 @media (max-width:1240px) {
   body { overflow:auto; }
@@ -341,7 +381,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <div class="layout">
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-head">
-    <span class="brand"><img class="brand-logo" src="/logo.svg" alt=""><span class="brand-name">Kurmay</span></span>
+    <span class="brand"><span class="brand-name">Kurmay</span></span>
     <button id="btnSidebar" title="Aç / kapat">⟨</button>
   </div>
   <div class="sidebar-body" id="sidebarBody">
@@ -464,7 +504,11 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <aside class="rail">
   <div class="rail-tools">
     <a href="/config">⚙ Config</a>
-    <button id="btnTheme" class="icon" title="Tema değiştir"></button>
+    <select id="themeSel" title="Tema">
+      <option value="teskilat">◆ Teşkilat</option>
+      <option value="evrak">▤ Gizli Evrak</option>
+      <option value="radar">◎ Radar</option>
+    </select>
   </div>
   <div class="rbox hidden" id="repoBox">
     <h4>Mıntıkalar <span id="repoSum"></span></h4>
@@ -493,25 +537,14 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <script>
 const $ = (id) => document.getElementById(id);
 
-// Açık/koyu tema geçişi: <html data-theme> üstünde tutulur, localStorage'a
-// yazılır. Değer yoksa OS tercihi (theme.css'teki prefers-color-scheme) geçerli.
-function currentTheme() {
-  const explicit = document.documentElement.dataset.theme;
-  if (explicit === "light" || explicit === "dark") return explicit;
-  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-function renderThemeBtn() {
-  const dark = currentTheme() === "dark";
-  $("btnTheme").textContent = dark ? "☀️" : "🌙";
-  $("btnTheme").title = dark ? "Açık moda geç" : "Koyu moda geç";
-}
-$("btnTheme").addEventListener("click", () => {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("kurmay-theme", next); } catch (e) {}
-  renderThemeBtn();
+// Tema: Teşkilat (koyu) · Gizli Evrak (açık) · Radar (gece görüşü). Seçim <html
+// data-theme>'e uygulanır ve localStorage'a yazılır (sayfa başındaki betik okur).
+$("themeSel").value = document.documentElement.dataset.theme;
+$("themeSel").addEventListener("change", () => {
+  const t = $("themeSel").value;
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("kurmay-theme", t); } catch (e) {}
 });
-renderThemeBtn();
 
 let agents = [], states = {}, finished = false;
 // Fanout düğümü → repo kopyalarının anahtarları ("<ajan>@<repo>"); fanout_started'da dolar

@@ -54,7 +54,6 @@ export interface UiServerOptions {
  *
  *   GET  /          panel sayfası (ui/index.html)
  *   GET  /theme.css paylaşılan Material 3 tema (ui/theme.css)
- *   GET  /logo.svg  marka logosu — favicon + üst şerit (ui/logo.svg)
  *   GET  /events?session=ID  SSE: o oturumun geçmişi (diskteki kayıtlar dahil) + canlı akışı
  *   GET  /lobby     SSE: oturum listesi + durumları, her değişiklikte tam liste
  *   POST /approval  { session, approved, comment?, runAt? } — o oturumun bekleyen onayını çözer
@@ -74,7 +73,6 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
   const themeCssPath = path.join(uiDir, "theme.css");
-  const logoPath = path.join(uiDir, "logo.svg");
   const sseClients = new Set<http.ServerResponse>();
   const json = (res: http.ServerResponse, code: number, payload: unknown) => {
     res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
@@ -117,12 +115,6 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
     if (req.method === "GET" && req.url === "/theme.css") {
       res.writeHead(200, { "content-type": "text/css; charset=utf-8" });
       res.end(fs.readFileSync(themeCssPath));
-      return;
-    }
-
-    if (req.method === "GET" && req.url === "/logo.svg") {
-      res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8" });
-      res.end(fs.readFileSync(logoPath));
       return;
     }
 

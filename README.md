@@ -1,11 +1,8 @@
-<img src="ui/logo.svg" width="76" alt="">
-
 # Kurmay
 
 *Kurmay: harekâtı planlayan, sahadaki birlikleri koordine eden heyet.* Burada da öyle:
 **Analist** kodu okuyup harekât planını çıkarır, **Saha Timi** planı mıntıkalarda (repolarda)
-uygular — her mıntıkada kuş kod adlı bir saha ajanı —, **Teftiş** işi denetler. Logodaki
-kenetlenmiş eller ekibin dayanışmasını anlatır.
+uygular — her mıntıkada kuş kod adlı bir saha ajanı —, **Teftiş** işi denetler.
 
 Md dosyalarıyla tanımlanan ajanları (architect → developer ⇄ reviewer) **deterministik** bir iş akışıyla koordine eden TypeScript orkestratörü.
 
