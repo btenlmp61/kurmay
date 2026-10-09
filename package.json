@@ -1,7 +1,7 @@
 {
   "name": "kurmay",
   "version": "0.1.0",
-  "description": "Md tanımlı ajanları (architect/developer/reviewer) deterministik bir iş akışıyla koordine eden orkestratör",
+  "description": "Md tanımlı ajanları (Analist / Saha Timi / Teftiş) deterministik bir iş akışıyla koordine eden orkestratör",
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
