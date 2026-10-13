@@ -187,6 +187,20 @@ body { overflow:hidden; }
 .rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
 .rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
+/* Eklenti durum ışıkları — renkler temadan bağımsız (yeşil/kırmızı/sarı her temada aynı anlam) */
+.mcp-row { display:flex; align-items:center; gap:9px; padding:4px 0; font-size:12.5px; min-width:0; }
+.mcp-row b { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.mcp-row small { margin-left:auto; color:var(--muted); white-space:nowrap; font-size:11.5px; }
+.led { width:9px; height:9px; border-radius:50%; flex:none; background:var(--muted); opacity:.55; }
+.led.on { background:#2ecc71; opacity:1; box-shadow:0 0 6px #2ecc71; }
+.led.err { background:#e5484d; opacity:1; box-shadow:0 0 6px #e5484d; }
+.led.wait { background:#f5a524; opacity:1; box-shadow:0 0 6px #f5a524; animation:led-yanip 1.2s ease-in-out infinite; }
+.led.off { background:transparent; border:1.5px solid var(--muted); }
+@keyframes led-yanip { 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) { .led.wait { animation:none; } }
+#mcpProbe { min-height:auto; padding:0 6px; font-size:13px; line-height:1.4; background:none; border:none; color:var(--muted); cursor:pointer; }
+#mcpProbe:hover { color:var(--text); }
+#mcpProbe:disabled { cursor:wait; opacity:.5; }
 .rbox .empty { font-size:12.5px; color:var(--muted); }
 .kv { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; margin:7px 0; min-width:0; }
 .kv > span:first-child { color:var(--muted); flex:none; }
@@ -560,6 +574,10 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
       <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
       <button class="tsw" data-t="radar" aria-label="Radar"></button>
     </div>
+  </div>
+  <div class="rbox hidden" id="mcpBox">
+    <h4>Eklentiler <button id="mcpProbe" title="Şimdi yokla — model çağrısı yapmaz">↻</button></h4>
+    <div id="mcpList"></div>
   </div>
   <div class="rbox hidden" id="repoBox">
     <h4>Mıntıkalar <span id="repoSum"></span></h4>
@@ -1475,6 +1493,7 @@ function handleEvent(e) {
         mcpShown[s.name] = s.status;
         const ok = s.status === "connected";
         const ad = MCP_STATUS_NAMES[s.status] || s.status;
+        if (!replaying) loadMcpStatus(); // ışık da güncellensin
         addLog(e.ts, `${ok ? "🔌" : "⚠"} eklenti <b>${esc(s.name)}</b>: ${esc(ad)}` +
           `${s.tools !== undefined ? ` (${s.tools} araç)` : ""}` +
           `${s.error ? ` — ${esc(trunc(s.error, 200))}` : ""}` +
@@ -2220,6 +2239,41 @@ $("effortSel").addEventListener("change", async () => {
   }
 });
 loadModels();
+
+// Eklenti durum ışıkları: servisin açılış yoklaması + ajan koşularından gelen son durum.
+// ↻ model çağrısı yapmadan yeniden yoklar. Yoklama sürerken kısa aralıkla tazelenir.
+const MCP_LED = { connected:"on", failed:"err", "needs-auth":"wait", pending:"wait", disabled:"off" };
+const MCP_SHORT = { connected:"bağlı", failed:"bağlanamadı", "needs-auth":"kimlik istiyor", pending:"bağlanıyor", disabled:"kapalı", unknown:"denenmedi" };
+let mcpTimer = null;
+function renderMcp(data) {
+  const list = data.servers || [];
+  $("mcpBox").classList.toggle("hidden", list.length === 0);
+  $("mcpProbe").disabled = !!data.probing;
+  $("mcpList").innerHTML = list.map((s) => {
+    const led = data.probing && s.status !== "disabled" ? "wait" : (MCP_LED[s.status] || "");
+    const durum = data.probing && s.status !== "disabled" ? "yoklanıyor" : (MCP_SHORT[s.status] || s.status);
+    const ipucu = [
+      `${s.name}: ${MCP_STATUS_NAMES[s.status] || durum}`,
+      s.tools !== undefined ? `${s.tools} araç` : "",
+      s.error ? `sebep: ${s.error}` : "",
+      s.at ? `son bilgi: ${time(s.at)} (${s.source === "ajan" ? "ajan koşusu" : "yoklama"})` : "",
+      s.status === "unknown" ? "henüz denenmedi — ↻ ile yokla" : "",
+    ].filter(Boolean).join("\n");
+    return `<div class="mcp-row" title="${esc(ipucu)}"><span class="led ${led}"></span><b>${esc(s.name)}</b><small>${esc(durum)}</small></div>`;
+  }).join("") + (data.error ? `<div class="mcp-row" style="color:var(--red)">yoklama yapılamadı: ${esc(trunc(data.error, 120))}</div>` : "");
+  clearTimeout(mcpTimer);
+  mcpTimer = setTimeout(loadMcpStatus, data.probing ? 1000 : 20000);
+}
+async function loadMcpStatus() {
+  try { renderMcp(await (await fetch("/mcp-status")).json()); }
+  catch { clearTimeout(mcpTimer); mcpTimer = setTimeout(loadMcpStatus, 20000); }
+}
+$("mcpProbe").addEventListener("click", async () => {
+  renderMcp({ ...(await (await fetch("/mcp-status")).json()), probing: true });
+  try { renderMcp(await (await fetch("/mcp-probe", { method: "POST" })).json()); }
+  catch { loadMcpStatus(); }
+});
+loadMcpStatus();
 
 // Akış çipleri: ana yoldaki düğümler sırayla; tıklayınca kapanır/açılır. Kalıcıdır
 // (config.json'a yazılır) — ör. küçük işler için analisti kapatıp doğrudan saha timine ver.
