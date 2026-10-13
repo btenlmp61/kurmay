@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-theme="evrak">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,23 +7,6 @@
 <link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
 <link rel="stylesheet" href="/theme.css">
 <script src="/dirpicker.js" defer></script>
-<script>
-// Kayıtlı tema tercihini stil hesaplanmadan önce uygula — aksi halde açık/koyu
-// bir an için yanlış gelip (flash) sonra düzelir.
-(function () {
-  try {
-    var t;
-    try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
-    // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
-    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
-    if (t === "light") t = "evrak";
-    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
-      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
-    }
-    document.documentElement.dataset.theme = t;
-  } catch (e) {}
-})();
-</script>
 <style>
 /* ── "Ekip sohbeti" yerleşimi: solda oturumlar, ortada ekiple sohbet (ajan
    mesajları + kartlar + yazma kutusu), sağda koşu özeti (repolar, değişen
@@ -189,10 +172,7 @@ body { overflow:hidden; }
 .rail-tools .tool svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .rail-tools .tool:hover, .rail-tools .tool:focus-visible { border-color:var(--md-primary); color:var(--md-primary);
   background:color-mix(in srgb, var(--md-primary) 12%, var(--md-surface-container-lowest)); outline:none; }
-.rail-tools .tool-sep { width:1px; height:22px; background:var(--border); margin:0 2px; }
-[data-theme="lacivert"] .rail-tools .tool { border-radius:4px; }
 [data-theme="evrak"] .rail-tools .tool { border-radius:3px; }
-[data-theme="radar"] .rail-tools .tool { border-radius:2px; }
 .rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
 .rbox h4 { display:flex; justify-content:space-between; gap:8px; margin:0 0 10px; font:700 11.5px var(--font-ui); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
 .rbox h4 span { text-transform:none; letter-spacing:0; font-family:ui-monospace,Consolas,monospace; }
@@ -236,18 +216,6 @@ body { overflow:hidden; }
 .grid { display:contents; }
 
 /* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
-/* Lacivert: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
-[data-theme="lacivert"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
-[data-theme="lacivert"] .chat-head { border-top:3px solid var(--md-primary); }
-[data-theme="lacivert"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
-[data-theme="lacivert"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
-[data-theme="lacivert"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
-[data-theme="lacivert"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
-[data-theme="lacivert"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
-[data-theme="lacivert"] :is(.label, .rbox h4) { letter-spacing:.14em; }
-[data-theme="lacivert"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
-[data-theme="lacivert"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
-[data-theme="lacivert"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
 
 /* Gizli Evrak: manila kâğıt, daktilo, bordo mürekkep; dosya sekmeleri, onay mührü */
 [data-theme="evrak"] .main { background:var(--chatBg); }
@@ -308,21 +276,6 @@ body { overflow:hidden; }
   border-left:4px solid var(--md-primary); border-radius:2px; box-shadow:none; }
 [data-theme="evrak"] #stream > .me::before { content:"EMİR: "; font-weight:700; color:var(--md-primary); }
 
-/* Radar: gece görüşü; fosfor yeşili, tarama çizgileri, terminal dili */
-[data-theme="radar"] .main { background:radial-gradient(ellipse at 50% 30%, rgba(75,227,138,.07), transparent 65%),
-  repeating-linear-gradient(0deg, rgba(75,227,138,.035) 0 1px, transparent 1px 3px), var(--chatBg); }
-[data-theme="radar"] :is(.bub, #cards > .card, .rbox, #taskCard, .sess, .node.mem, .node.group, button, .pill, .tchip, .fchip, .av, .ftag, .term, .logfilter, #stream > .me) { border-radius:2px; }
-[data-theme="radar"] :is(.bub, #cards > .card) { box-shadow:0 0 0 1px rgba(75,227,138,.10), 0 0 18px rgba(75,227,138,.05); }
-[data-theme="radar"] :is(.bub .who, .ch-title .task, .sidebar-head .brand) { text-transform:uppercase; letter-spacing:.1em; text-shadow:0 0 8px rgba(75,227,138,.45); }
-[data-theme="radar"] :is(.bub .who small, .bub .who .zone) { text-transform:none; letter-spacing:0; text-shadow:none; }
-[data-theme="radar"] .av { box-shadow:0 0 0 1px currentColor inset; }
-[data-theme="radar"] #stream > .me { background:transparent; color:var(--text); border:1px solid var(--md-primary); box-shadow:none; }
-[data-theme="radar"] #stream > .me::before { content:"> "; color:var(--md-primary); }
-[data-theme="radar"] #stream > .sys { background:transparent; border:none; align-self:flex-start; text-align:left; padding:0; }
-[data-theme="radar"] #stream > .sys::before { content:"[SİSTEM] "; color:var(--md-outline); }
-[data-theme="radar"] button { text-transform:uppercase; letter-spacing:.08em; }
-[data-theme="radar"] .sess.active { box-shadow:0 0 0 1px var(--md-primary) inset; background:var(--md-surface-container); }
-[data-theme="radar"] .term { background:#020503; border:1px solid var(--md-outline-variant); }
 /* Dar ekran: önce sağ sütun sohbetin altına iner, telefonda her şey tek sütun */
 @media (max-width:1240px) {
   body { overflow:auto; }
@@ -578,12 +531,6 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   <div class="rail-tools">
     <a class="tool" href="/toggles" title="Aç / Kapat" aria-label="Aç / Kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="6"/><circle cx="16" cy="12" r="2.5"/></svg></a>
     <a class="tool" href="/config" title="Ayarlar" aria-label="Ayarlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
-    <span class="tool-sep" aria-hidden="true"></span>
-    <div class="tswitch" role="radiogroup" aria-label="Tema">
-      <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
-      <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
-      <button class="tsw" data-t="radar" aria-label="Radar"></button>
-    </div>
   </div>
   <div class="rbox hidden" id="mcpBox">
     <h4>Eklentiler <button id="mcpProbe" title="Şimdi yokla — model çağrısı yapmaz">↻</button></h4>
@@ -615,20 +562,6 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 
 <script>
 const $ = (id) => document.getElementById(id);
-
-// Tema: yalnızca renk örnekleri (adlar görünmez). Seçim <html data-theme>'e uygulanır,
-// localStorage'a yazılır (sayfa başındaki betik okur; panel ve şema ortak)
-function applyThemeUI() {
-  for (const b of document.querySelectorAll(".tsw")) b.classList.toggle("on", b.dataset.t === document.documentElement.dataset.theme);
-}
-for (const b of document.querySelectorAll(".tsw")) {
-  b.addEventListener("click", () => {
-    document.documentElement.dataset.theme = b.dataset.t;
-    try { localStorage.setItem("kurmay-theme", b.dataset.t); } catch (e) {}
-    applyThemeUI();
-  });
-}
-applyThemeUI();
 
 let agents = [], states = {}, finished = false;
 // Fanout düğümü → repo kopyalarının anahtarları ("<ajan>@<repo>"); fanout_started'da dolar
