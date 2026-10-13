@@ -650,6 +650,7 @@ const ROLES = {
 const CODE_NAMES = ["Atmaca", "Doğan", "Şahin", "Kartal", "Kerkenez", "Turna", "Martı", "Leylek",
   "Ebabil", "Karabatak", "Toygar", "Çaylak", "Kumru", "Saka", "Serçe", "Sığırcık"];
 let codeNames = {};           // kopya anahtarı ("saha@order") → kod adı
+let mcpShown = {};            // eklenti adı → bu harekâtta son gösterilen durum (her ajanda tekrarlamasın)
 function assignCodeName(key) {
   if (codeNames[key]) return codeNames[key];
   const repo = key.slice(key.indexOf("@") + 1);
@@ -1388,6 +1389,7 @@ function handleEvent(e) {
   switch (e.type) {
     case "workflow_started":
       agents = e.agents;
+      mcpShown = {};
       groups = {};
       fanoutMeta = {};
       scheduleCancelled = false;
@@ -1464,6 +1466,20 @@ function handleEvent(e) {
       const nasil = e.resumed ? "oturum sürdürülecek" : "oturum baştan";
       bubbleNote(bubbleOf(e.agent, e.ts),
         `🔌 bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`, "warn");
+      break;
+    }
+    case "mcp_status": {
+      // Eklenti bağlantısı: harekâtta ilk kez ya da durum değişince yazılır; sorun hep görünür
+      for (const s of e.servers) {
+        if (mcpShown[s.name] === s.status) continue;
+        mcpShown[s.name] = s.status;
+        const ok = s.status === "connected";
+        const ad = MCP_STATUS_NAMES[s.status] || s.status;
+        addLog(e.ts, `${ok ? "🔌" : "⚠"} eklenti <b>${esc(s.name)}</b>: ${esc(ad)}` +
+          `${s.tools !== undefined ? ` (${s.tools} araç)` : ""}` +
+          `${s.error ? ` — ${esc(trunc(s.error, 200))}` : ""}` +
+          `${ok ? "" : " — ajan bu eklentinin araçları olmadan çalışıyor"}`, ok ? "ok" : "err");
+      }
       break;
     }
     case "tool_used":
@@ -2156,6 +2172,7 @@ $("modelSel").addEventListener("change", async () => {
 // Liste sabit — Claude Code bu beşinin dışındaki değerleri sessizce "yüksek" yapar;
 // "kapalı" düşünmeyi tamamen kapatır. Ajan düğümüne özel ayar (Ayarlar) bunu ezer.
 const EFFORT_LEVELS = ["off", "low", "medium", "high", "xhigh", "max"];
+const MCP_STATUS_NAMES = { connected:"bağlandı", failed:"bağlanamadı", "needs-auth":"kimlik doğrulama istiyor", pending:"bağlanıyor (yanıt yok)", disabled:"kapalı" };
 const EFFORT_NAMES = { off:"kapalı", low:"düşük", medium:"orta", high:"yüksek", xhigh:"çok yüksek", max:"en yüksek" };
 let globalEffort = "", currentEffort = "";
 function viewEffort() {

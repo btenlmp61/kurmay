@@ -1,5 +1,5 @@
 import path from "node:path";
-import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
@@ -70,6 +70,52 @@ const SCHEMA_FAILED = Symbol("schema_failed");
  */
 interface SessionHolder {
   id?: string;
+  /** Eklenti (MCP) durumu bu ajan koşusunda bir kez bildirilir — yeniden denemelerde tekrarlanmaz */
+  mcpReported?: boolean;
+}
+
+/** Eklenti bağlantı durumlarının ekrandaki adı */
+const MCP_STATUS_NAMES: Record<string, string> = {
+  connected: "bağlandı",
+  failed: "bağlanamadı",
+  "needs-auth": "kimlik doğrulama istiyor",
+  pending: "bağlanıyor (yanıt yok)",
+  disabled: "kapalı",
+};
+
+/**
+ * Eklentilerin bağlantı durumunu bildirir. İlk mesajda (init) sunucular çoğunlukla
+ * "pending" gelir — araçlar ertelenmiş yüklenir — bu yüzden durum, sonuç netleşene
+ * kadar (en fazla ~30 sn) SDK'ye sorulur. Ajanın akışını bekletmez.
+ */
+async function reportMcpStatus(
+  iterator: { mcpServerStatus(): Promise<McpServerStatus[]> },
+  agentKey: string,
+  bus: EventBus,
+  isDone: () => boolean,
+): Promise<void> {
+  let list: McpServerStatus[] = [];
+  for (let i = 0; i < 30 && !isDone(); i++) {
+    try {
+      list = await iterator.mcpServerStatus();
+    } catch {
+      return; // sorgu kapandı (ajan bitti/iptal) — bildirecek bir şey yok
+    }
+    if (!list.some((s) => s.status === "pending")) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (list.length === 0) return;
+  const servers = list.map((s) => ({
+    name: s.name,
+    status: s.status,
+    ...(s.error ? { error: s.error } : {}),
+    ...(s.tools ? { tools: s.tools.length } : {}),
+  }));
+  const sorunlu = servers.some((s) => s.status !== "connected");
+  console.log(`  ${sorunlu ? "⚠" : "🔌"} eklentiler — ` + servers.map((s) =>
+    `${s.name}: ${MCP_STATUS_NAMES[s.status] ?? s.status}` +
+    `${s.tools !== undefined ? ` (${s.tools} araç)` : ""}${s.error ? ` (${s.error})` : ""}`).join(" · "));
+  bus.emit({ type: "mcp_status", agent: agentKey, servers });
 }
 
 /**
@@ -190,6 +236,8 @@ async function executeQuery(
   const mcpServers = activeMcpServers(cfg);
   const offMcp = disabledMcpServers(cfg);
 
+  // Eklenti durumu arka planda sorulurken sorgu biterse sormayı bıraksın
+  let queryDone = false;
   let iterator;
   try {
     iterator = query({
@@ -224,6 +272,10 @@ async function executeQuery(
     // elimizde kalsın ki yeniden deneme baştan değil resume ile yapılabilsin
     if (message.type === "system" && message.subtype === "init") {
       session.id = message.session_id;
+      if (mcpServers && !session.mcpReported) {
+        session.mcpReported = true;
+        void reportMcpStatus(iterator, agent.key, bus, () => queryDone);
+      }
     } else if (message.type === "assistant") {
       for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim()) {
@@ -274,6 +326,8 @@ async function executeQuery(
     // Kullanıcı iptali (abort) → koşuyu temiz durdur; diğer hatalar yükselir
     if (abortController.signal.aborted) throw new RunCancelledError();
     throw err;
+  } finally {
+    queryDone = true;
   }
 
   // Döngü hatasız bitse bile abort edildiyse iptal say
