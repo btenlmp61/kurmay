@@ -5,9 +5,9 @@
    kendi <style> bloklarında kalır. */
 
 :root {
-  /* — Renk rolleri: tek tema "Gizli Evrak" (açık manila kâğıt + bordo). Eskiden
-     "Lacivert" ve "Radar" da vardı; kullanıcı isteğiyle kaldırıldı (2026-10-13).
-     Sayfalar <html data-theme="evrak"> taşır — doku/köşe/damga kuralları bu seçiciyle. */
+  /* — Renk rolleri: varsayılan tema "Gizli Evrak" (açık). Diğer tema "Radar"
+     (gece görüşü) aşağıda [data-theme] ile ezer. "Lacivert" 2026-10-13'te kaldırıldı.
+     Panel/config editörü bu değişkenleri kullanır; tema seçimi <html data-theme>. */
   --md-primary:#8B1E1E; --md-on-primary:#FFF8EE;
   --md-primary-container:#F3D9D2; --md-on-primary-container:#3A0606;
   --md-secondary:#2F5D3A; --md-on-secondary:#FFFFFF;
@@ -68,7 +68,9 @@
   --md-motion:180ms cubic-bezier(.2,0,0,1);
 }
 
-/* Tema: <html data-theme="evrak"> (sayfalarda sabit; seçici ve kayıt yok). Takma
+/* Temalar: <html data-theme="evrak|radar">. Sayfa başındaki betik
+   kayıtlı seçimi (yoksa OS tercihine göre radar/evrak) data-theme'e yazar;
+   betik çalışmazsa OS koyu tercihinde Radar değerleri devreye girer. Takma
    adlar (--blue, --bg…) :root'ta bir kez tanımlı — aynı öğede hesaplandıkları için
    temanın renklerini kendiliğinden alır. Tema karakteri (yazı tipi, köşe, doku)
    sayfaya özgü kurallarda [data-theme=…] seçicileriyle. */
@@ -96,10 +98,61 @@
   --bubble:#FFFDF7; --chatBg:#E6E0CF;
   --font-ui:"Courier New",Courier,ui-monospace,monospace;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --md-primary:#4BE38A; --md-on-primary:#03140A;
+    --md-primary-container:#0F3320; --md-on-primary-container:#B9F7D0;
+    --md-secondary:#4BE38A; --md-on-secondary:#03140A;
+    --md-secondary-container:#0F3320; --md-on-secondary-container:#B9F7D0;
+    --md-tertiary:#FFC857; --md-on-tertiary:#2A1C00;
+    --md-tertiary-container:#3A2C08; --md-on-tertiary-container:#FFE3A6;
+    --md-error:#FF6B5E; --md-on-error:#3A0500;
+    --md-error-container:#3D110C; --md-on-error-container:#FFD6D0;
+    --md-surface:#050A07;
+    --md-surface-container-lowest:#040805;
+    --md-surface-container-low:#08110C;
+    --md-surface-container:#0C1912;
+    --md-surface-container-high:#112218;
+    --md-surface-container-highest:#163021;
+    --md-on-surface:#B8F5C8; --md-on-surface-variant:#5E9A72;
+    --md-outline:#2E6B47; --md-outline-variant:#16372A;
+    --md-shadow:#000000;
+    /* Ajan rolleri: Analist yeşil, Saha Timi camgöbeği, Teftiş kehribar */
+    --arch:#4BE38A; --archBg:#0F3320; --dev:#6FD3FF; --devBg:#0B2B38;
+    --rev:#FFC857; --revBg:#3A2C08; --oth:#FF9F6B; --othBg:#3A1E0B;
+    --bubble:#07120C; --chatBg:#040805;
+    --font-ui:ui-monospace,"Cascadia Code",Consolas,monospace;
+  }
+}
+:root[data-theme="radar"] {
+  --md-primary:#4BE38A; --md-on-primary:#03140A;
+  --md-primary-container:#0F3320; --md-on-primary-container:#B9F7D0;
+  --md-secondary:#4BE38A; --md-on-secondary:#03140A;
+  --md-secondary-container:#0F3320; --md-on-secondary-container:#B9F7D0;
+  --md-tertiary:#FFC857; --md-on-tertiary:#2A1C00;
+  --md-tertiary-container:#3A2C08; --md-on-tertiary-container:#FFE3A6;
+  --md-error:#FF6B5E; --md-on-error:#3A0500;
+  --md-error-container:#3D110C; --md-on-error-container:#FFD6D0;
+  --md-surface:#050A07;
+  --md-surface-container-lowest:#040805;
+  --md-surface-container-low:#08110C;
+  --md-surface-container:#0C1912;
+  --md-surface-container-high:#112218;
+  --md-surface-container-highest:#163021;
+  --md-on-surface:#B8F5C8; --md-on-surface-variant:#5E9A72;
+  --md-outline:#2E6B47; --md-outline-variant:#16372A;
+  --md-shadow:#000000;
+  /* Ajan rolleri: Analist yeşil, Saha Timi camgöbeği, Teftiş kehribar */
+  --arch:#4BE38A; --archBg:#0F3320; --dev:#6FD3FF; --devBg:#0B2B38;
+  --rev:#FFC857; --revBg:#3A2C08; --oth:#FF9F6B; --othBg:#3A1E0B;
+  --bubble:#07120C; --chatBg:#040805;
+  --font-ui:ui-monospace,"Cascadia Code",Consolas,monospace;
+}
+
 /* — Temel sıfırlama + tipografi — */
 * { box-sizing:border-box; }
 body { margin:0; font:var(--md-type-body-lg); font-family:var(--font-ui); background:var(--bg); color:var(--text); }
-/* Tema yazı tipi: düğme/alan/etiket de temanın yazısını alsın (Evrak: daktilo) */
+/* Tema yazı tipi: düğme/alan/etiket de temanın yazısını alsın (Evrak: daktilo, Radar: terminal) */
 button, input, select, textarea, .label, .pill { font-family:var(--font-ui) !important; }
 h1,h2 { font:var(--md-type-headline-sm); margin:0; }
 
@@ -114,6 +167,10 @@ h1,h2 { font:var(--md-type-headline-sm); margin:0; }
   padding:20px 24px;
   margin-bottom:20px;
 }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .card { border-color:var(--md-outline-variant); box-shadow:none; }
+}
+[data-theme="radar"] .card { border-color:var(--md-outline-variant); box-shadow:none; }
 
 /* Marka — yalnızca yazı ("Kurmay"), logo kullanılmıyor. Bilerek headline'dan küçük:
    index.html'de yanındaki görev metni, config.html'de h1 sayfanın asıl
@@ -191,3 +248,11 @@ button.icon { padding:6px 10px; min-height:36px; font-size:16px; line-height:1; 
   button, input[type=text], input[type=password], input[type=number], input[type=datetime-local], textarea, select { min-height:48px; }
 }
 
+/* Tema seçici: yalnızca renk örnekleri (ad yazmaz). Köşe yuvarlaklığı temaların
+   düğme kuralına takılmasın diye !important. */
+.tswitch { display:inline-flex; gap:7px; align-items:center; }
+.tsw { width:26px; height:26px; min-height:0 !important; padding:0 !important; border-radius:50% !important;
+  border:2px solid var(--md-outline-variant); flex:none; }
+.tsw[data-t="evrak"] { background:linear-gradient(135deg, #E8DAB2 0 55%, #8B1E1E 55%); }
+.tsw[data-t="radar"] { background:linear-gradient(135deg, #050A07 0 55%, #4BE38A 55%); }
+.tsw.on { border-color:var(--md-surface); box-shadow:0 0 0 2px var(--md-primary); }
