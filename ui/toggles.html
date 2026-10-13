@@ -12,10 +12,11 @@
   try {
     var t;
     try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
-    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
+    // Lacivert kaldırıldı (2026-10-13): eski koyu kayıtlar Radar'a düşer
+    if (t === "dark" || t === "teskilat" || t === "lacivert") t = "radar"; // eski adlar
     if (t === "light") t = "evrak";
-    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
-      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
+    if (t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "radar" : "evrak";
     }
     document.documentElement.dataset.theme = t;
   } catch (e) {}
@@ -37,7 +38,7 @@ a { color:var(--blue); }
 .sec-h { font:var(--md-type-label-sm); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 16px 7px; }
 .sec-f { font-size:12.5px; color:var(--muted); line-height:1.45; margin:7px 16px 0; }
 .group { background:var(--md-surface-container-lowest); border-radius:var(--md-shape-md); overflow:hidden; box-shadow:var(--md-elev-1); }
-[data-theme="lacivert"] .group, [data-theme="radar"] .group { box-shadow:none; border:1px solid var(--md-outline-variant); }
+[data-theme="radar"] .group { box-shadow:none; border:1px solid var(--md-outline-variant); }
 .row { display:flex; align-items:center; gap:13px; padding:11px 16px; min-height:56px; position:relative; cursor:pointer; }
 /* Ayırıcı çizgi simgenin hizasından başlar (iPhone'daki gibi) */
 .row + .row::before { content:""; position:absolute; top:0; right:0; left:60px; border-top:1px solid var(--md-outline-variant); }
@@ -58,7 +59,7 @@ a { color:var(--blue); }
 .sw::after { content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50% !important; background:#fff;
   box-shadow:0 3px 8px rgba(0,0,0,.18), 0 1px 1px rgba(0,0,0,.16); transition:transform 220ms cubic-bezier(.3,.7,.4,1); }
 /* Koyu temalarda ince çizgi rengi zemine çok yakın — kapalı anahtar seçilsin diye bir ton açık */
-[data-theme="lacivert"] .sw, [data-theme="radar"] .sw { background:var(--md-outline); }
+[data-theme="radar"] .sw { background:var(--md-outline); }
 .sw:checked, [data-theme] .sw:checked { background:var(--md-secondary); }
 .sw:checked::after { transform:translateX(20px); }
 .sw:active::after { width:31px; } /* basılıyken topuz uzar */
@@ -80,7 +81,6 @@ a { color:var(--blue); }
   <span class="brand">Kurmay</span>
   <span class="sp"></span>
   <div class="tswitch" role="radiogroup" aria-label="Tema">
-    <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
     <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
     <button class="tsw" data-t="radar" aria-label="Radar"></button>
   </div>

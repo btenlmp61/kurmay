@@ -5,8 +5,8 @@
    kendi <style> bloklarında kalır. */
 
 :root {
-  /* — Renk rolleri: varsayılan tema "Gizli Evrak" (açık). Diğer iki tema
-     ("Lacivert" koyu, "Radar" gece görüşü) aşağıda [data-theme] ile ezer.
+  /* — Renk rolleri: varsayılan tema "Gizli Evrak" (açık). Diğer tema "Radar"
+     (gece görüşü) aşağıda [data-theme] ile ezer. "Lacivert" 2026-10-13'te kaldırıldı.
      Panel/config editörü bu değişkenleri kullanır; tema seçimi <html data-theme>. */
   --md-primary:#8B1E1E; --md-on-primary:#FFF8EE;
   --md-primary-container:#F3D9D2; --md-on-primary-container:#3A0606;
@@ -68,9 +68,9 @@
   --md-motion:180ms cubic-bezier(.2,0,0,1);
 }
 
-/* Temalar: <html data-theme="evrak|lacivert|radar">. Sayfa başındaki betik
-   kayıtlı seçimi (yoksa OS tercihine göre lacivert/evrak) data-theme'e yazar;
-   betik çalışmazsa OS koyu tercihinde Lacivert değerleri devreye girer. Takma
+/* Temalar: <html data-theme="evrak|radar">. Sayfa başındaki betik
+   kayıtlı seçimi (yoksa OS tercihine göre radar/evrak) data-theme'e yazar;
+   betik çalışmazsa OS koyu tercihinde Radar değerleri devreye girer. Takma
    adlar (--blue, --bg…) :root'ta bir kez tanımlı — aynı öğede hesaplandıkları için
    temanın renklerini kendiliğinden alır. Tema karakteri (yazı tipi, köşe, doku)
    sayfaya özgü kurallarda [data-theme=…] seçicileriyle. */
@@ -100,53 +100,29 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --md-primary:#E5404B; --md-on-primary:#FFFFFF;
-    --md-primary-container:#3E1419; --md-on-primary-container:#FFD6D9;
-    --md-secondary:#3DDC97; --md-on-secondary:#00301C;
-    --md-secondary-container:#0F3527; --md-on-secondary-container:#C2F5DE;
-    --md-tertiary:#F5B53D; --md-on-tertiary:#2E1F00;
-    --md-tertiary-container:#3A2A0C; --md-on-tertiary-container:#FFE2A8;
-    --md-error:#FF6B73; --md-on-error:#4A0008;
-    --md-error-container:#45131A; --md-on-error-container:#FFD9DB;
-    --md-surface:#0B1220;
-    --md-surface-container-lowest:#080E19;
-    --md-surface-container-low:#0E1626;
-    --md-surface-container:#121C30;
-    --md-surface-container-high:#18243D;
-    --md-surface-container-highest:#1F2D4A;
-    --md-on-surface:#E6EBF5; --md-on-surface-variant:#8D9AB5;
-    --md-outline:#3B4A69; --md-outline-variant:#1F2C45;
+    --md-primary:#4BE38A; --md-on-primary:#03140A;
+    --md-primary-container:#0F3320; --md-on-primary-container:#B9F7D0;
+    --md-secondary:#4BE38A; --md-on-secondary:#03140A;
+    --md-secondary-container:#0F3320; --md-on-secondary-container:#B9F7D0;
+    --md-tertiary:#FFC857; --md-on-tertiary:#2A1C00;
+    --md-tertiary-container:#3A2C08; --md-on-tertiary-container:#FFE3A6;
+    --md-error:#FF6B5E; --md-on-error:#3A0500;
+    --md-error-container:#3D110C; --md-on-error-container:#FFD6D0;
+    --md-surface:#050A07;
+    --md-surface-container-lowest:#040805;
+    --md-surface-container-low:#08110C;
+    --md-surface-container:#0C1912;
+    --md-surface-container-high:#112218;
+    --md-surface-container-highest:#163021;
+    --md-on-surface:#B8F5C8; --md-on-surface-variant:#5E9A72;
+    --md-outline:#2E6B47; --md-outline-variant:#16372A;
     --md-shadow:#000000;
-    /* Ajan rolleri: Analist kırmızı, Saha Timi mavi, Teftiş yeşil */
-    --arch:#FF5A64; --archBg:#3E1419; --dev:#5AA9FF; --devBg:#12294A;
-    --rev:#3DDC97; --revBg:#0F3527; --oth:#F5B53D; --othBg:#3A2A0C;
-    --bubble:#0F1828; --chatBg:#0A111D;
-    --font-ui:system-ui,"Segoe UI",sans-serif;
+    /* Ajan rolleri: Analist yeşil, Saha Timi camgöbeği, Teftiş kehribar */
+    --arch:#4BE38A; --archBg:#0F3320; --dev:#6FD3FF; --devBg:#0B2B38;
+    --rev:#FFC857; --revBg:#3A2C08; --oth:#FF9F6B; --othBg:#3A1E0B;
+    --bubble:#07120C; --chatBg:#040805;
+    --font-ui:ui-monospace,"Cascadia Code",Consolas,monospace;
   }
-}
-:root[data-theme="lacivert"] {
-  --md-primary:#E5404B; --md-on-primary:#FFFFFF;
-  --md-primary-container:#3E1419; --md-on-primary-container:#FFD6D9;
-  --md-secondary:#3DDC97; --md-on-secondary:#00301C;
-  --md-secondary-container:#0F3527; --md-on-secondary-container:#C2F5DE;
-  --md-tertiary:#F5B53D; --md-on-tertiary:#2E1F00;
-  --md-tertiary-container:#3A2A0C; --md-on-tertiary-container:#FFE2A8;
-  --md-error:#FF6B73; --md-on-error:#4A0008;
-  --md-error-container:#45131A; --md-on-error-container:#FFD9DB;
-  --md-surface:#0B1220;
-  --md-surface-container-lowest:#080E19;
-  --md-surface-container-low:#0E1626;
-  --md-surface-container:#121C30;
-  --md-surface-container-high:#18243D;
-  --md-surface-container-highest:#1F2D4A;
-  --md-on-surface:#E6EBF5; --md-on-surface-variant:#8D9AB5;
-  --md-outline:#3B4A69; --md-outline-variant:#1F2C45;
-  --md-shadow:#000000;
-  /* Ajan rolleri: Analist kırmızı, Saha Timi mavi, Teftiş yeşil */
-  --arch:#FF5A64; --archBg:#3E1419; --dev:#5AA9FF; --devBg:#12294A;
-  --rev:#3DDC97; --revBg:#0F3527; --oth:#F5B53D; --othBg:#3A2A0C;
-  --bubble:#0F1828; --chatBg:#0A111D;
-  --font-ui:system-ui,"Segoe UI",sans-serif;
 }
 :root[data-theme="radar"] {
   --md-primary:#4BE38A; --md-on-primary:#03140A;
@@ -194,7 +170,7 @@ h1,h2 { font:var(--md-type-headline-sm); margin:0; }
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) .card { border-color:var(--md-outline-variant); box-shadow:none; }
 }
-[data-theme="lacivert"] .card, [data-theme="radar"] .card { border-color:var(--md-outline-variant); box-shadow:none; }
+[data-theme="radar"] .card { border-color:var(--md-outline-variant); box-shadow:none; }
 
 /* Marka — yalnızca yazı ("Kurmay"), logo kullanılmıyor. Bilerek headline'dan küçük:
    index.html'de yanındaki görev metni, config.html'de h1 sayfanın asıl
@@ -277,7 +253,6 @@ button.icon { padding:6px 10px; min-height:36px; font-size:16px; line-height:1; 
 .tswitch { display:inline-flex; gap:7px; align-items:center; }
 .tsw { width:26px; height:26px; min-height:0 !important; padding:0 !important; border-radius:50% !important;
   border:2px solid var(--md-outline-variant); flex:none; }
-.tsw[data-t="lacivert"] { background:linear-gradient(135deg, #0B1220 0 55%, #E5404B 55%); }
 .tsw[data-t="evrak"] { background:linear-gradient(135deg, #E8DAB2 0 55%, #8B1E1E 55%); }
 .tsw[data-t="radar"] { background:linear-gradient(135deg, #050A07 0 55%, #4BE38A 55%); }
 .tsw.on { border-color:var(--md-surface); box-shadow:0 0 0 2px var(--md-primary); }

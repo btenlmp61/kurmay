@@ -15,10 +15,11 @@
     var t;
     try { t = localStorage.getItem("kurmay-theme") || localStorage.getItem("yaver-theme"); } catch (e) {}
     // Eski açık/koyu kayıtları yeni temalara eşle; kayıt yoksa OS tercihine göre
-    if (t === "dark" || t === "teskilat") t = "lacivert"; // eski adlar
+    // Lacivert kaldırıldı (2026-10-13): eski koyu kayıtlar Radar'a düşer
+    if (t === "dark" || t === "teskilat" || t === "lacivert") t = "radar"; // eski adlar
     if (t === "light") t = "evrak";
-    if (t !== "lacivert" && t !== "evrak" && t !== "radar") {
-      t = matchMedia("(prefers-color-scheme: dark)").matches ? "lacivert" : "evrak";
+    if (t !== "evrak" && t !== "radar") {
+      t = matchMedia("(prefers-color-scheme: dark)").matches ? "radar" : "evrak";
     }
     document.documentElement.dataset.theme = t;
   } catch (e) {}
@@ -190,7 +191,6 @@ body { overflow:hidden; }
 .rail-tools .tool:hover, .rail-tools .tool:focus-visible { border-color:var(--md-primary); color:var(--md-primary);
   background:color-mix(in srgb, var(--md-primary) 12%, var(--md-surface-container-lowest)); outline:none; }
 .rail-tools .tool-sep { width:1px; height:22px; background:var(--border); margin:0 2px; }
-[data-theme="lacivert"] .rail-tools .tool { border-radius:4px; }
 [data-theme="evrak"] .rail-tools .tool { border-radius:3px; }
 [data-theme="radar"] .rail-tools .tool { border-radius:2px; }
 .rbox { background:var(--md-surface-container-lowest); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:12px; }
@@ -236,18 +236,6 @@ body { overflow:hidden; }
 .grid { display:contents; }
 
 /* ── Tema karakterleri (renkler theme.css'te; burada doku, köşe, damga, şerit) ── */
-/* Lacivert: koyu lacivert + kırmızı; keskin köşeler, rol rengi üst şerit */
-[data-theme="lacivert"] .main { background:linear-gradient(180deg,#0B1322,#0A111D); }
-[data-theme="lacivert"] .chat-head { border-top:3px solid var(--md-primary); }
-[data-theme="lacivert"] :is(.bub, #cards > .card, .rbox, #taskCard) { border-radius:4px; box-shadow:none; }
-[data-theme="lacivert"] :is(button, .sess, .node.mem, .node.group, .tchip, .pill, .fchip, .av, .ftag, #stream > .me, #stream > .sys, .logfilter) { border-radius:4px; }
-[data-theme="lacivert"] .msg:has(.av.arch) .bub { border-top:2px solid var(--arch); }
-[data-theme="lacivert"] .msg:has(.av.dev) .bub { border-top:2px solid var(--dev); }
-[data-theme="lacivert"] .msg:has(.av.rev) .bub { border-top:2px solid var(--rev); }
-[data-theme="lacivert"] :is(.label, .rbox h4) { letter-spacing:.14em; }
-[data-theme="lacivert"] #stream > .me { background:var(--md-primary); color:var(--md-on-primary); }
-[data-theme="lacivert"] .sess.active { box-shadow:inset 3px 0 var(--md-primary); background:var(--md-surface-container); }
-[data-theme="lacivert"] .sidebar-head .brand { letter-spacing:.24em; text-transform:uppercase; font-size:16px; }
 
 /* Gizli Evrak: manila kâğıt, daktilo, bordo mürekkep; dosya sekmeleri, onay mührü */
 [data-theme="evrak"] .main { background:var(--chatBg); }
@@ -322,6 +310,8 @@ body { overflow:hidden; }
 [data-theme="radar"] #stream > .sys::before { content:"[SİSTEM] "; color:var(--md-outline); }
 [data-theme="radar"] button { text-transform:uppercase; letter-spacing:.08em; }
 [data-theme="radar"] .sess.active { box-shadow:0 0 0 1px var(--md-primary) inset; background:var(--md-surface-container); }
+/* "Yeni görev" de .sess.active taşıyor — yukarıdaki kural onu koyu zemine çekip yazıyı kaybettiriyordu */
+[data-theme="radar"] .sess.sess-new { background:var(--md-primary); color:var(--md-on-primary); border-color:var(--md-primary); }
 [data-theme="radar"] .term { background:#020503; border:1px solid var(--md-outline-variant); }
 /* Dar ekran: önce sağ sütun sohbetin altına iner, telefonda her şey tek sütun */
 @media (max-width:1240px) {
@@ -580,7 +570,6 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <a class="tool" href="/config" title="Ayarlar" aria-label="Ayarlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
     <span class="tool-sep" aria-hidden="true"></span>
     <div class="tswitch" role="radiogroup" aria-label="Tema">
-      <button class="tsw" data-t="lacivert" aria-label="Lacivert"></button>
       <button class="tsw" data-t="evrak" aria-label="Gizli Evrak"></button>
       <button class="tsw" data-t="radar" aria-label="Radar"></button>
     </div>
