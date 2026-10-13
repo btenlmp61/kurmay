@@ -1,6 +1,7 @@
 import path from "node:path";
 import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
+import { mcpStatus, toLights } from "./mcpStatus.js";
 import { buildHooks } from "./hooks.js";
 import type { EventBus } from "./events.js";
 import {
@@ -105,12 +106,8 @@ async function reportMcpStatus(
     await new Promise((r) => setTimeout(r, 1000));
   }
   if (list.length === 0) return;
-  const servers = list.map((s) => ({
-    name: s.name,
-    status: s.status,
-    ...(s.error ? { error: s.error } : {}),
-    ...(s.tools ? { tools: s.tools.length } : {}),
-  }));
+  const servers = toLights(list);
+  mcpStatus.update(servers, "ajan"); // paneldeki durum ışığı
   const sorunlu = servers.some((s) => s.status !== "connected");
   console.log(`  ${sorunlu ? "⚠" : "🔌"} eklentiler — ` + servers.map((s) =>
     `${s.name}: ${MCP_STATUS_NAMES[s.status] ?? s.status}` +
@@ -257,6 +254,11 @@ async function executeQuery(
         ? { outputFormat: { type: "json_schema" as const, schema: agent.outputSchema } }
         : {}),
       ...(mcpServers ? { mcpServers: mcpServers as Record<string, McpServerConfig> } : {}),
+      // Yalnızca config'teki eklentiler: makinedeki kullanıcı ayarı (~/.claude.json),
+      // hedef projenin .mcp.json'u ve eklenti paketleri yok sayılır. Bu olmadan ajan
+      // onlara da bağlanıyordu (sahte eklentilerle doğrulandı) — Aç/Kapat'ta kapatılan
+      // bir eklenti de aynı adla başka yerde tanımlıysa yine açılırdı.
+      strictMcpConfig: true,
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),

@@ -5,6 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt } from "./approval.js";
 import type { ModelInfo } from "./models.js";
+import type { McpLight } from "./mcpStatus.js";
+
+/** Paneldeki eklenti durum ışıklarının verisi */
+export interface McpStatusView {
+  servers: McpLight[];
+  probing: boolean;
+  error?: string;
+}
 import type { RuntimeRegistry, SessionRuntime } from "./runtime.js";
 
 export interface UiServer {
@@ -92,6 +100,10 @@ export interface UiServerOptions {
   setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };
   /** Akıl yürütme derinliği: session verilirse yalnızca o oturum, yoksa genel varsayılan (config.json) */
   setEffort?: (effort: string, session?: string) => { ok: boolean; error?: string; effort?: string };
+  /** Eklentilerin son bilinen durumu (GET /mcp-status) — paneldeki durum ışıkları */
+  getMcpStatus?: () => McpStatusView;
+  /** Eklentileri şimdi yoklar (model çağrısı yok), bitince güncel durumu döner (POST /mcp-probe) */
+  probeMcp?: () => Promise<McpStatusView>;
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -442,6 +454,19 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
     if (req.method === "GET" && req.url === "/toggles") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(fs.readFileSync(togglesUiPath));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/mcp-status") {
+      return json(res, 200, options.getMcpStatus?.() ?? { servers: [], probing: false });
+    }
+
+    if (req.method === "POST" && req.url === "/mcp-probe") {
+      if (!options.probeMcp) return json(res, 200, { servers: [], probing: false });
+      options.probeMcp().then(
+        (r) => json(res, 200, r),
+        (e: unknown) => json(res, 500, { servers: [], probing: false, error: e instanceof Error ? e.message : String(e) }),
+      );
       return;
     }
 

@@ -5,6 +5,7 @@ import { checkAgentMd, composeAgentMd, frontDescription, resolveAgentMd, splitAg
 import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
 import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
+import { mcpStatus, probeMcp } from "./mcpStatus.js";
 import { fetchModels } from "./models.js";
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
@@ -365,12 +366,22 @@ async function main() {
       cfg.disabledRules = nextRules;
       cfg.mcpServers = nextMcp;
       agents = nextAgents; // sıradaki görev yeni prompt'larla başlar
+      // Açılan eklentinin ışığı hemen dolsun (kapatılan zaten "kapalı" görünür)
+      if (kind === "mcp" && !disabled) void probeMcp(cfg, mcpProbeDir());
       return { ok: true };
     } catch (e) {
       fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   };
+
+  // Eklenti durum ışıkları: son bilinen durum + model çağrısız yoklama
+  const mcpProbeDir = () => (dirOk(cwd) ? cwd : process.cwd());
+  const mcpView = () => ({
+    servers: mcpStatus.snapshot(cfg),
+    probing: !!mcpStatus.probing,
+    ...(mcpStatus.probeError ? { error: mcpStatus.probeError } : {}),
+  });
 
   let server: UiServer | undefined;
   if (!noUi) {
@@ -560,6 +571,11 @@ async function main() {
       setNodeDisabled,
       getToggles,
       setToggle,
+      getMcpStatus: mcpView,
+      probeMcp: async () => {
+        await probeMcp(cfg, mcpProbeDir());
+        return mcpView();
+      },
       onTask: task
         ? undefined // CLI görevli modda panelden görev alınmaz
         : (t, sessionId, runAt) => {
@@ -597,6 +613,13 @@ async function main() {
           },
     });
     console.log(`🖥  İzleme paneli: ${server.url}`);
+    // Açılışta eklentileri bir kez yokla — panelde ışık ilk koşuyu beklemeden dolsun
+    if (Object.values(cfg.mcpServers ?? {}).some((s) => !s.disabled)) {
+      void probeMcp(cfg, mcpProbeDir()).then(() => {
+        const list = mcpStatus.snapshot(cfg).filter((s) => s.status !== "disabled");
+        console.log(`🔌 Eklentiler: ${list.map((s) => `${s.name} ${s.status === "connected" ? "✓" : `✗ (${s.error ?? s.status})`}`).join(" · ")}`);
+      });
+    }
   }
 
   console.log(`🔌 Sağlayıcı: ${cfg.provider}${cfg.baseUrl ? ` (${cfg.baseUrl})` : ""}${cfg.model ? ` | model: ${cfg.model}` : ""}`);
