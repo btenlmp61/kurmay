@@ -257,6 +257,11 @@ async function executeQuery(
         ? { outputFormat: { type: "json_schema" as const, schema: agent.outputSchema } }
         : {}),
       ...(mcpServers ? { mcpServers: mcpServers as Record<string, McpServerConfig> } : {}),
+      // Yalnızca config'teki eklentiler: makinedeki kullanıcı ayarı (~/.claude.json),
+      // hedef projenin .mcp.json'u ve eklenti paketleri yok sayılır. Bu olmadan ajan
+      // onlara da bağlanıyordu (sahte eklentilerle doğrulandı) — Aç/Kapat'ta kapatılan
+      // bir eklenti de aynı adla başka yerde tanımlıysa yine açılırdı.
+      strictMcpConfig: true,
       ...(hooks ? { hooks } : {}),
       ...(env ? { env } : {}),
       ...(model ? { model } : {}),
