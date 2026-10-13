@@ -23,6 +23,19 @@ export type OrchestratorEvent =
   /** Devre dışı düğüm koşturulmadan geçildi; to = devam edilen düğüm (null = akış bitti) */
   | { type: "node_skipped"; node: string; to: string | null }
   | { type: "agent_started"; agent: string }
+  | {
+      /** Ajan açılınca eklentilerin (MCP) bağlantı durumu — ajan koşusu başına bir kez */
+      type: "mcp_status";
+      agent: string;
+      servers: Array<{
+        name: string;
+        /** connected | failed | needs-auth | pending | disabled */
+        status: string;
+        error?: string;
+        /** Bağlanınca sunucunun sunduğu araç sayısı */
+        tools?: number;
+      }>;
+    }
   | { type: "agent_text"; agent: string; text: string }
   | {
       /** Sağlayıcı bağlantısı koptu — beklenip yeniden denenecek */
