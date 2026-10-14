@@ -25,6 +25,9 @@ export interface SessionEntry {
   /** Oturumun akıl yürütme derinliği — model gibi: açılırken genel varsayılandan alınır,
    *  sonra panelden yalnızca bu oturum için değişir. Yoksa genel ayar geçerli. */
   effort?: EffortSetting;
+  /** Oturumun hedef dizini — model gibi: açılırken genel dizinden alınır, sonra panelden
+   *  yalnızca bu oturum için değişir. Eski kayıtlarda yoksa ilk koşuda o anki genel dizine sabitlenir. */
+  targetDir?: string;
 }
 
 /** Görev metninden kısa bir oturum ismi türetir */
@@ -70,11 +73,12 @@ export class SessionStore {
   }
 
   /** İlk görevle yeni bir oturum açar (henüz SDK oturumu yok) */
-  create(task: string, model?: string, effort?: EffortSetting): SessionEntry {
+  create(task: string, model?: string, effort?: EffortSetting, targetDir?: string): SessionEntry {
     const now = new Date().toISOString();
     const entry: SessionEntry = { id: randomUUID(), name: nameFromTask(task), createdAt: now, updatedAt: now, runLogs: [] };
     if (model) entry.model = model;
     if (effort) entry.effort = effort;
+    if (targetDir) entry.targetDir = targetDir;
     this.list.push(entry);
     this.persist();
     return entry;
@@ -119,6 +123,24 @@ export class SessionStore {
     else delete s.effort;
     this.persist();
     return true;
+  }
+
+  /**
+   * Oturumun hedef dizinini değiştirir; sıradaki görevde geçerli. Analist'in konuşması
+   * Claude Code'da dizine bağlı saklanır — başka dizinde sürdürülemez ("No conversation
+   * found", sahte API ile doğrulandı). Bu yüzden dizin gerçekten değişirse SDK oturumu
+   * bırakılır, Analist bu oturumda yeni konuşmayla başlar. keepResume: eski kayda ilk
+   * kez dizin yazılırken (zaten o dizinde koşmuştu) konuşma korunur.
+   */
+  setTargetDir(id: string, dir: string, keepResume = false): { ok: boolean; resetResume: boolean } {
+    const s = this.get(id);
+    if (!s) return { ok: false, resetResume: false };
+    const changed = s.targetDir !== dir;
+    const resetResume = changed && !keepResume && !!s.sdkSessionId;
+    s.targetDir = dir;
+    if (resetResume) delete s.sdkSessionId;
+    this.persist();
+    return { ok: true, resetResume };
   }
 
   /** Katalogdan bir oturumu siler (SDK konuşması ve koşu kayıtları korunur); silindiyse true */

@@ -2032,17 +2032,34 @@ lobby.onmessage = (m) => {
   if (cur && !replaying && cur.busy !== viewBusy) { viewBusy = cur.busy; syncTaskCard(); }
   renderSessions();
   updateTaskCtx();
-  if (viewModel() !== currentModel || viewEffort() !== currentEffort) applyViewModel(); // başka sekmeden değişmiş olabilir
+  const vd = viewDir();
+  if (viewModel() !== currentModel || viewEffort() !== currentEffort || vd.dir !== currentDir || vd.missing !== dirMissing) {
+    applyViewModel(); // başka sekmeden değişmiş olabilir
+  }
 };
 
-// Hedef proje dizini: config.json'ı elle açmak yerine panelden değiştirilir —
-// tıkla → metin kutusu, Enter kaydeder (sunucuda doğrulanır + config.json'a yazılır)
-let currentDir = "";
+// Hedef proje dizini OTURUMA ÖZEL (model gibi): oturum seçiliyken onun dizini görünür ve
+// değiştirmek yalnızca o oturumu etkiler; "＋ Yeni görev" taslağında genel dizin (config.json).
 // Diskte yoksa servis yine açılır; panel uyarır ve dizin düzelene dek görev başlatılamaz
-let dirMissing = false;
+let currentDir = "", dirMissing = false;
+let globalDir = "", globalDirMissing = false; // yeni oturumların dizini (GET /target-dir)
+function viewDir() {
+  const s = sessionsById[viewSessionId];
+  if (s && s.targetDir) return { dir: s.targetDir, missing: s.dirExists === false };
+  return { dir: globalDir, missing: globalDirMissing };
+}
+function applyViewDir() {
+  const v = viewDir();
+  currentDir = v.dir;
+  dirMissing = v.missing;
+  applyDirState();
+  showDirDisplay(currentDir);
+}
 function applyDirState() {
   $("dir").classList.toggle("missing", dirMissing);
-  $("dir").title = dirMissing ? "Bu dizin bulunamadı — değiştirmek için tıkla" : "Değiştirmek için tıkla";
+  $("dir").title = dirMissing ? "Bu dizin bulunamadı — değiştirmek için tıkla"
+    : viewSessionId ? "Bu oturumun hedef dizini — değiştirmek için tıkla (diğer oturumlar etkilenmez)"
+    : "Yeni oturumların hedef dizini — değiştirmek için tıkla";
   $("dirWarn").classList.toggle("hidden", !dirMissing);
   $("dirWarnPath").textContent = currentDir;
   updateStartGate();
@@ -2071,15 +2088,19 @@ async function saveDir(val) {
     const res = await fetch("/target-dir", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ dir: val }),
+      body: JSON.stringify({ dir: val, session: viewSessionId || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.ok) {
-      currentDir = data.dir || val;
-      dirMissing = false; // sunucu var olduğunu doğruladı
-      applyDirState();
-      showDirDisplay(currentDir);
-      addLog(new Date().toISOString(), `📁 hedef dizin değiştirildi: ${esc(currentDir)}`, "ok");
+      const yeni = data.dir || val; // sunucu var olduğunu doğruladı
+      const s = sessionsById[viewSessionId];
+      if (s) { s.targetDir = yeni; s.dirExists = true; }
+      else { globalDir = yeni; globalDirMissing = false; }
+      applyViewDir();
+      addLog(new Date().toISOString(), s
+        ? `📁 bu oturumun hedef dizini: ${esc(yeni)} — oturumdaki sıradaki görevde geçerli` +
+          (data.resetResume ? " · Analist bu oturumda yeni konuşmayla başlayacak (önceki konuşma eski dizine bağlı)" : "")
+        : `📁 yeni oturumların hedef dizini: ${esc(yeni)}`, "ok");
     } else {
       alert(data.error || "hedef dizin kaydedilemedi");
     }
@@ -2091,10 +2112,9 @@ $("dir").addEventListener("click", pickDir);
 async function loadTargetDir() {
   try {
     const data = await (await fetch("/target-dir")).json();
-    currentDir = data.dir || "";
-    dirMissing = data.exists === false;
-    applyDirState();
-    showDirDisplay(currentDir);
+    globalDir = data.dir || "";
+    globalDirMissing = data.exists === false;
+    applyViewDir();
   } catch {}
 }
 loadTargetDir();
@@ -2115,6 +2135,7 @@ function applyViewModel() {
   currentModel = viewModel();
   fillModelSelect(modelList, modelListError);
   fillEffortSelect();
+  applyViewDir(); // hedef dizin de oturuma özel
   updateStartGate();
 }
 
