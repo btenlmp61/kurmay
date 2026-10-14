@@ -91,7 +91,8 @@ export interface UiServerOptions {
   /** Şu an kullanılan hedef proje dizini (GET /target-dir) */
   getTargetDir?: () => string;
   /** Hedef dizini değiştirir: doğrular, çalışan sürece uygular, config.json'a yazar */
-  setTargetDir?: (dir: string) => { ok: boolean; error?: string; dir?: string };
+  /** session verilirse yalnızca o oturumun dizini (resetResume: Analist'in konuşması bırakıldı), yoksa genel */
+  setTargetDir?: (dir: string, session?: string) => { ok: boolean; error?: string; dir?: string; resetResume?: boolean };
   /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
   getModels?: () => Promise<{ current: string; required?: boolean; effort?: string; models: ModelInfo[]; error?: string }>;
@@ -345,8 +346,11 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       req.on("data", (chunk) => (body += chunk));
       req.on("end", () => {
         let dir = "";
+        let session: string | undefined;
         try {
-          dir = String((JSON.parse(body) as { dir?: unknown }).dir ?? "").trim();
+          const parsed = JSON.parse(body) as { dir?: unknown; session?: unknown };
+          dir = String(parsed.dir ?? "").trim();
+          if (typeof parsed.session === "string" && parsed.session) session = parsed.session;
         } catch {
           res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
@@ -357,7 +361,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           res.end(JSON.stringify({ ok: false, error: "dizin boş olamaz" }));
           return;
         }
-        const r = options.setTargetDir ? options.setTargetDir(dir) : { ok: false, error: "kapalı" };
+        const r = options.setTargetDir ? options.setTargetDir(dir, session) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });

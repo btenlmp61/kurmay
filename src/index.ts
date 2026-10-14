@@ -192,13 +192,19 @@ async function main() {
         runs: e.runLogs?.length ?? 0,
         model: e.model,
         effort: e.effort,
+        // Oturumun hedef dizini (yoksa genel dizin geçerli) ve diskte var mı — panel uyarısı için
+        targetDir: e.targetDir,
+        dirExists: dirOk(e.targetDir ?? cwd),
       };
     });
 
   /** Bir oturumda görev başlatır (oturum yoksa açar); arka planda koşar */
   const launch = (task: string, entry: SessionEntry | undefined, runAt?: number) => {
-    // Yeni oturum o anki genel model/derinlikle açılır; sonra panelden yalnızca kendisi için değişebilir
-    const e = entry ?? sessions.create(task, cfg.model, cfg.effort);
+    // Yeni oturum o anki genel model/derinlik/dizinle açılır; sonra panelden yalnızca kendisi için değişebilir
+    const e = entry ?? sessions.create(task, cfg.model, cfg.effort, cwd);
+    // Eski kayıt (dizinsiz): o anki genel dizine sabitlenir — konuşması da o dizinde
+    if (!e.targetDir) sessions.setTargetDir(e.id, cwd, true);
+    const runDir = e.targetDir ?? cwd;
     const runCfg = snapshotConfig(cfg);
     if (e.model) runCfg.model = e.model;
     if (e.effort) runCfg.effort = e.effort;
@@ -208,7 +214,7 @@ async function main() {
       // Kopya: panelden model/düğüm değişirse çalışan koşunun kalan adımları etkilenmesin
       cfg: runCfg,
       agents,
-      cwd,
+      cwd: runDir,
       runtime,
       runsDir,
       sessions,
@@ -475,10 +481,17 @@ async function main() {
         }
       },
       getTargetDir: () => cwd,
-      setTargetDir: (dir) => {
+      setTargetDir: (dir, sessionId) => {
         const resolvedDir = path.resolve(dir);
         if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
           return { ok: false, error: `dizin bulunamadı: ${resolvedDir}` };
+        }
+        // Oturuma özel: config.json'a dokunmaz, yalnızca o oturumun sıradaki görevi etkilenir
+        if (sessionId) {
+          const r = sessions.setTargetDir(sessionId, resolvedDir);
+          if (!r.ok) return { ok: false, error: "oturum bulunamadı" };
+          runtimes.notify();
+          return { ok: true, dir: resolvedDir, resetResume: r.resetResume };
         }
         const prev = fs.readFileSync(resolvedConfigPath, "utf8");
         try {
@@ -583,11 +596,12 @@ async function main() {
             if (modelMissing({ ...cfg, model: existing?.model || cfg.model })) {
               return { ok: false, error: "Model seçilmedi — üst çubuktaki model listesinden bir model seç" };
             }
-            if (!dirOk(cwd)) {
-              return { ok: false, error: `Hedef dizin bulunamadı: ${cwd} — üst çubuktaki dizine tıklayıp geçerli bir dizin seç` };
-            }
             const entry = sessionId ? sessions.get(sessionId) : undefined;
             if (sessionId && !entry) return { ok: false, error: "oturum bulunamadı" };
+            const dir = entry?.targetDir ?? cwd; // oturumun dizini; yeni oturumda genel dizin
+            if (!dirOk(dir)) {
+              return { ok: false, error: `Hedef dizin bulunamadı: ${dir} — sağdaki hedef dizine tıklayıp geçerli bir dizin seç` };
+            }
             if (entry && runtimes.get(entry.id, entry.runLogs).busy) {
               return { ok: false, error: "Bu oturumda zaten bir görev çalışıyor — bitmesini bekle ya da yeni oturum aç" };
             }
@@ -600,14 +614,14 @@ async function main() {
             }
             // Aynı dizine iki akış aynı anda yazarsa birbirini ezer — engellemiyoruz
             // (salt okunur bilgi soruları zararsız) ama açıkça uyarıyoruz
-            const clash = busy.find((r) => r.cwd === cwd);
+            const clash = busy.find((r) => r.cwd === dir);
             const { entry: e, run } = launch(t, entry, runAt);
             run.catch((err) => console.error(`💥 [${e.name}] Koşu hatası:`, err instanceof Error ? err.message : err));
             return {
               ok: true,
               session: e.id,
               ...(clash
-                ? { warning: `Aynı hedef dizinde (${cwd}) çalışan başka bir oturum var — dosyaları birbirini ezebilir` }
+                ? { warning: `Aynı hedef dizinde (${dir}) çalışan başka bir oturum var — dosyaları birbirini ezebilir` }
                 : {}),
             };
           },
