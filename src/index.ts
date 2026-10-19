@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { checkAgentMd, composeAgentMd, frontDescription, resolveAgentMd, splitAgentMd } from "./agentMd.js";
 import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
@@ -276,6 +277,84 @@ async function main() {
       if (disabled) cfg.workflow.agents[key].disabled = true;
       else delete cfg.workflow.agents[key].disabled;
       return { ok: true };
+    } catch (e) {
+      fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  /**
+   * Güvenlik denetçisini akışa ekler ve açar (Ayarlar'daki "Güvenlik denetimi" anahtarı).
+   * Denetçi sonradan geldi: daha önce oluşturulmuş config.json'larda (kurmay init /
+   * git pull mevcut dosyanın üstüne yazmaz) securityReport düğümü yok ve anahtar
+   * açılamıyordu. Düğüm Teftiş onayından sonraya bağlanır (onay kenarı denetçiye,
+   * denetçinin next'i eski onay hedefine); rol tanımı/hook dosyası yoksa paketten kopyalanır.
+   */
+  const addSecurityAudit = (): { ok: boolean; error?: string; key?: string; node?: unknown; attachedTo?: string } => {
+    const nodes = cfg.workflow.agents;
+    const disk = () => JSON.parse(fs.readFileSync(resolvedConfigPath, "utf8")) as AppConfig;
+    const existing = Object.keys(nodes).find((k) => (nodes[k] as { securityReport?: boolean }).securityReport);
+    if (existing) {
+      const r = setNodeDisabled(existing, false);
+      return r.ok ? { ok: true, key: existing, node: disk().workflow.agents[existing] } : r;
+    }
+    // Bağlanacak yer: onay/red kararı veren inceleme adımı (öncelik "teftis")
+    const verdicts = Object.keys(nodes).filter((k) => (nodes[k] as { verdict?: unknown }).verdict);
+    const inspector = verdicts.includes("teftis") ? "teftis" : verdicts[0];
+    if (!inspector) {
+      return { ok: false, error: "akışta onay/red kararı veren bir inceleme adımı yok — denetçi Teftiş onayından sonra çalışır" };
+    }
+    // Rol tanımı ve salt okunur hook'u: çalışma klasöründe yoksa paketteki şablondan
+    const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const ensure = (rel: string): boolean => {
+      const abs = path.join(configRoot, rel);
+      if (fs.existsSync(abs)) return true;
+      const src = path.join(pkgRoot, rel);
+      if (!fs.existsSync(src)) return false;
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.copyFileSync(src, abs);
+      return true;
+    };
+    const persona = ".claude/agents/guvenlik.md";
+    if (!ensure(persona)) return { ok: false, error: `denetçinin rol tanımı bulunamadı: ${persona}` };
+    const guard = ensure(".claude/hooks/guard-readonly.js");
+
+    let key = "guvenlik";
+    for (let i = 2; nodes[key]; i++) key = `guvenlik-${i}`;
+    const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+    try {
+      const parsed = JSON.parse(prev) as AppConfig;
+      const insp = parsed.workflow?.agents?.[inspector] as { tools?: string[]; rules?: string[]; verdict?: { onApprove: string | null } } | undefined;
+      if (!insp?.verdict) return { ok: false, error: `düğüm ayar dosyasında yok: ${inspector}` };
+      // Teftiş'in eklentileri ve kuralları; dosya yazan araçlar yok (denetçi salt okunur)
+      const node = {
+        file: persona,
+        tools: ["Read", "Glob", "Grep", ...(insp.tools ?? []).filter((t) => t.startsWith("mcp__"))],
+        ...(insp.rules?.length ? { rules: [...insp.rules] } : {}),
+        ...(guard
+          ? {
+              hooks: [
+                {
+                  event: "PreToolUse",
+                  matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash",
+                  command: 'node "${configDir}/.claude/hooks/guard-readonly.js"',
+                },
+              ],
+            }
+          : {}),
+        securityReport: true,
+        next: insp.verdict.onApprove ?? null,
+      };
+      parsed.workflow.agents[key] = node as AppConfig["workflow"]["agents"][string];
+      insp.verdict.onApprove = key;
+      fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+      const c = loadAppConfig(resolvedConfigPath); // yapı doğrulaması (+ ${configDir} çevrilir)
+      loadAgents(c.workflow, configRoot, offOf(c)); // kenar + md + kural doğrulaması
+      // Sıradaki görev görür; çalışan koşu kendi workflow kopyasıyla devam eder
+      nodes[key] = c.workflow.agents[key];
+      (nodes[inspector] as { verdict: { onApprove: string | null } }).verdict.onApprove = key;
+      agents = loadAgents(cfg.workflow, configRoot, offOf(cfg));
+      return { ok: true, key, node, attachedTo: inspector };
     } catch (e) {
       fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -645,6 +724,7 @@ async function main() {
         }),
       }),
       setNodeDisabled,
+      addSecurityAudit,
       getToggles,
       listSecurityReports: () => securityReports.list(),
       getSecurityReport: (id) => securityReports.get(id),

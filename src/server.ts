@@ -126,6 +126,8 @@ export interface UiServerOptions {
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
   setNodeDisabled?: (key: string, disabled: boolean) => { ok: boolean; error?: string };
+  /** Güvenlik denetçisini açar; config'te düğümü yoksa Teftiş onayından sonraya ekler */
+  addSecurityAudit?: () => { ok: boolean; error?: string; key?: string; node?: unknown; attachedTo?: string };
   /** Aç/Kapat sayfası verisi (GET /toggles-data): ajanlar, beceriler, MCP sunucuları */
   getToggles?: () => unknown;
   /** Bir ajanı/beceriyi/MCP sunucusunu açar ya da kapatır: canlı + config.json */
@@ -157,6 +159,7 @@ export interface UiServerOptions {
  *   POST /effort      { effort: string, session? } — oturumun ya da genel akıl yürütme derinliği
  *   GET  /workflow      { entry, nodes[] } — ana yol sırasıyla düğümler ve açık/kapalı durumları
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
+ *   POST /security-audit  güvenlik denetçisini açar; akışta yoksa ekler → { ok, key, node, attachedTo? }
  *   GET  /agent-md?file=  { raw, body, description } — rol tanımı dosyası (.claude/agents/*.md)
  *   POST /agent-md-save   { file, body, description } | { file, raw } — doğrulayıp kaydeder (canlı)
  *   GET  /guvenlik      Güvenlik denetimi raporları sayfası (ui/guvenlik.html)
@@ -498,6 +501,15 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
         const r = options.setNodeDisabled ? options.setNodeDisabled(key, disabled) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/security-audit") {
+      req.resume();
+      req.on("end", () => {
+        const r = options.addSecurityAudit ? options.addSecurityAudit() : { ok: false, error: "kapalı" };
+        json(res, r.ok ? 200 : 400, r);
       });
       return;
     }
