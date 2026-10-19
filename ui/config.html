@@ -628,13 +628,21 @@ function chipEditor(list, options, onChange, label = (v)=>v){
   return wrap;
 }
 
-// Güvenlik denetimi kartı: config'te securityReport düğümü varsa onun açık/kapalı durumu
+// Güvenlik denetimi kartı: config'te securityReport düğümü varsa onun açık/kapalı durumu.
+// Yoksa (denetçiden önce oluşturulmuş config.json) anahtar kapalı görünür; açınca
+// sunucu düğümü Teftiş onayından sonraya ekler (POST /security-audit)
 const secKey = () => cfg && keys().find((k)=> nodes()[k] && nodes()[k].securityReport);
+const secInspector = () => cfg && (nodes().teftis && nodes().teftis.verdict ? "teftis" : keys().find((k)=> nodes()[k] && nodes()[k].verdict));
+const SEC_HINT = $("secHint").textContent;
 function renderSecCard(){
   const k = secKey(), sw = $("secSw");
+  $("secHint").textContent = SEC_HINT;
   if (!k){
-    sw.checked = false; sw.disabled = true;
-    $("secState").textContent = "akışta yok"; $("secState").className = "secc-st";
+    const ok = !!secInspector();
+    sw.checked = false; sw.disabled = !ok;
+    $("secState").textContent = ok ? "kapalı" : "akışta yok"; $("secState").className = "secc-st";
+    $("secHint").textContent = ok ? SEC_HINT + " Açınca akışa Teftiş onayından sonra eklenir."
+      : "Akışta onay/red kararı veren bir inceleme adımı (Teftiş) yok — denetçi onun onayından sonra çalışır.";
     return;
   }
   const on = !nodes()[k].disabled;
@@ -642,15 +650,27 @@ function renderSecCard(){
   $("secState").textContent = on ? "açık" : "kapalı"; $("secState").className = "secc-st" + (on ? " on" : "");
 }
 $("secSw").addEventListener("change", async ()=>{
-  const k = secKey(); if (!k) return;
+  const k = secKey();
+  if (!k && !secInspector()) return;
   const want = !$("secSw").checked; // disabled
   $("secSw").disabled = true;
   try {
-    const res = await fetch("/node-disabled", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ key:k, disabled: want }) });
-    const data = await res.json().catch(()=>({}));
-    if (!data.ok) throw new Error(data.error || "uygulanamadı");
-    if (want) nodes()[k].disabled = true; else delete nodes()[k].disabled;
-    $("msg").innerHTML = `<span style="color:var(--teal)">✓ Güvenlik denetimi ${want ? "kapatıldı" : "açıldı"} — sıradaki görevde geçerli</span>`;
+    if (!k){
+      const res = await fetch("/security-audit", { method:"POST" });
+      const data = await res.json().catch(()=>({}));
+      if (!data.ok) throw new Error(data.error || "eklenemedi");
+      // Sayfadaki kopya da güncellenir — sonradan Kaydet'e basılırsa düğüm silinmesin
+      nodes()[data.key] = data.node;
+      const a = data.attachedTo && nodes()[data.attachedTo];
+      if (a && a.verdict) a.verdict.onApprove = data.key;
+      $("msg").innerHTML = `<span style="color:var(--teal)">✓ Güvenlik denetimi açıldı — akışa Teftiş onayından sonra eklendi, sıradaki görevde geçerli</span>`;
+    } else {
+      const res = await fetch("/node-disabled", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ key:k, disabled: want }) });
+      const data = await res.json().catch(()=>({}));
+      if (!data.ok) throw new Error(data.error || "uygulanamadı");
+      if (want) nodes()[k].disabled = true; else delete nodes()[k].disabled;
+      $("msg").innerHTML = `<span style="color:var(--teal)">✓ Güvenlik denetimi ${want ? "kapatıldı" : "açıldı"} — sıradaki görevde geçerli</span>`;
+    }
   } catch (err){
     $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err.message)}</span>`;
   }

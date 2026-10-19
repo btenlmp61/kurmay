@@ -116,7 +116,7 @@
           {
             "event": "PreToolUse",
             "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
-            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
+            "command": "node \"${configDir}/.claude/hooks/guard-readonly.js\""
           }
         ],
         "securityReport": true,
