@@ -4,6 +4,33 @@ export interface ModelInfo {
   id: string;
   /** Görünen ad (API vermezse id) */
   name: string;
+  /** Bağlam penceresi, token (vLLM `max_model_len` vb.) — API vermezse yok */
+  contextLength?: number;
+}
+
+/** Model listesinden okunan bağlam pencereleri — her liste çekilişinde güncellenir */
+const contextByModel = new Map<string, number>();
+let contextFetchedAt = 0;
+let contextFetching: Promise<void> | null = null;
+
+/** Modelin bilinen bağlam penceresi (listede yoksa ya da liste çekilmediyse undefined) */
+export function modelContextLength(model?: string): number | undefined {
+  return model ? contextByModel.get(model) : undefined;
+}
+
+/**
+ * Model listesini (bağlam pencereleri için) gerekiyorsa tazeler: en fazla
+ * maxAgeMs'de bir çekilir, hata yutulur — liste alınamazsa elle girilen değer
+ * (limits.contextTokens) geçerli olur. Aynı anda tek istek.
+ */
+export async function refreshModelContext(url: string | undefined, apiKey?: string, maxAgeMs = 10 * 60_000): Promise<void> {
+  if (!url || Date.now() - contextFetchedAt < maxAgeMs) return;
+  if (!contextFetching) {
+    contextFetching = fetchModels(url, apiKey)
+      .then(() => undefined, () => { contextFetchedAt = Date.now(); }) // hatada da sık sık denenmesin
+      .finally(() => { contextFetching = null; });
+  }
+  await contextFetching;
 }
 
 /**
@@ -43,9 +70,13 @@ export async function fetchModels(url: string, apiKey?: string): Promise<ModelIn
 
   const models: ModelInfo[] = [];
   const seen = new Set<string>();
+  // Bağlam penceresinin alan adı sunucuya göre değişir: vLLM max_model_len,
+  // OpenRouter/LM Studio context_length / max_context_length, diğerleri context_window
+  const CONTEXT_KEYS = ["max_model_len", "context_length", "max_context_length", "context_window", "max_input_tokens"];
   for (const item of list) {
     let id: string | undefined;
     let name: string | undefined;
+    let contextLength: number | undefined;
     if (typeof item === "string") {
       id = item;
     } else if (item && typeof item === "object") {
@@ -53,10 +84,16 @@ export async function fetchModels(url: string, apiKey?: string): Promise<ModelIn
       const pick = (...keys: string[]) => keys.map((k) => o[k]).find((v) => typeof v === "string" && v) as string | undefined;
       id = pick("id", "model", "name");
       name = pick("display_name", "name");
+      const ctx = CONTEXT_KEYS.map((k) => o[k]).find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+      if (typeof ctx === "number") contextLength = Math.floor(ctx);
     }
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    models.push({ id, name: name ?? id });
+    models.push({ id, name: name ?? id, ...(contextLength ? { contextLength } : {}) });
   }
+  // Bağlam pencerelerini hatırla (ajan koşuları ve panel buradan okur)
+  contextByModel.clear();
+  for (const m of models) if (m.contextLength) contextByModel.set(m.id, m.contextLength);
+  contextFetchedAt = Date.now();
   return models;
 }

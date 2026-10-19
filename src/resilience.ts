@@ -1,3 +1,4 @@
+import { isContextFullError } from "./context.js";
 import type { LimitsConfig, ProviderConfig, RetryConfig } from "./types.js";
 
 /**
@@ -43,7 +44,9 @@ export const CLI_STALL_MIN_MS = 300_000;
 export const RESILIENCE_RETRY_KEYS = [
   "enabled", "maxAttempts", "permanentMaxAttempts", "initialDelayMs", "maxDelayMs", "jitter", "stallTimeoutMs",
 ] as const;
-export const RESILIENCE_LIMIT_KEYS = ["apiTimeoutMs", "apiMaxRetries"] as const;
+export const RESILIENCE_LIMIT_KEYS = [
+  "apiTimeoutMs", "apiMaxRetries", "contextTokens", "compactPercent", "maxOutputTokens",
+] as const;
 
 /** Servis açıkken Ayarlar'dan gelen güncel değerler (yoksa koşunun config kopyası geçerli) */
 let live: { retry?: RetryConfig; limits?: LimitsConfig } | undefined;
@@ -97,8 +100,9 @@ export class StallError extends Error {
  * - permanent: kalıcı görünen (yetki, model yok, istek reddedildi) — üst üste
  *   deneme sınırına tabi
  * - lost_session: sürdürülecek konuşma bulunamadı — yeni konuşmayla denenir
+ * - context_full: modelin bağlam penceresi doldu — konuşma özetlenir, olmazsa yeni konuşma
  */
-export type ErrorKind = "transient" | "permanent" | "lost_session";
+export type ErrorKind = "transient" | "permanent" | "lost_session" | "context_full";
 
 export interface ClassifiedError {
   kind: ErrorKind;
@@ -162,6 +166,9 @@ export function classifyError(err: unknown, apiError?: string): ClassifiedError 
   if (/No conversation found/i.test(msg)) {
     return { kind: "lost_session", reason: "sürdürülecek konuşma bulunamadı" };
   }
+  // vLLM "This model's maximum context length is …" (400) — Claude Code bunu tanımıyor,
+  // sıradan 400 sanıyor; aynı konuşmayı tekrar göndermek hep aynı hatayı verir
+  if (isContextFullError(msg)) return { kind: "context_full", reason: "bağlam penceresi doldu" };
 
   // Durum kodu: "API Error: 503 …", "Request rejected (429)", "API Error: 401 …"
   const m = /API Error:\s*(\d{3})\b/.exec(msg) ?? /\((\d{3})\)/.exec(msg);

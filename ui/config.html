@@ -86,7 +86,10 @@ input[type=text], input[type=number], select { width:100%; }
 .rgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px 16px; margin-top:12px; }
 .chkl { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
 .rfoot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
-#rMsg { font-size:13px; }
+#rMsg, #xMsg { font-size:13px; }
+.mtab { width:100%; max-width:460px; border-collapse:collapse; font-size:12.5px; margin-top:8px; }
+.mtab td { padding:4px 8px 4px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.mtab td.n { text-align:right; white-space:nowrap; font-family:ui-monospace,Consolas,monospace; }
 
 /* Dar ekran: graf + özellik paneli yan yana sığmaz, alt alta akar */
 @media (max-width:900px) {
@@ -201,6 +204,26 @@ input[type=text], input[type=number], select { width:100%; }
     <button class="primary" id="rApply" type="button">Uygula</button>
     <button id="rDefaults" type="button" title="Alanları varsayılana döndürür — Uygula'ya basınca geçerli olur">Varsayılanlar</button>
     <span id="rMsg"></span>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="label">Bağlam penceresi</div>
+  <div class="intro">Her modelin konuşma sınırı (bağlam penceresi) model listesinden okunur — yerel sunucuda <b>max_model_len</b>.
+    Yanıt için ayrılan pay pencereden düşülür; kalan "kullanılabilir sınır"a yaklaşınca panel sarı/kırmızı gösterir ve
+    eşikte Analist'in konuşması sıradaki görevden önce otomatik özetlenir (aynı oturumdan devam eder).</div>
+  <div id="xModels" class="fhint"></div>
+  <div class="rgrid">
+    <div><label class="minl" for="xWindow">Varsayılan pencere (token)</label><input type="number" id="xWindow" min="0" step="1" placeholder="bilinmiyor">
+      <div class="fhint">Model listesi sınır vermeyen modeller için. Boş = sınır bilinmiyor (gösterge ve otomatik özetleme çalışmaz).</div></div>
+    <div><label class="minl" for="xPercent">Otomatik özetleme eşiği (%)</label><input type="number" id="xPercent" min="0" max="100" step="1" placeholder="75">
+      <div class="fhint">Kullanılabilir sınırın bu yüzdesi geçilince konuşma özetlenir. 0 = kapalı (yalnızca uyarı).</div></div>
+    <div><label class="minl" for="xReserve">Yanıta ayrılan pay (token)</label><input type="number" id="xReserve" min="0" step="1" placeholder="32000">
+      <div class="fhint">Her istekte yanıt için istenen en fazla token. Küçük pencereli modellerde düşür — sunucu "girdi + bu pay" toplamını sınırla kıyaslar.</div></div>
+  </div>
+  <div class="rfoot">
+    <button class="primary" id="xApply" type="button">Uygula</button>
+    <span id="xMsg"></span>
   </div>
 </div>
 
@@ -887,6 +910,48 @@ $("rApply").addEventListener("click", async ()=>{
   }
 });
 
+// ── Bağlam penceresi: aynı uç (POST /resilience, yalnızca sınırlar), hemen geçerli ──
+const CTX_FIELDS = [["xWindow", "contextTokens"], ["xPercent", "compactPercent"], ["xReserve", "maxOutputTokens"]];
+const fmtTok = (n) => Number(n).toLocaleString("tr-TR");
+function fillContext(){
+  const l = cfg.limits || {};
+  for (const [id, alan] of CTX_FIELDS) $(id).value = typeof l[alan] === "number" ? String(l[alan]) : "";
+}
+async function loadContextModels(){
+  let d = {};
+  try { d = await (await fetch("/models")).json(); } catch {}
+  const list = (d.models || []);
+  const bilinen = list.filter((m)=> m.contextLength);
+  if (!list.length) { $("xModels").textContent = d.error ? "Model listesi alınamadı — sınırlar elle girilen değerden." : "Model listesi boş."; return; }
+  $("xModels").innerHTML = (bilinen.length ? "Model listesinden okunan sınırlar:" : "Model listesi bağlam sınırı vermiyor — aşağıya elle gir.")
+    + (bilinen.length ? `<table class="mtab">${bilinen.map((m)=>`<tr><td>${esc(m.id)}</td><td class="n">${fmtTok(m.contextLength)}</td></tr>`).join("")}</table>` : "");
+}
+$("xApply").addEventListener("click", async ()=>{
+  const limits = {};
+  for (const [id, alan] of CTX_FIELDS){
+    const t = $(id).value.trim();
+    if (t === "") { limits[alan] = null; continue; }
+    const n = Number(t);
+    const ad = document.querySelector(`label[for="${id}"]`).textContent;
+    if (!Number.isInteger(n) || n < 0) return void ($("xMsg").innerHTML = `<span style="color:var(--red)">✗ ${esc(ad)}: sıfır ya da pozitif bir tam sayı gir</span>`);
+    if (id === "xPercent" && n > 100) return void ($("xMsg").innerHTML = `<span style="color:var(--red)">✗ ${esc(ad)}: en fazla 100</span>`);
+    limits[alan] = n;
+  }
+  $("xApply").disabled = true; $("xMsg").textContent = "uygulanıyor…";
+  try {
+    const res = await fetch("/resilience", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ limits }) });
+    const d = await res.json().catch(()=>({}));
+    if (!d.ok) return void ($("xMsg").innerHTML = `<span style="color:var(--red)">✗ ${esc(d.error || "uygulanamadı")}</span>`);
+    if (d.limits && Object.keys(d.limits).length) cfg.limits = d.limits; else delete cfg.limits;
+    fillContext(); fillResilience();
+    $("xMsg").innerHTML = `<span style="color:var(--teal)">✓ uygulandı — sıradaki ajandan itibaren geçerli</span>`;
+  } catch {
+    $("xMsg").innerHTML = `<span style="color:var(--red)">✗ servise ulaşılamadı</span>`;
+  } finally {
+    $("xApply").disabled = false;
+  }
+});
+
 $("entrySel").addEventListener("change", ()=>{ cfg.workflow.entry = $("entrySel").value; markDirty(); render(); });
 
 function populateMd(){
@@ -952,6 +1017,8 @@ async function load(){
   $("tdir").value = cfg.targetDir || "";
   fillConn();
   fillResilience();
+  fillContext();
+  loadContextModels();
   refreshEntry();
   render();
   loadModelList();

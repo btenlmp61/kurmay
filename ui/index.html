@@ -103,6 +103,13 @@ body { overflow:hidden; }
 .node.mem.rejected .sub { color:var(--red); }
 .node.mem.disabled { opacity:.45; border-style:dashed; }
 .node.mem.disabled .nm { text-decoration:line-through; }
+/* Kapsülün altında ince bağlam doluluğu çizgisi (sağ sütundaki çubuğun özeti) */
+.node.mem { position:relative; }
+.node.mem .nctx { position:absolute; left:16px; right:16px; bottom:2px; height:3px; border-radius:2px; pointer-events:none;
+  background:linear-gradient(to right, var(--c) var(--p), color-mix(in srgb, var(--muted) 22%, transparent) var(--p)); }
+.nctx.ok { --c:#2ecc71; } .nctx.warn { --c:#f5a524; } .nctx.crit { --c:#e5484d; }
+.node.mem .sub .ctxw { font-weight:700; }
+.node.mem .sub .ctxw.warn { color:#f5a524; } .node.mem .sub .ctxw.crit { color:#e5484d; }
 .node.group { display:flex; align-items:center; gap:4px; padding:3px 4px 3px 10px; border-radius:999px; border:1px dashed var(--border); background:var(--md-surface-container-low); }
 .node.group > .glabel { font:600 11px var(--font-ui); color:var(--muted); margin-right:4px; white-space:nowrap; }
 .node.group > .node.mem { padding:2px 10px 2px 2px; }
@@ -211,6 +218,22 @@ body { overflow:hidden; }
 #mcpProbe:hover { color:var(--text); }
 #mcpProbe:disabled { cursor:wait; opacity:.5; }
 .rbox .empty { font-size:12.5px; color:var(--muted); }
+/* Bağlam doluluğu — renkler temadan bağımsız anlam: yeşil boş, sarı yaklaşıyor, kırmızı eşikte */
+.ctx-row { margin:9px 0; font-size:12.5px; }
+.ctx-top { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.ctx-top b { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.ctx-top small { margin-left:auto; color:var(--muted); white-space:nowrap; font:11.5px ui-monospace,Consolas,monospace; }
+.ctx-row.warn .ctx-top small { color:#f5a524; }
+.ctx-row.crit .ctx-top small { color:#e5484d; font-weight:700; }
+.ctx-bar { position:relative; height:6px; border-radius:3px; margin-top:5px; background:color-mix(in srgb, var(--muted) 22%, transparent); }
+.ctx-bar > i { display:block; height:100%; max-width:100%; border-radius:3px; background:#2ecc71; transition:width var(--md-motion); }
+.ctx-row.warn .ctx-bar > i { background:#f5a524; }
+.ctx-row.crit .ctx-bar > i { background:#e5484d; }
+.ctx-bar .mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text); opacity:.4; }
+#ctxHint { font-size:11.5px; color:var(--muted); margin-top:8px; line-height:1.4; }
+.sess .ctxb { font-size:11px; font-weight:700; margin-left:4px; white-space:nowrap; }
+.sess .ctxb.warn { color:#f5a524; }
+.sess .ctxb.crit { color:#e5484d; }
 .kv { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:13px; margin:7px 0; min-width:0; }
 .kv > span:first-child { color:var(--muted); flex:none; }
 .kv b { font:600 12.5px ui-monospace,Consolas,monospace; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -578,6 +601,11 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
     <h4>Eklentiler <button id="mcpProbe" title="Şimdi yokla — model çağrısı yapmaz">↻</button></h4>
     <div id="mcpList"></div>
   </div>
+  <div class="rbox hidden" id="ctxBox">
+    <h4>Bağlam <span id="ctxSum"></span></h4>
+    <div id="ctxList"></div>
+    <div id="ctxHint"></div>
+  </div>
   <div class="rbox hidden" id="repoBox">
     <h4>Mıntıkalar <span id="repoSum"></span></h4>
     <div id="repoList"></div>
@@ -668,6 +696,9 @@ const CODE_NAMES = ["Atmaca", "Doğan", "Şahin", "Kartal", "Kerkenez", "Turna",
   "Ebabil", "Karabatak", "Toygar", "Çaylak", "Kumru", "Saka", "Serçe", "Sığırcık"];
 let codeNames = {};           // kopya anahtarı ("saha@order") → kod adı
 let mcpShown = {};            // eklenti adı → bu harekâtta son gösterilen durum (her ajanda tekrarlamasın)
+let ctxUsage = {};            // ajan anahtarı → {tokens, window, limit} — sağdaki bağlam göstergesi
+let ctxCfg = { compactPercent: 75 }; // GET /models: özetleme eşiği
+let compactNotes = {};        // ajan → "özetleniyor" satırı (sonuç gelince aynı satır güncellenir)
 function assignCodeName(key) {
   if (codeNames[key]) return codeNames[key];
   const repo = key.slice(key.indexOf("@") + 1);
@@ -1126,8 +1157,18 @@ function nodeCell(a) {
   const ad = r.repo ? `${agentName(a)} · ${mintika(r.repo)}` : r.ad;
   const odak = logFilter && logFilter.has(a) ? " focus" : "";
   const yaziyor = st === "running" ? '<span class="typing"><i></i><i></i><i></i></span>' : "";
-  return `<div class="node mem ${st}${odak}" data-agent="${esc(a)}" title="${esc(agentName(a))} · ${stateLabels[st]} — tıkla: yalnızca bu ajanın mesajları">` +
-    `${avatar(a, true)}<div><div class="nm">${esc(ad)}</div><div class="sub">${sub}${yaziyor}</div></div></div>`;
+  // Bağlam doluluğu: altta ince çizgi; sınıra yaklaştıysa yüzde de yazılır
+  const c = ctxUsage[a];
+  let cizgi = "", yuzde = "", ipucu = "";
+  if (c && c.limit) {
+    const pct = Math.round((c.tokens / c.limit) * 100);
+    const lv = ctxLevel(pct);
+    cizgi = `<span class="nctx ${lv}" style="--p:${Math.min(pct, 100)}%"></span>`;
+    if (lv !== "ok") yuzde = ` · <span class="ctxw ${lv}">bağlam %${pct}</span>`;
+    ipucu = ` · bağlam %${pct}`;
+  }
+  return `<div class="node mem ${st}${odak}" data-agent="${esc(a)}" title="${esc(agentName(a))} · ${stateLabels[st]}${ipucu} — tıkla: yalnızca bu ajanın mesajları">` +
+    `${avatar(a, true)}<div><div class="nm">${esc(ad)}</div><div class="sub">${sub}${yuzde}${yaziyor}</div></div>${cizgi}</div>`;
 }
 
 function renderPipeline() {
@@ -1364,6 +1405,51 @@ function resetRail() {
   renderFiles();
   renderStats();
   $("repoBox").classList.add("hidden");
+  ctxUsage = {}; compactNotes = {};
+  renderCtx();
+}
+
+// ── Bağlam penceresi ──────────────────────────────────────────────
+// "128k", "1,5k" — Türkçe ondalık virgül
+// Pencereler çoğunlukla 2'nin kuvveti (32768 → "32k", 131072 → "128k")
+const fmtK = (n) => n >= 1024 && n % 1024 === 0 ? n / 1024 + "k"
+  : n >= 1000 ? (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(".", ",") + "k" : String(n);
+// Renk eşikleri: özetleme eşiğinde kırmızı, biraz öncesinde sarı (eşik kapalıysa %85 kırmızı)
+function ctxLevel(pct) {
+  const esik = ctxCfg.compactPercent > 0 ? ctxCfg.compactPercent : 85;
+  if (pct >= esik) return "crit";
+  if (pct >= Math.min(60, esik * 0.8)) return "warn";
+  return "ok";
+}
+function ctxTitle(c) {
+  if (!c.limit) return "Modelin bağlam sınırı bilinmiyor — model listesi vermiyorsa Ayarlar'dan elle gir";
+  const pay = c.window && c.window > c.limit ? ` (pencere ${fmtK(c.window)}, ${fmtK(c.window - c.limit)} yanıta ayrılıyor)` : "";
+  const esik = ctxCfg.compactPercent > 0 ? ` %${ctxCfg.compactPercent}'te konuşma otomatik özetlenir.` : " Otomatik özetleme kapalı.";
+  return `Konuşma ${c.tokens.toLocaleString("tr-TR")} token · kullanılabilir sınır ${c.limit.toLocaleString("tr-TR")}${pay}.${esik}`;
+}
+function renderCtx() {
+  const keys = Object.keys(ctxUsage);
+  $("ctxBox").classList.toggle("hidden", !keys.length);
+  if (!keys.length) return;
+  let enYuksek = 0;
+  $("ctxList").innerHTML = keys.map((k) => {
+    const c = ctxUsage[k];
+    if (!c.limit) {
+      return `<div class="ctx-row" title="${esc(ctxTitle(c))}"><div class="ctx-top"><b>${esc(agentName(k))}</b>` +
+        `<small>${fmtK(c.tokens)} · sınır bilinmiyor</small></div></div>`;
+    }
+    const pct = Math.round((c.tokens / c.limit) * 100);
+    enYuksek = Math.max(enYuksek, pct);
+    const mark = ctxCfg.compactPercent > 0 && ctxCfg.compactPercent < 100
+      ? `<span class="mark" style="left:${ctxCfg.compactPercent}%"></span>` : "";
+    return `<div class="ctx-row ${ctxLevel(pct)}" title="${esc(ctxTitle(c))}"><div class="ctx-top"><b>${esc(agentName(k))}</b>` +
+      `<small>${fmtK(c.tokens)} / ${fmtK(c.limit)} · %${pct}</small></div>` +
+      `<div class="ctx-bar"><i style="width:${Math.min(pct, 100)}%"></i>${mark}</div></div>`;
+  }).join("");
+  $("ctxSum").textContent = enYuksek ? `%${enYuksek}` : "";
+  $("ctxHint").textContent = enYuksek >= (ctxCfg.compactPercent > 0 ? ctxCfg.compactPercent : 85)
+    ? (ctxCfg.compactPercent > 0 ? "Sınıra yaklaşıldı — Analist'in konuşması sıradaki görevden önce otomatik özetlenecek." : "Sınıra yaklaşıldı — otomatik özetleme kapalı, sunucu yakında isteği reddedebilir.")
+    : "";
 }
 
 function renderLogFilterBar() {
@@ -1495,6 +1581,41 @@ function handleEvent(e) {
       d.innerHTML = `🔌 ${esc(e.reason)} — ${sn} sn sonra ${kac}. yeniden deneme (${nasil})` +
         (e.kind === "permanent" ? " · kalıcı görünen hata, ayarları kontrol et" : "");
       bubbleAdd(bubbleOf(e.agent, e.ts), d);
+      break;
+    }
+    case "context_usage": {
+      ctxUsage[e.agent] = { tokens: e.tokens, window: e.window, limit: e.limit };
+      renderCtx();
+      if (agents.length) renderPipeline();
+      break;
+    }
+    case "context_compacting": {
+      const d = document.createElement("div");
+      d.className = "note warn";
+      const oran = e.limit ? ` — ${fmtK(e.tokens)} / ${fmtK(e.limit)} (%${Math.round((e.tokens / e.limit) * 100)})` : "";
+      d.textContent = e.reason === "dolu"
+        ? `📦 Bağlam doldu — konuşma özetleniyor${oran}…`
+        : `📦 Konuşma sınıra yaklaştı, özetleniyor${oran}…`;
+      bubbleAdd(bubbleOf(e.agent, e.ts), d);
+      compactNotes[e.agent] = d;
+      break;
+    }
+    case "context_compacted": {
+      let d = compactNotes[e.agent];
+      if (!d) { d = document.createElement("div"); bubbleAdd(bubbleOf(e.agent, e.ts), d); }
+      delete compactNotes[e.agent];
+      // Sunucunun ham hata metni ipucunda; kendi Türkçe sebeplerimiz doğrudan
+      const sebep = !e.error ? "" : /[çğıöşüÇĞİÖŞÜ]/.test(e.error) ? e.error : "özetleme isteği başarısız";
+      d.title = e.error || "";
+      if (e.ok) {
+        d.className = "note";
+        d.textContent = `📦 Konuşma özetlendi${e.pre ? `: ${fmtK(e.pre)} → ${fmtK(e.post || 0)} token` : ""} — aynı oturumdan devam ediyor`;
+      } else {
+        d.className = "note " + (e.fallback === "yeni" ? "err" : "warn");
+        d.textContent = `⚠ Konuşma özetlenemedi (${sebep}) — ` + (e.fallback === "yeni"
+          ? "yeni konuşmayla başlıyor, önceki konuşma hatırlanmayacak"
+          : "aynı konuşmayla devam ediliyor");
+      }
       break;
     }
     case "api_retry": {
@@ -1945,8 +2066,15 @@ function renderSessions() {
   const list = Object.values(sessionsById).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   $("sessionList").innerHTML = list.map((s) => {
     const st = s.status || "idle";
+    // Analist'in konuşması sınıra yaklaştıysa oturum listesinde de görünsün
+    let ctx = "";
+    if (s.context && s.context.limit) {
+      const pct = Math.round((s.context.tokens / s.context.limit) * 100);
+      const lv = ctxLevel(pct);
+      if (lv !== "ok") ctx = `<span class="ctxb ${lv}" title="${esc("Analist: " + ctxTitle(s.context))}">◔ %${pct}</span>`;
+    }
     return `<div class="sess" data-id="${esc(s.id)}"><div class="sess-main"><div class="nm" title="${esc(s.task || s.name)}">${esc(s.name)}</div>` +
-      `<div class="meta"><span class="st ${st}">${sessionStatusLabels[st] || st}</span>${fmt(Date.parse(s.updatedAt))}</div></div>` +
+      `<div class="meta"><span class="st ${st}">${sessionStatusLabels[st] || st}</span>${fmt(Date.parse(s.updatedAt))}${ctx}</div></div>` +
       (s.busy ? "" : `<button class="sess-del" data-del="${esc(s.id)}" title="Oturumu listeden sil">×</button>`) + `</div>`;
   }).join("");
   document.querySelectorAll("#sidebarBody .sess").forEach((n) =>
@@ -2171,7 +2299,8 @@ function fillModelSelect(models, error) {
     opts.push(`<option value="${esc(currentModel)}">${esc(currentModel)}</option>`);
   }
   for (const m of models) {
-    const label = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+    const ad = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+    const label = m.contextLength ? `${ad} · ${fmtK(m.contextLength)}` : ad;
     opts.push(`<option value="${esc(m.id)}">${esc(label)}</option>`);
   }
   sel.innerHTML = opts.join("");
@@ -2191,6 +2320,7 @@ async function loadModels() {
     modelRequired = !!data.required;
     modelList = data.models || [];
     modelListError = data.error;
+    if (data.context) { ctxCfg = data.context; renderCtx(); renderSessions(); }
     applyViewModel();
   } catch {
     fillModelSelect([], "sunucuya ulaşılamadı");
