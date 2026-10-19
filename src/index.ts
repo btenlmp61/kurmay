@@ -7,6 +7,7 @@ import { fmtDate, parseRunAt } from "./approval.js";
 import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
 import { mcpStatus, probeMcp } from "./mcpStatus.js";
 import { fetchModels } from "./models.js";
+import { RESILIENCE_LIMIT_KEYS, RESILIENCE_RETRY_KEYS, setLiveResilience } from "./resilience.js";
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
 import { startUiServer, type ToggleKind, type UiServer } from "./server.js";
@@ -130,6 +131,8 @@ async function main() {
 
   const cfg = loadAppConfig(configPath);
   const resolvedConfigPath = path.resolve(configPath);
+  // Bağlantı dayanıklılığı ayarları canlıdır: Ayarlar'dan değişince çalışan ajanlar da görür
+  setLiveResilience(cfg);
   const configRoot = path.dirname(resolvedConfigPath);
   // md dosya yolları config dosyasının bulunduğu dizine göre çözülür.
   // "let": beceri/eklenti açılıp kapatılınca prompt'lar yeniden derlenir (setToggle);
@@ -538,6 +541,40 @@ async function main() {
           if (effort) cfg.effort = effort;
           else delete cfg.effort;
           return { ok: true, effort };
+        } catch (e) {
+          fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+      // Bağlantı dayanıklılığı (Ayarlar sayfası): config.json'a yazılır ve HEMEN geçerli
+      // olur — yeniden başlatma gerekmez, bekleyen/çalışan ajanların sıradaki denemesi
+      // de yeni değeri kullanır. null = alanı sil (varsayılana dön).
+      setResilience: (input) => {
+        const prev = fs.readFileSync(resolvedConfigPath, "utf8");
+        try {
+          const parsed = JSON.parse(prev) as Record<string, unknown>;
+          const merge = (current: unknown, patch: Record<string, unknown> | undefined, keys: readonly string[]) => {
+            const out: Record<string, unknown> = { ...((current as Record<string, unknown> | undefined) ?? {}) };
+            for (const k of keys) {
+              if (!patch || !(k in patch)) continue;
+              if (patch[k] === null) delete out[k];
+              else out[k] = patch[k];
+            }
+            return out;
+          };
+          const retry = merge(parsed.retry, input.retry, RESILIENCE_RETRY_KEYS);
+          const limits = merge(parsed.limits, input.limits, RESILIENCE_LIMIT_KEYS);
+          if (Object.keys(retry).length) parsed.retry = retry;
+          else delete parsed.retry;
+          if (Object.keys(limits).length) parsed.limits = limits;
+          else delete parsed.limits;
+          fs.writeFileSync(resolvedConfigPath, JSON.stringify(parsed, null, 2));
+          const c = loadAppConfig(resolvedConfigPath); // tür/aralık doğrulaması
+          // Yeni nesneler: çalışan koşunun kopyası eskisini tutar, canlı değer bunu gösterir
+          cfg.retry = c.retry;
+          cfg.limits = c.limits;
+          setLiveResilience(cfg);
+          return { ok: true, retry: c.retry ?? {}, limits: c.limits ?? {} };
         } catch (e) {
           fs.writeFileSync(resolvedConfigPath, prev); // geçersizse geri al
           return { ok: false, error: e instanceof Error ? e.message : String(e) };

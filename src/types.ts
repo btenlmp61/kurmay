@@ -254,6 +254,12 @@ export interface LimitsConfig {
   maxMcpOutputTokens?: number;
   /** Düşünme (thinking) token bütçesi */
   maxThinkingTokens?: number;
+  /** Claude Code'un tek istek için KENDİ İÇİNDE yaptığı yeniden deneme sayısı
+   *  (CLAUDE_CODE_MAX_RETRIES; varsayılan 10, en fazla 15 — üstünü CLI 15'e
+   *  indirir). 503/429/5xx/zaman aşımı/bağlantı kopması bu denemelerle süreç
+   *  kapanmadan atlatılır; tükenirse hata bize gelir ve dış yeniden deneme
+   *  (RetryConfig) devreye girer. */
+  apiMaxRetries?: number;
 }
 
 /**
@@ -272,6 +278,22 @@ export interface RetryConfig {
   initialDelayMs?: number;
   /** Bekleme süresinin tavanı, ms (varsayılan 60000) */
   maxDelayMs?: number;
+  /** Kalıcı görünen hatada (yetki, model bulunamadı, istek reddedildi — 400/401/
+   *  403/404/413/422) ÜST ÜSTE deneme sınırı; 0 = sınırsız (varsayılan 5). Araya
+   *  geçici bir hata (503 vb.) girerse ya da ajan ilerlerse sayaç sıfırlanır —
+   *  yük altında tek tük garip yanıt veren ağ geçidi akışı düşürmez. */
+  permanentMaxAttempts?: number;
+  /** Beklemeleri rastgele dağıt (varsayılan açık): aynı anda kopan çok sayıda
+   *  istemci sunucuya aynı saniyede geri yüklenmesin */
+  jitter?: boolean;
+  /** Akış takılma süresi, ms (varsayılan 300000). Model yanıtı akmaya BAŞLADIKTAN
+   *  sonra bu süre boyunca hiç veri gelmezse: 300000 ve üstünde Claude Code'un kendi
+   *  bekçisi isteği keser ve yanıtı akışsız tamamlar (CLAUDE_STREAM_IDLE_TIMEOUT_MS);
+   *  altında bizim bekçimiz denemeyi keser, oturum sürdürülerek yeniden denenir.
+   *  0 = bizim bekçi kapalı (Claude Code'unki 5 dk'da yine çalışır). Yanıtın ilk
+   *  baytını bekleme süresine (kuyruk) ve araç çalışmasına UYGULANMAZ — onları
+   *  "apiTimeoutMs" sınırlar. */
+  stallTimeoutMs?: number;
 }
 
 /** Akıl yürütme derinliği seçenekleri. "off" dışındakiler SDK'nin effort seçeneğine

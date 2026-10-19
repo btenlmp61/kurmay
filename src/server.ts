@@ -14,6 +14,7 @@ export interface McpStatusView {
   error?: string;
 }
 import type { RuntimeRegistry, SessionRuntime } from "./runtime.js";
+import type { LimitsConfig, RetryConfig } from "./types.js";
 
 export interface UiServer {
   url: string;
@@ -101,6 +102,12 @@ export interface UiServerOptions {
   setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };
   /** Akıl yürütme derinliği: session verilirse yalnızca o oturum, yoksa genel varsayılan (config.json) */
   setEffort?: (effort: string, session?: string) => { ok: boolean; error?: string; effort?: string };
+  /** Bağlantı dayanıklılığı ayarları (POST /resilience): config.json'a yazar, hemen geçerli.
+   *  Alan null = sil (varsayılan); verilmeyen alan değişmez */
+  setResilience?: (input: {
+    retry?: Record<string, unknown>;
+    limits?: Record<string, unknown>;
+  }) => { ok: boolean; error?: string; retry?: RetryConfig; limits?: LimitsConfig };
   /** Eklentilerin son bilinen durumu (GET /mcp-status) — paneldeki durum ışıkları */
   getMcpStatus?: () => McpStatusView;
   /** Eklentileri şimdi yoklar (model çağrısı yok), bitince güncel durumu döner (POST /mcp-probe) */
@@ -421,6 +428,28 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
           return;
         }
         const r = options.setEffort ? options.setEffort(effort, session) : { ok: false, error: "kapalı" };
+        res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(r));
+      });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/resilience") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        let input: { retry?: Record<string, unknown>; limits?: Record<string, unknown> };
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>;
+          const obj = (v: unknown) =>
+            v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+          input = { retry: obj(parsed.retry), limits: obj(parsed.limits) };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: false, error: "geçersiz istek" }));
+          return;
+        }
+        const r = options.setResilience ? options.setResilience(input) : { ok: false, error: "kapalı" };
         res.writeHead(r.ok ? 200 : 400, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(r));
       });
