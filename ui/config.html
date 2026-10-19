@@ -82,6 +82,11 @@ input[type=text], input[type=number], select { width:100%; }
 .mdfile { display:flex; gap:8px; align-items:center; }
 .mdfile .mono { flex:1; min-width:0; font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; }
 .mdfile button { min-height:auto; padding:5px 14px; font-size:13px; flex:none; }
+/* Bağlantı dayanıklılığı bölümü */
+.rgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px 16px; margin-top:12px; }
+.chkl { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
+.rfoot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
+#rMsg { font-size:13px; }
 
 /* Dar ekran: graf + özellik paneli yan yana sığmaz, alt alta akar */
 @media (max-width:900px) {
@@ -165,6 +170,38 @@ input[type=text], input[type=number], select { width:100%; }
     </div>
   </div>
   <div class="fhint" style="margin-top:8px">Kaydettikten sonra servisi yeniden başlat. Anahtar ayar dosyasına düz metin olarak yazılır — dosyayı git'e gönderirken dikkat et.</div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="label">Bağlantı dayanıklılığı</div>
+  <div class="intro">Model sunucusu meşgul olduğunda (503), yanıt vermediğinde (zaman aşımı) ya da yanıt akışı yarıda kesildiğinde ajan durmaz:
+    bekler, aynı konuşmayı sürdürerek yeniden dener, görevi baştan göndermez. <b>Uygula</b> ile hemen geçerli olur — yeniden başlatma
+    gerekmez, o an bekleyen ajanlar da sıradaki denemeden itibaren yeni ayarı kullanır.</div>
+  <div class="gbar">
+    <label class="chkl"><input type="checkbox" id="rEnabled"> Hata olunca yeniden dene</label>
+    <label class="chkl" title="Aynı anda kopan çok sayıda kullanıcı sunucuya aynı saniyede geri yüklenmesin"><input type="checkbox" id="rJitter"> Bekleme sürelerini rastgele dağıt</label>
+  </div>
+  <div class="rgrid">
+    <div><label class="minl" for="rInitial">İlk bekleme (saniye)</label><input type="number" id="rInitial" min="0" step="1" placeholder="5">
+      <div class="fhint">Her denemede ikiye katlanır. Ajan ilerleyince baştan başlar.</div></div>
+    <div><label class="minl" for="rMax">En uzun bekleme (saniye)</label><input type="number" id="rMax" min="0" step="1" placeholder="60">
+      <div class="fhint">Bekleme bu süreyi aşmaz.</div></div>
+    <div><label class="minl" for="rAttempts">Deneme sınırı</label><input type="number" id="rAttempts" min="0" step="1" placeholder="0">
+      <div class="fhint">0 = sınırsız: sunucu düzelene ya da sen durdurana kadar dener.</div></div>
+    <div><label class="minl" for="rPerm">Kalıcı hatada üst üste sınır</label><input type="number" id="rPerm" min="0" step="1" placeholder="5">
+      <div class="fhint">Yetki hatası, model bulunamadı, istek reddedildi üst üste bu kadar tekrarlanırsa akış durur. 0 = sınırsız.</div></div>
+    <div><label class="minl" for="rStall">Akış takılma süresi (saniye)</label><input type="number" id="rStall" min="0" step="1" placeholder="300">
+      <div class="fhint">Yanıt akmaya başladıktan sonra bu kadar veri gelmezse istek kesilip yeniden denenir. 300 ve üstü: istek tek parça olarak yeniden istenir (ajan kapanmaz); altı: ajan durdurulup konuşma sürdürülür. 0 = yalnızca 300 sn'lik yerleşik bekçi.</div></div>
+    <div><label class="minl" for="rTimeout">İstek zaman aşımı (dakika)</label><input type="number" id="rTimeout" min="0" step="any" placeholder="10">
+      <div class="fhint">Yanıtın gelmeye başlamasını bekleme sınırı (sunucu kuyruğu dahil). Kuyruk uzunsa artır.</div></div>
+    <div><label class="minl" for="rInner">Sunucu içi yeniden deneme</label><input type="number" id="rInner" min="0" max="15" step="1" placeholder="10">
+      <div class="fhint">Tek istek, ajan kapanmadan kaç kez yeniden denensin (en fazla 15). Bitince yukarıdaki beklemeli deneme devreye girer.</div></div>
+  </div>
+  <div class="rfoot">
+    <button class="primary" id="rApply" type="button">Uygula</button>
+    <button id="rDefaults" type="button" title="Alanları varsayılana döndürür — Uygula'ya basınca geçerli olur">Varsayılanlar</button>
+    <span id="rMsg"></span>
+  </div>
 </div>
 
 <div class="layout">
@@ -794,6 +831,62 @@ function fillConn(){
   $("cModelsUrl").value = cfg.modelsUrl || "";
   $("cEffort").value = cfg.effort || "";
 }
+// ── Bağlantı dayanıklılığı: ayrı kaydedilir (POST /resilience), hemen geçerli ──
+// Ekranda saniye/dakika, dosyada milisaniye. Boş alan = varsayılan (dosyadan silinir).
+const RES_FIELDS = [
+  // [kutu, bölüm, alan, çarpan, tam sayı mı]
+  ["rInitial", "retry", "initialDelayMs", 1000, false],
+  ["rMax", "retry", "maxDelayMs", 1000, false],
+  ["rAttempts", "retry", "maxAttempts", 1, true],
+  ["rPerm", "retry", "permanentMaxAttempts", 1, true],
+  ["rStall", "retry", "stallTimeoutMs", 1000, false],
+  ["rTimeout", "limits", "apiTimeoutMs", 60000, false],
+  ["rInner", "limits", "apiMaxRetries", 1, true],
+];
+function fillResilience(){
+  const r = cfg.retry || {}, l = cfg.limits || {};
+  $("rEnabled").checked = r.enabled !== false;
+  $("rJitter").checked = r.jitter !== false;
+  for (const [id, bolum, alan, carpan] of RES_FIELDS){
+    const v = (bolum === "retry" ? r : l)[alan];
+    $(id).value = typeof v === "number" ? String(+(v / carpan).toFixed(3)) : "";
+  }
+}
+function resMsg(html){ $("rMsg").innerHTML = html; }
+$("rDefaults").addEventListener("click", ()=>{
+  $("rEnabled").checked = true; $("rJitter").checked = true;
+  for (const [id] of RES_FIELDS) $(id).value = "";
+  resMsg(`<span style="color:var(--muted)">varsayılanlar yazıldı — geçerli olması için Uygula</span>`);
+});
+$("rApply").addEventListener("click", async ()=>{
+  const body = { retry: { enabled: $("rEnabled").checked, jitter: $("rJitter").checked }, limits: {} };
+  for (const [id, bolum, alan, carpan, tam] of RES_FIELDS){
+    const t = $(id).value.trim();
+    if (t === "") { body[bolum][alan] = null; continue; }
+    const n = Number(t.replace(",", "."));
+    const ad = document.querySelector(`label[for="${id}"]`).textContent;
+    if (!Number.isFinite(n) || n < 0) return resMsg(`<span style="color:var(--red)">✗ ${esc(ad)}: sıfır ya da pozitif bir sayı gir</span>`);
+    if (tam && !Number.isInteger(n)) return resMsg(`<span style="color:var(--red)">✗ ${esc(ad)}: tam sayı olmalı</span>`);
+    if (id === "rInner" && n > 15) return resMsg(`<span style="color:var(--red)">✗ ${esc(ad)}: en fazla 15</span>`);
+    body[bolum][alan] = Math.round(n * carpan);
+  }
+  $("rApply").disabled = true; resMsg("uygulanıyor…");
+  try {
+    const res = await fetch("/resilience", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify(body) });
+    const d = await res.json().catch(()=>({}));
+    if (!d.ok) return resMsg(`<span style="color:var(--red)">✗ ${esc(d.error || "uygulanamadı")}</span>`);
+    // Sayfadaki kopya da güncellensin — üstteki Kaydet eski değerleri geri yazmasın
+    if (d.retry && Object.keys(d.retry).length) cfg.retry = d.retry; else delete cfg.retry;
+    if (d.limits && Object.keys(d.limits).length) cfg.limits = d.limits; else delete cfg.limits;
+    fillResilience();
+    resMsg(`<span style="color:var(--teal)">✓ uygulandı — yeniden başlatma gerekmez</span>`);
+  } catch {
+    resMsg(`<span style="color:var(--red)">✗ servise ulaşılamadı</span>`);
+  } finally {
+    $("rApply").disabled = false;
+  }
+});
+
 $("entrySel").addEventListener("change", ()=>{ cfg.workflow.entry = $("entrySel").value; markDirty(); render(); });
 
 function populateMd(){
@@ -858,6 +951,7 @@ async function load(){
   $("dir").textContent = cfg.targetDir || "(çalışılan dizin)";
   $("tdir").value = cfg.targetDir || "";
   fillConn();
+  fillResilience();
   refreshEntry();
   render();
   loadModelList();

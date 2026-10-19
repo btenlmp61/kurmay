@@ -45,9 +45,25 @@ export type OrchestratorEvent =
       /** 0 = sınırsız */
       maxAttempts: number;
       error: string;
+      /** Türkçe sebep ("sunucu meşgul (503)", "akış takıldı …") — eski kayıtlarda yok */
+      reason?: string;
+      /** transient | permanent | lost_session (src/resilience.ts) */
+      kind?: string;
       delayMs: number;
       /** true ise deneme resume ile yapılacak (ajan baştan başlamaz) */
       resumed: boolean;
+      /** true ise görev tekrar gönderilmez, kısa devam mesajı gider */
+      continued?: boolean;
+    }
+  | {
+      /** Claude Code isteği kendi içinde yeniden deniyor (süreç kapanmadan) */
+      type: "api_retry";
+      agent: string;
+      attempt: number;
+      maxRetries: number;
+      delayMs: number;
+      /** Türkçe sebep */
+      reason: string;
     }
   | {
       type: "tool_used";

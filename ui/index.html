@@ -1478,11 +1478,31 @@ function handleEvent(e) {
       break;
     }
     case "agent_retrying": {
-      // Bağlantı koptu — akış ölmedi, bekleyip yeniden deneyecek
+      // Model sunucusu hatası — akış ölmedi, bekleyip yeniden deneyecek
       const kac = e.maxAttempts > 0 ? `${e.attempt}/${e.maxAttempts}` : `${e.attempt}`;
-      const nasil = e.resumed ? "oturum sürdürülecek" : "oturum baştan";
-      bubbleNote(bubbleOf(e.agent, e.ts),
-        `🔌 bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`, "warn");
+      const nasil = e.continued ? "kaldığı yerden devam" : e.resumed ? "oturum sürdürülecek" : "oturum baştan";
+      if (!e.reason) {
+        // Eski koşu kaydı: sebep sınıflandırılmamıştı
+        bubbleNote(bubbleOf(e.agent, e.ts),
+          `🔌 bağlantı koptu — ${Math.round(e.delayMs / 1000)}sn sonra ${kac}. deneme (${nasil}): ${esc(trunc(e.error, 160))}`, "warn");
+        break;
+      }
+      // Sunucunun ham hata metni (çoğunlukla İngilizce) yalnızca ipucunda
+      const d = document.createElement("div");
+      d.className = "note " + (e.kind === "permanent" ? "err" : "warn");
+      d.title = e.error || "";
+      const sn = e.delayMs < 10000 ? (e.delayMs / 1000).toFixed(1).replace(".", ",") : Math.round(e.delayMs / 1000);
+      d.innerHTML = `🔌 ${esc(e.reason)} — ${sn} sn sonra ${kac}. yeniden deneme (${nasil})` +
+        (e.kind === "permanent" ? " · kalıcı görünen hata, ayarları kontrol et" : "");
+      bubbleAdd(bubbleOf(e.agent, e.ts), d);
+      break;
+    }
+    case "api_retry": {
+      // Model sunucusunun isteği kendi içinde yeniden deneniyor — art arda gelenler tek satırda güncellenir
+      const el = lastOf(bubbleOf(e.agent, e.ts), "apiretry");
+      el.className = "apiretry note warn";
+      el.textContent = `⏳ ${e.reason} — istek yeniden deneniyor (${e.attempt}/${e.maxRetries}, ` +
+        `${Math.max(1, Math.round(e.delayMs / 1000))} sn sonra)`;
       break;
     }
     case "mcp_status": {

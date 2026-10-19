@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { CLI_STALL_MIN_MS } from "./resilience.js";
 import { EFFORT_LEVELS, isCommandNode, isFanoutNode, type AppConfig, type EffortSetting, type McpServerJson, type ProviderConfig } from "./types.js";
 
 /**
@@ -41,12 +42,17 @@ export function loadAppConfig(configPath: string): AppConfig {
       throw new Error(`config: "limits.${key}" negatif olmayan bir sayı olmalı (verilen: ${JSON.stringify(value)})`);
     }
   }
+  // Claude Code 15'in üstünü uyarıyla 15'e indiriyor — sessiz kırpma yerine açık hata
+  const icDeneme = cfg.limits?.apiMaxRetries;
+  if (icDeneme !== undefined && (!Number.isInteger(icDeneme) || icDeneme > 15)) {
+    throw new Error(`config: "limits.apiMaxRetries" 0 ile 15 arasında bir tam sayı olmalı (verilen: ${JSON.stringify(icDeneme)})`);
+  }
 
-  // Yeniden deneme ayarları: "enabled" mantıksal, diğerleri negatif olmayan sayı
+  // Yeniden deneme ayarları: "enabled"/"jitter" mantıksal, diğerleri negatif olmayan sayı
   for (const [key, value] of Object.entries(cfg.retry ?? {})) {
-    if (key === "enabled") {
+    if (key === "enabled" || key === "jitter") {
       if (typeof value !== "boolean") {
-        throw new Error(`config: "retry.enabled" true/false olmalı (verilen: ${JSON.stringify(value)})`);
+        throw new Error(`config: "retry.${key}" true/false olmalı (verilen: ${JSON.stringify(value)})`);
       }
       continue;
     }
@@ -194,11 +200,17 @@ export function buildAgentEnv(cfg: ProviderConfig): Record<string, string> | und
       [limits.maxOutputTokens, "CLAUDE_CODE_MAX_OUTPUT_TOKENS"],
       [limits.maxMcpOutputTokens, "MAX_MCP_OUTPUT_TOKENS"],
       [limits.maxThinkingTokens, "MAX_THINKING_TOKENS"],
+      [limits.apiMaxRetries, "CLAUDE_CODE_MAX_RETRIES"],
     ];
     for (const [value, envName] of map) {
       if (value !== undefined) overrides[envName] = String(value);
     }
   }
+
+  // Akış takılma süresi 5 dk ve üstüyse Claude Code'un kendi bekçisine verilir
+  // (altını kendi bekçimiz yönetir — runAgent); varsayılan 5 dk zaten CLI'nin değeri
+  const stall = cfg.retry?.stallTimeoutMs;
+  if (stall !== undefined && stall > CLI_STALL_MIN_MS) overrides.CLAUDE_STREAM_IDLE_TIMEOUT_MS = String(stall);
 
   if (Object.keys(overrides).length === 0) return undefined;
 

@@ -1,8 +1,19 @@
 import path from "node:path";
-import { query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
 import { mcpStatus, toLights } from "./mcpStatus.js";
 import { buildHooks } from "./hooks.js";
+import {
+  apiErrorReason,
+  backoffDelay,
+  classifyError,
+  CONTINUE_PROMPT,
+  CONTINUE_PROMPT_SHORT,
+  retrySettings,
+  StallError,
+  CLI_STALL_MIN_MS,
+  withLiveResilience,
+} from "./resilience.js";
 import type { EventBus } from "./events.js";
 import {
   RunCancelledError,
@@ -73,6 +84,10 @@ interface SessionHolder {
   id?: string;
   /** Eklenti (MCP) durumu bu ajan koşusunda bir kez bildirilir — yeniden denemelerde tekrarlanmaz */
   mcpReported?: boolean;
+  /** Son denemede modelden hatasız en az bir mesaj geldi mi (ilerleme → bekleme sıfırlanır) */
+  progressed?: boolean;
+  /** Son denemede Claude Code'un bildirdiği hata kodu (assistant.error) — sınıflandırma için */
+  apiError?: string;
 }
 
 /** Eklenti bağlantı durumlarının ekrandaki adı */
@@ -219,7 +234,8 @@ async function executeQuery(
   opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const resume = session.id;
-  const env = buildAgentEnv(cfg);
+  // Zaman aşımı / iç deneme sayısı Ayarlar'dan canlı değişebilir — her denemede güncel değer
+  const env = buildAgentEnv(withLiveResilience(cfg));
   const model = agent.config.model ?? cfg.model;
   const effort = agent.config.effort ?? cfg.effort;
   let hooks = buildHooks(agent.config.hooks, cwd);
@@ -235,14 +251,47 @@ async function executeQuery(
 
   // Eklenti durumu arka planda sorulurken sorgu biterse sormayı bıraksın
   let queryDone = false;
+
+  // Bu denemeye özel durdurucu: kullanıcının Durdur'u buna aktarılır, akış takılma
+  // bekçisi de yalnızca bunu keser (koşunun kendi durdurucusu sağlam kalır —
+  // takılma iptal sayılmasın, yeniden denensin)
+  const attemptAc = new AbortController();
+  const relayAbort = () => attemptAc.abort();
+  if (abortController.signal.aborted) attemptAc.abort();
+  else abortController.signal.addEventListener("abort", relayAbort, { once: true });
+
+  // Akış takılma bekçisi: yalnızca model yanıtı akarken (message_start → message_stop
+  // arası) kurulur. İlk baytı bekleme (sunucu kuyruğu) ve araç çalışması kapsam
+  // dışı — onları Claude Code'un kendi istek zaman aşımı (apiTimeoutMs) sınırlar.
+  // 5 dk ve üstü Claude Code'un kendi bekçisine bırakılır (bkz. CLI_STALL_MIN_MS) —
+  // o süreci kapatmadan yanıtı akışsız tamamlıyor, bizimki ancak daha kısa süre için.
+  const ownStall = (ms: number) => ms > 0 && ms < CLI_STALL_MIN_MS;
+  const watch = ownStall(retrySettings(cfg.retry).stallTimeoutMs);
+  let streaming = false;
+  let lastActivity = Date.now();
+  let stalledMs = 0;
+  const watchdog = watch
+    ? setInterval(() => {
+        const limit = retrySettings(cfg.retry).stallTimeoutMs; // canlı ayar
+        if (!streaming || !ownStall(limit) || stalledMs) return;
+        if (Date.now() - lastActivity >= limit) {
+          stalledMs = limit;
+          attemptAc.abort();
+        }
+      }, 1000)
+    : undefined;
+  watchdog?.unref?.();
+
   let iterator;
   try {
     iterator = query({
     prompt,
     options: {
       cwd,
-      // Kullanıcı iptali: abort edilince SDK alttaki Claude Code sürecini öldürür
-      abortController,
+      // Kullanıcı iptali (ve takılma bekçisi): abort edilince SDK alttaki Claude Code sürecini öldürür
+      abortController: attemptAc,
+      // Yanıt parça parça gelsin — takılma bekçisi akışın sürdüğünü buradan anlar
+      ...(watch ? { includePartialMessages: true } : {}),
       // Verilirse önceki oturumu sürdürür (yeni session açmak yerine)
       ...(resume ? { resume } : {}),
       // Claude Code'un varsayılan system prompt'u korunur, md içeriği eklenir —
@@ -270,15 +319,44 @@ async function executeQuery(
     },
   });
   for await (const message of iterator) {
-    // Oturum kimliği daha ilk mesajda gelir — bağlantı ortada kopsa bile
-    // elimizde kalsın ki yeniden deneme baştan değil resume ile yapılabilsin
-    if (message.type === "system" && message.subtype === "init") {
+    lastActivity = Date.now();
+    if (message.type === "stream_event") {
+      const t = (message.event as { type?: string }).type;
+      if (t === "message_start") streaming = true;
+      else if (t === "message_stop") streaming = false;
+      continue;
+    }
+    if (message.type === "system" && message.subtype === "status") {
+      streaming = false; // yeni istek başlıyor — ilk bayt beklemesi bekçinin dışında
+    } else if (message.type === "system" && message.subtype === "api_retry") {
+      // Claude Code isteği kendi içinde yeniden deniyor (503, zaman aşımı, kopma…)
+      streaming = false;
+      const reason = apiErrorReason(message.error_status, message.error);
+      console.warn(`  ⏳ ${agent.name}: ${reason} — model sunucusu yeniden deneniyor (${message.attempt}/${message.max_retries})`);
+      bus.emit({
+        type: "api_retry",
+        agent: agent.key,
+        attempt: message.attempt,
+        maxRetries: message.max_retries,
+        delayMs: Math.round(message.retry_delay_ms),
+        reason,
+      });
+    } else if (message.type === "system" && message.subtype === "init") {
+      // Oturum kimliği daha ilk mesajda gelir — bağlantı ortada kopsa bile
+      // elimizde kalsın ki yeniden deneme baştan değil resume ile yapılabilsin
       session.id = message.session_id;
       if (mcpServers && !session.mcpReported) {
         session.mcpReported = true;
         void reportMcpStatus(iterator, agent.key, bus, () => queryDone);
       }
     } else if (message.type === "assistant") {
+      // Claude Code'un ürettiği hata mesajı ("API Error: 503 …") ajanın sözü değil —
+      // sohbete yazılmaz, hata kodu sınıflandırma için saklanır
+      if (message.error) {
+        session.apiError = message.error;
+        continue;
+      }
+      session.progressed = true;
       for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim()) {
           console.log(block.text);
@@ -294,6 +372,8 @@ async function executeQuery(
       }
     } else if (message.type === "result") {
       if (message.subtype === "success") {
+        // Hata sonucu (CLI denemeleri tükendi): metin "API Error: …" — çıktı sayılmaz
+        if (message.is_error) throw new Error(message.result || "model sunucusu hata döndürdü");
         result.text = message.result;
         result.sessionId = message.session_id;
         session.id = message.session_id;
@@ -320,32 +400,74 @@ async function executeQuery(
       } else if (message.subtype === "error_max_structured_output_retries") {
         return SCHEMA_FAILED;
       } else {
-        throw new Error(`${agent.name} hata ile durdu: ${message.subtype}`);
+        const detail = "errors" in message && message.errors?.length ? `: ${message.errors.join("; ")}` : "";
+        throw new Error(`${agent.name} hata ile durdu: ${message.subtype}${detail}`);
       }
     }
   }
   } catch (err) {
-    // Kullanıcı iptali (abort) → koşuyu temiz durdur; diğer hatalar yükselir
+    // Kullanıcı iptali (abort) → koşuyu temiz durdur; takılma → yeniden denensin
     if (abortController.signal.aborted) throw new RunCancelledError();
+    if (stalledMs) throw new StallError(stalledMs);
     throw err;
   } finally {
     queryDone = true;
+    if (watchdog) clearInterval(watchdog);
+    abortController.signal.removeEventListener("abort", relayAbort);
   }
 
   // Döngü hatasız bitse bile abort edildiyse iptal say
   if (abortController.signal.aborted) throw new RunCancelledError();
+  if (stalledMs) throw new StallError(stalledMs);
   return result;
 }
 
+/** Konuşma kaydında bu metnin kullanıcı mesajı olarak kaç kez geçtiği; okunamazsa undefined */
+async function countPrompt(sessionId: string, cwd: string, prompt: string): Promise<number | undefined> {
+  try {
+    let msgs = await getSessionMessages(sessionId, { dir: cwd });
+    // Dizin eşleşmezse (yol yazımı farkı) tüm projelerde ara — oturum kimliği tekil
+    if (msgs.length === 0) msgs = await getSessionMessages(sessionId);
+    if (msgs.length === 0) return 0;
+    const want = prompt.trim();
+    let n = 0;
+    for (const m of msgs) {
+      if (m.type !== "user") continue;
+      const content = (m.message as { content?: unknown } | undefined)?.content;
+      if (typeof content === "string") {
+        if (content.trim() === want) n++;
+      } else if (Array.isArray(content)) {
+        if (content.some((b) => b?.type === "text" && typeof b.text === "string" && b.text.trim() === want)) n++;
+      }
+    }
+    return n;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Konuşma kaydı var mı (en az bir mesaj); okunamazsa undefined */
+async function sessionExists(sessionId: string, cwd: string): Promise<boolean | undefined> {
+  try {
+    if ((await getSessionMessages(sessionId, { dir: cwd, limit: 1 })).length > 0) return true;
+    return (await getSessionMessages(sessionId, { limit: 1 })).length > 0;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * executeQuery'yi sağlayıcı bağlantı kopmalarına karşı sarar. Kullanıcı iptali
- * DIŞINDAKİ her hatada artan gecikmeyle yeniden dener; oturum kimliği
- * yakalanmışsa aynı oturum resume ile sürdürülür, ajan baştan başlamaz.
+ * executeQuery'yi model sunucusu hatalarına karşı sarar (bkz. src/resilience.ts).
+ * Kullanıcı iptali DIŞINDAKİ her hatada artan (rastgele dağıtılmış) beklemeyle
+ * yeniden dener; oturum kimliği yakalanmışsa aynı oturum resume ile sürdürülür,
+ * ajan baştan başlamaz. Görev konuşma kaydına zaten yazıldıysa (istek gitmeden
+ * önce yazılıyor) görev TEKRAR gönderilmez, kısa bir devam mesajı gider.
  *
  * Varsayılan sınırsızdır: "bağlantı gelene kadar bekle, ben durdurana kadar
- * akış durmasın". Bunun bedeli, gerçek bir yapılandırma hatasının (yanlış model
- * adı, auth) da sonsuza kadar denenmesidir — bu yüzden her deneme hata mesajıyla
- * birlikte olay akışına yazılır, panelde görünür.
+ * akış durmasın". Kalıcı görünen hatalar (yetki, model yok, istek reddedildi)
+ * üst üste sınırlıdır — yanlış model adı sonsuza kadar denenmesin. Her deneme
+ * Türkçe sebebiyle olay akışına yazılır, panelde görünür. Ayarlar canlıdır:
+ * bekleme sırasında Ayarlar'dan değişen değer bir sonraki denemede geçerli.
  */
 async function executeWithRetry(
   agent: AgentDefinition,
@@ -358,40 +480,87 @@ async function executeWithRetry(
   session: SessionHolder,
   opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
-  const retry = cfg.retry ?? {};
-  const enabled = retry.enabled !== false;
-  const maxAttempts = retry.maxAttempts ?? 0; // 0 = sınırsız
-  const maxDelay = retry.maxDelayMs ?? 60_000;
-  let delay = retry.initialDelayMs ?? 5_000;
-  let attempt = 0;
+  // Sürdürülen önceki konuşma (yoksa ajan yeni konuşmayla başlar)
+  const base = session.id;
+  // Görev bu denemelerden önce konuşmada kaç kez geçiyordu — sonradan artmışsa
+  // görev kayda yazılmış demektir. İlk denemeden ÖNCE okunmalı; yalnızca önceki
+  // konuşma sürdürülürken gerekir, yeni konuşmada 0'dır.
+  const before = base ? await countPrompt(base, cwd, prompt) : 0;
+  let attempt = 0; // toplam başarısız deneme
+  let permanentRun = 0; // üst üste kalıcı hata
+  let step = 0; // bekleme basamağı (ilerleme olunca sıfırlanır)
+  let attemptPrompt = prompt;
 
   while (true) {
+    session.progressed = false;
+    session.apiError = undefined;
     try {
-      return await executeQuery(agent, prompt, cwd, cfg, bus, useSchema, abortController, session, opts);
+      return await executeQuery(agent, attemptPrompt, cwd, cfg, bus, useSchema, abortController, session, opts);
     } catch (err) {
       // Kullanıcının Durdur'u tek çıkış kapısı — onu asla yutma
       if (err instanceof RunCancelledError) throw err;
+      const s = retrySettings(cfg.retry); // canlı ayar
+      const info = classifyError(err, session.apiError);
       attempt++;
-      if (!enabled || (maxAttempts > 0 && attempt >= maxAttempts)) throw err;
-
+      if (session.progressed) {
+        // Ajan bu denemede ilerledi: kesinti yeni — beklemeyi baştan başlat
+        step = 0;
+        permanentRun = 0;
+      }
+      permanentRun = info.kind === "permanent" ? permanentRun + 1 : 0;
       const error = err instanceof Error ? err.message : String(err);
-      const note =
-        `${agent.name}: sağlayıcı bağlantısı koptu (${error}) — ` +
-        `${Math.round(delay / 1000)}sn sonra ${attempt}. yeniden deneme` +
-        (session.id ? " (oturum sürdürülecek)" : " (oturum baştan)");
-      console.warn(`\n🔌 ${note}`);
+      if (!s.enabled || (s.maxAttempts > 0 && attempt >= s.maxAttempts)) throw err;
+      if (info.kind === "permanent" && s.permanentMaxAttempts > 0 && permanentRun >= s.permanentMaxAttempts) {
+        throw new Error(`${error} — ${info.reason}: üst üste ${permanentRun} denemede düzelmedi, ayarları kontrol et`);
+      }
+
+      // Sıradaki denemenin oturumu ve mesajı
+      let note = "";
+      if (info.kind === "lost_session") {
+        // Sürdürülecek konuşma yok: kendi açtığımız konuşma kayda hiç geçmediyse
+        // önceki konuşmaya, o da yoksa yeni konuşmaya dön — görev baştan gider
+        session.id = session.id !== base ? base : undefined;
+        attemptPrompt = prompt;
+        note = session.id ? "önceki konuşmadan sürdürülecek" : "yeni konuşmayla başlanacak";
+      } else if (session.id) {
+        const now = await countPrompt(session.id, cwd, prompt);
+        if (now === undefined || before === undefined) {
+          attemptPrompt = prompt; // kayıt okunamadı — eski davranış: görevle sürdür
+        } else if (now > before) {
+          // Görev kayıtta — tekrar gönderme. Uzun açıklama bir kez yeter: önceki deneme
+          // de devam mesajıydı ve model arada hiç yanıt veremediyse kısa olanı gider
+          const sent = attemptPrompt === CONTINUE_PROMPT || attemptPrompt === CONTINUE_PROMPT_SHORT;
+          attemptPrompt = sent && !session.progressed ? CONTINUE_PROMPT_SHORT : CONTINUE_PROMPT;
+        } else if (session.id !== base && (await sessionExists(session.id, cwd)) === false) {
+          session.id = base; // yeni konuşma kayda geçmemiş — baştan
+          attemptPrompt = prompt;
+        } else {
+          attemptPrompt = prompt;
+        }
+      }
+
+      const delay = backoffDelay(step, s);
+      step++;
+      const continued = attemptPrompt === CONTINUE_PROMPT || attemptPrompt === CONTINUE_PROMPT_SHORT;
+      const nasil = note || (!session.id ? "oturum baştan" : continued ? "kaldığı yerden devam" : "oturum sürdürülecek");
+      const sn = delay < 10_000 ? (delay / 1000).toFixed(1) : String(Math.round(delay / 1000));
+      console.warn(
+        `\n🔌 ${agent.name}: ${info.reason} — ${sn}sn sonra ${attempt}. yeniden deneme (${nasil}) [${error.slice(0, 200)}]`,
+      );
       bus.emit({
         type: "agent_retrying",
         agent: agent.key,
         attempt,
-        maxAttempts,
+        maxAttempts: s.maxAttempts,
         error,
+        reason: info.reason,
+        kind: info.kind,
         delayMs: delay,
         resumed: !!session.id,
+        continued,
       });
 
       await abortableSleep(delay, abortController.signal);
-      delay = Math.min(delay * 2, maxDelay);
     }
   }
 }
