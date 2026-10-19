@@ -27,7 +27,7 @@
         "rules": ["genel"],
         "skills": ["test-yazimi"],
         "hooks": [
-          { "event": "PreToolUse", "matcher": "Bash", "command": "node .claude/hooks/guard-bash.js" }
+          { "event": "PreToolUse", "matcher": "Bash", "command": "node \"${configDir}/.claude/hooks/guard-bash.js\"" }
         ],
         "next": "teftis"
       },
@@ -36,7 +36,7 @@
         "tools": ["Read", "Glob", "Grep", "Bash"],
         "rules": ["genel"],
         "hooks": [
-          { "event": "PreToolUse", "matcher": "Bash", "command": "node .claude/hooks/guard-bash.js" }
+          { "event": "PreToolUse", "matcher": "Bash", "command": "node \"${configDir}/.claude/hooks/guard-bash.js\"" }
         ],
         "verdict": { "onApprove": null, "onReject": "saha" }
       }

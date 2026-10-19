@@ -15,6 +15,17 @@ export function loadAppConfig(configPath: string): AppConfig {
 
   const cfg = JSON.parse(fs.readFileSync(resolved, "utf8")) as AppConfig;
 
+  // Hook komutlarında "${configDir}" = bu config dosyasının klasörü. Hook ajanın
+  // çalışma dizininde (hedef proje) çalıştığı için göreli yol kırılıyor, mutlak yol da
+  // makineye özel kalıyordu (npm paketiyle her kurulumda farklı). Yalnızca bellekte
+  // çözülür; dosyaya yazan uçlar ham dosyayı okuduğu için yer tutucu korunur.
+  const configDir = path.dirname(resolved).replace(/\\/g, "/");
+  for (const node of Object.values(cfg.workflow?.agents ?? {})) {
+    for (const hook of (node as { hooks?: Array<{ command?: unknown }> }).hooks ?? []) {
+      if (typeof hook.command === "string") hook.command = hook.command.split("${configDir}").join(configDir);
+    }
+  }
+
   // Boş bırakılan ("") alanlar tanımsız sayılır — config şablonunda alanların
   // görünür kalması için boş string'e izin veriyoruz
   for (const key of ["baseUrl", "apiKey", "model", "modelsUrl", "targetDir"] as const) {
