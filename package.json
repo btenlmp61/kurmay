@@ -1,5 +1,5 @@
 {
-  "name": "@yigitalp/kurmay",
+  "name": "kurmay",
   "version": "0.1.0",
   "description": "Md tanımlı ajanları (Analist / Saha Timi / Teftiş) deterministik bir iş akışıyla koordine eden orkestratör",
   "type": "module",
