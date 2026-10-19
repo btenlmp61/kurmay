@@ -18,7 +18,7 @@ Kontrol akışı kodda, personalar md dosyalarında, tüm ayarlar tek `config.js
 ### npm paketiyle (önerilen)
 
 ```sh
-npm install -g kurmay            # şirket ağında: Nexus'un npm vekil (proxy) deposu üzerinden de çekilir
+npm install -g kurmay-ai         # şirket ağında: Nexus'un npm vekil (proxy) deposu üzerinden de çekilir
 mkdir kurmay-calisma && cd kurmay-calisma
 kurmay init                       # config.json + .claude/ (personalar, kurallar, beceriler, hook'lar) oluşur
 kurmay serve                      # paneli açar; sağlayıcı/model/hedef dizin ⚙ Ayarlar'dan girilir
