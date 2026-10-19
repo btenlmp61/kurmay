@@ -92,6 +92,8 @@ interface SessionHolder {
   apiError?: string;
   /** Konuşmanın bilinen son boyutu (token) — bağlam göstergesi ve özetleme kararı */
   contextTokens?: number;
+  /** Bu ajan koşusunda bilinen bağlam penceresi — sonraki denemede liste alınamasa da kalsın */
+  ctxInfo?: ContextInfo;
 }
 
 /** Eklenti bağlantı durumlarının ekrandaki adı */
@@ -319,8 +321,11 @@ async function executeQuery(
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const resume = session.id;
   const model = agent.config.model ?? cfg.model;
-  // Modelin bağlam penceresi (model listesinden ya da Ayarlar'dan) — göstergeye ve Claude Code'a
-  const ctxInfo = contextInfo(model, withLiveResilience(cfg));
+  // Modelin bağlam penceresi (model listesinden ya da Ayarlar'dan) — göstergeye ve Claude Code'a.
+  // Yeniden denemede liste o an alınamamışsa önceki denemede bilinen değer kullanılır
+  const ctxInfo = contextInfo(model, withLiveResilience(cfg)) ?? session.ctxInfo;
+  if (ctxInfo) session.ctxInfo = ctxInfo;
+  else void refreshModelContext(cfg.modelsUrl, cfg.apiKey, model); // bilinmiyor: sıradaki deneme için tazele
   // Zaman aşımı / iç deneme sayısı Ayarlar'dan canlı değişebilir — her denemede güncel değer
   const env = agentEnv(cfg, ctxInfo);
   const effort = agent.config.effort ?? cfg.effort;
@@ -715,8 +720,8 @@ export async function runAgent(
     if (e.type === "agent_retrying" && e.agent === agent.key) retries++;
   });
   try {
-    // Bağlam pencereleri model listesinden okunur (en fazla 10 dk'da bir tazelenir)
-    await refreshModelContext(cfg.modelsUrl, cfg.apiKey);
+    // Bağlam penceresi model listesinden — yalnızca henüz bilinmiyorsa çekilir, bir kez yeter
+    await refreshModelContext(cfg.modelsUrl, cfg.apiKey, agent.config.model ?? cfg.model);
     if (resume && opts.contextTokens) {
       ({ resume, opts } = await compactIfNeeded(agent, cwd, cfg, bus, abortController, resume, opts));
     }

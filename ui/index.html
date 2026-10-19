@@ -1421,6 +1421,13 @@ function ctxLevel(pct) {
   if (pct >= Math.min(60, esik * 0.8)) return "warn";
   return "ok";
 }
+// Seçili modelin penceresi model listesinden (sunucunun hesabıyla aynı: yanıt payı düşülür)
+function limitFromModelList() {
+  const m = modelList.find((x) => x.id === currentModel && x.contextLength);
+  if (!m) return null;
+  const window = m.contextLength, pay = ctxCfg.reserve ?? 32000;
+  return { window, limit: window - pay >= window * 0.25 ? window - pay : window };
+}
 function ctxTitle(c) {
   if (!c.limit) return "Modelin bağlam sınırı bilinmiyor — model listesi vermiyorsa Ayarlar'dan elle gir";
   const pay = c.window && c.window > c.limit ? ` (pencere ${fmtK(c.window)}, ${fmtK(c.window - c.limit)} yanıta ayrılıyor)` : "";
@@ -1584,7 +1591,15 @@ function handleEvent(e) {
       break;
     }
     case "context_usage": {
-      ctxUsage[e.agent] = { tokens: e.tokens, window: e.window, limit: e.limit };
+      // Sınırsız gelen güncelleme (sunucu o an model listesini veremedi) bilinen sınırı silmesin;
+      // hiç bilinmiyorsa seçili modelin listedeki penceresinden hesaplanır
+      const once = ctxUsage[e.agent];
+      const yedek = e.limit ? null : limitFromModelList();
+      ctxUsage[e.agent] = {
+        tokens: e.tokens,
+        window: e.window ?? once?.window ?? yedek?.window,
+        limit: e.limit ?? once?.limit ?? yedek?.limit,
+      };
       renderCtx();
       if (agents.length) renderPipeline();
       break;
