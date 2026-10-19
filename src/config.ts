@@ -47,6 +47,10 @@ export function loadAppConfig(configPath: string): AppConfig {
   if (icDeneme !== undefined && (!Number.isInteger(icDeneme) || icDeneme > 15)) {
     throw new Error(`config: "limits.apiMaxRetries" 0 ile 15 arasında bir tam sayı olmalı (verilen: ${JSON.stringify(icDeneme)})`);
   }
+  const esik = cfg.limits?.compactPercent;
+  if (esik !== undefined && esik > 100) {
+    throw new Error(`config: "limits.compactPercent" 0 ile 100 arasında olmalı (verilen: ${JSON.stringify(esik)})`);
+  }
 
   // Yeniden deneme ayarları: "enabled"/"jitter" mantıksal, diğerleri negatif olmayan sayı
   for (const [key, value] of Object.entries(cfg.retry ?? {})) {
@@ -201,6 +205,8 @@ export function buildAgentEnv(cfg: ProviderConfig): Record<string, string> | und
       [limits.maxMcpOutputTokens, "MAX_MCP_OUTPUT_TOKENS"],
       [limits.maxThinkingTokens, "MAX_THINKING_TOKENS"],
       [limits.apiMaxRetries, "CLAUDE_CODE_MAX_RETRIES"],
+      // Bağlam penceresi: runAgent modelin gerçek sınırını (model listesinden) buraya koyar
+      [limits.contextTokens, "CLAUDE_CODE_MAX_CONTEXT_TOKENS"],
     ];
     for (const [value, envName] of map) {
       if (value !== undefined) overrides[envName] = String(value);

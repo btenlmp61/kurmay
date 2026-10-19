@@ -96,7 +96,15 @@ export interface UiServerOptions {
   setTargetDir?: (dir: string, session?: string) => { ok: boolean; error?: string; dir?: string; resetResume?: boolean };
   /** Seçili model + config'teki modelsUrl'den çekilen liste (GET /models).
    *  Liste alınamazsa error dolu döner ama seçili model yine gösterilir */
-  getModels?: () => Promise<{ current: string; required?: boolean; effort?: string; models: ModelInfo[]; error?: string }>;
+  getModels?: () => Promise<{
+    current: string;
+    required?: boolean;
+    effort?: string;
+    /** Bağlam göstergesi ayarları: özetleme eşiği (%), elle girilen pencere, yanıt payı */
+    context?: { compactPercent: number; fallbackWindow: number | null; reserve: number | null };
+    models: ModelInfo[];
+    error?: string;
+  }>;
   /** Genel modeli değiştirir: çalışan sürece uygular, config.json'a yazar ("" = varsayılan) */
   /** session verilirse yalnızca o oturumun modeli, yoksa genel varsayılan (config.json) değişir */
   setModel?: (model: string, session?: string) => { ok: boolean; error?: string; model?: string };

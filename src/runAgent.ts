@@ -2,6 +2,8 @@ import path from "node:path";
 import { getSessionMessages, query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
 import { mcpStatus, toLights } from "./mcpStatus.js";
+import { refreshModelContext } from "./models.js";
+import { compactPercent, contextInfo, FORCE_NEW_PERCENT, tokensOfUsage, type ContextInfo } from "./context.js";
 import { buildHooks } from "./hooks.js";
 import {
   apiErrorReason,
@@ -88,6 +90,8 @@ interface SessionHolder {
   progressed?: boolean;
   /** Son denemede Claude Code'un bildirdiği hata kodu (assistant.error) — sınıflandırma için */
   apiError?: string;
+  /** Konuşmanın bilinen son boyutu (token) — bağlam göstergesi ve özetleme kararı */
+  contextTokens?: number;
 }
 
 /** Eklenti bağlantı durumlarının ekrandaki adı */
@@ -171,6 +175,86 @@ export interface RunAgentOptions {
   /** Verilirse Write/Edit/MultiEdit/NotebookEdit bu dizin DIŞINA engellenir
    *  (fanout kopyası kendi reposunda kalsın — kardeş kopyalar aynı anda çalışıyor) */
   writeScope?: string;
+  /** Sürdürülen konuşmanın (resume) bilinen boyutu, token — eşiği geçmişse ajan
+   *  çalışmadan önce konuşma özetlenir */
+  contextTokens?: number;
+}
+
+/** Ajanın ortam değişkenleri: canlı ayarlar + modelin gerçek bağlam penceresi */
+function agentEnv(cfg: ProviderConfig, info: ContextInfo | undefined): Record<string, string> | undefined {
+  const live = withLiveResilience(cfg);
+  return buildAgentEnv(info ? { ...live, limits: { ...live.limits, contextTokens: info.window } } : live);
+}
+
+/**
+ * Konuşmayı özetler: aynı oturuma Claude Code'un /compact komutu gönderilir —
+ * model tek istekte konuşmanın özetini yazar, oturum özet + son kısımla sürer.
+ * Sahte API ile doğrulandı (50.002 → 675 token; sonraki görev aynı oturumdan,
+ * kısalmış konuşmayla devam etti). Tek mesajlık konuşmada Claude Code "Not enough
+ * messages to compact" deyip bir şey yapmaz.
+ */
+async function compactSession(
+  agent: AgentDefinition,
+  sessionId: string,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  abortController: AbortController,
+  reason: "esik" | "dolu",
+  tokens: number | undefined,
+): Promise<{ ok: boolean; pre?: number; post?: number; error?: string }> {
+  const model = agent.config.model ?? cfg.model;
+  const info = contextInfo(model, withLiveResilience(cfg));
+  console.log(`  📦 ${agent.name}: konuşma özetleniyor (${reason === "esik" ? "eşik aşıldı" : "bağlam doldu"})…`);
+  bus.emit({ type: "context_compacting", agent: agent.key, tokens: tokens ?? 0, limit: info?.limit, reason });
+  const env = agentEnv(cfg, info);
+  const ac = new AbortController();
+  const relay = () => ac.abort();
+  abortController.signal.addEventListener("abort", relay, { once: true });
+  let pre: number | undefined;
+  let post: number | undefined;
+  let error: string | undefined;
+  let text = "";
+  try {
+    const q = query({
+      prompt: "/compact",
+      options: {
+        cwd,
+        resume: sessionId,
+        abortController: ac,
+        systemPrompt: { type: "preset", preset: "claude_code", append: agent.systemPrompt },
+        allowedTools: [],
+        permissionMode: "acceptEdits",
+        strictMcpConfig: true,
+        ...(env ? { env } : {}),
+        ...(model ? { model } : {}),
+      },
+    });
+    for await (const m of q) {
+      if (m.type === "system" && m.subtype === "compact_boundary") {
+        pre = m.compact_metadata.pre_tokens;
+        post = m.compact_metadata.post_tokens;
+      } else if (m.type === "result") {
+        if (m.subtype !== "success") error = "errors" in m && m.errors?.length ? m.errors.join("; ") : m.subtype;
+        else if (m.is_error) error = m.result;
+        else text = m.result;
+      }
+    }
+  } catch (e) {
+    if (abortController.signal.aborted) throw new RunCancelledError();
+    error = e instanceof Error ? e.message : String(e);
+  } finally {
+    abortController.signal.removeEventListener("abort", relay);
+  }
+  if (abortController.signal.aborted) throw new RunCancelledError();
+  if (!error && pre === undefined) {
+    error = /Not enough messages/i.test(text) ? "özetlenecek yeterli mesaj yok" : "özetleme yapılmadı";
+  }
+  const ok = !error;
+  console.log(ok
+    ? `  📦 ${agent.name}: konuşma özetlendi (${pre ?? "?"} → ${post ?? "?"} token)`
+    : `  ⚠ ${agent.name}: konuşma özetlenemedi (${error})`);
+  return { ok, pre, post, error };
 }
 
 /**
@@ -234,9 +318,11 @@ async function executeQuery(
   opts: RunAgentOptions,
 ): Promise<AgentRunResult | typeof SCHEMA_FAILED> {
   const resume = session.id;
-  // Zaman aşımı / iç deneme sayısı Ayarlar'dan canlı değişebilir — her denemede güncel değer
-  const env = buildAgentEnv(withLiveResilience(cfg));
   const model = agent.config.model ?? cfg.model;
+  // Modelin bağlam penceresi (model listesinden ya da Ayarlar'dan) — göstergeye ve Claude Code'a
+  const ctxInfo = contextInfo(model, withLiveResilience(cfg));
+  // Zaman aşımı / iç deneme sayısı Ayarlar'dan canlı değişebilir — her denemede güncel değer
+  const env = agentEnv(cfg, ctxInfo);
   const effort = agent.config.effort ?? cfg.effort;
   let hooks = buildHooks(agent.config.hooks, cwd);
   if (opts.writeScope) {
@@ -357,6 +443,12 @@ async function executeQuery(
         continue;
       }
       session.progressed = true;
+      // Konuşmanın boyutu: bu yanıtın girdi+çıktısı (alt ajan mesajları ana konuşmaya girmez)
+      const tokens = message.parent_tool_use_id ? undefined : tokensOfUsage(message.message.usage);
+      if (tokens && tokens !== session.contextTokens) {
+        session.contextTokens = tokens;
+        bus.emit({ type: "context_usage", agent: agent.key, tokens, window: ctxInfo?.window, limit: ctxInfo?.limit });
+      }
       for (const block of message.message.content) {
         if (block.type === "text" && block.text.trim()) {
           console.log(block.text);
@@ -376,6 +468,7 @@ async function executeQuery(
         if (message.is_error) throw new Error(message.result || "model sunucusu hata döndürdü");
         result.text = message.result;
         result.sessionId = message.session_id;
+        result.contextTokens = session.contextTokens;
         session.id = message.session_id;
         // SDK bu alanı her zaman gönderir; yine de eski sürümde patlamasın diye korumalı
         const modelUsage: Record<string, { inputTokens: number; outputTokens: number }> =
@@ -489,6 +582,7 @@ async function executeWithRetry(
   let attempt = 0; // toplam başarısız deneme
   let permanentRun = 0; // üst üste kalıcı hata
   let step = 0; // bekleme basamağı (ilerleme olunca sıfırlanır)
+  let contextFull = 0; // üst üste "bağlam doldu"
   let attemptPrompt = prompt;
 
   while (true) {
@@ -506,6 +600,7 @@ async function executeWithRetry(
         // Ajan bu denemede ilerledi: kesinti yeni — beklemeyi baştan başlat
         step = 0;
         permanentRun = 0;
+        contextFull = 0;
       }
       permanentRun = info.kind === "permanent" ? permanentRun + 1 : 0;
       const error = err instanceof Error ? err.message : String(err);
@@ -516,13 +611,42 @@ async function executeWithRetry(
 
       // Sıradaki denemenin oturumu ve mesajı
       let note = "";
+      let decided = false;
       if (info.kind === "lost_session") {
         // Sürdürülecek konuşma yok: kendi açtığımız konuşma kayda hiç geçmediyse
         // önceki konuşmaya, o da yoksa yeni konuşmaya dön — görev baştan gider
         session.id = session.id !== base ? base : undefined;
         attemptPrompt = prompt;
         note = session.id ? "önceki konuşmadan sürdürülecek" : "yeni konuşmayla başlanacak";
-      } else if (session.id) {
+        decided = true;
+      } else if (info.kind === "context_full") {
+        // Bağlam doldu: aynı konuşmayı tekrar göndermek hep aynı hatayı verir.
+        // Önce özetle (kaldığı yerden devam), olmazsa ya da özetten sonra yine
+        // dolarsa yeni konuşma. Yeni konuşma da sığmıyorsa yapacak bir şey yok.
+        contextFull++;
+        // Özet ve yeni konuşma denendi, model arada hiç ilerleyemedi → görev sığmıyor
+        if (!session.id || contextFull >= 3) {
+          throw new Error(`${error} — ${info.reason}: görev yeni bir konuşmaya da sığmadı (modelin bağlam penceresi küçük)`);
+        }
+        let compacted = false;
+        if (contextFull === 1) {
+          const r = await compactSession(agent, session.id, cwd, cfg, bus, abortController, "dolu", session.contextTokens);
+          compacted = r.ok;
+          if (r.ok) session.contextTokens = r.post;
+          bus.emit({
+            type: "context_compacted", agent: agent.key, ok: r.ok, pre: r.pre, post: r.post, error: r.error,
+            ...(r.ok ? {} : { fallback: "yeni" as const }),
+          });
+        }
+        if (!compacted) {
+          session.id = undefined;
+          session.contextTokens = undefined;
+          attemptPrompt = prompt;
+          note = "bağlam doldu — yeni konuşmayla başlanacak";
+          decided = true;
+        }
+      }
+      if (!decided && session.id) {
         const now = await countPrompt(session.id, cwd, prompt);
         if (now === undefined || before === undefined) {
           attemptPrompt = prompt; // kayıt okunamadı — eski davranış: görevle sürdür
@@ -591,10 +715,50 @@ export async function runAgent(
     if (e.type === "agent_retrying" && e.agent === agent.key) retries++;
   });
   try {
+    // Bağlam pencereleri model listesinden okunur (en fazla 10 dk'da bir tazelenir)
+    await refreshModelContext(cfg.modelsUrl, cfg.apiKey);
+    if (resume && opts.contextTokens) {
+      ({ resume, opts } = await compactIfNeeded(agent, cwd, cfg, bus, abortController, resume, opts));
+    }
     return await runAgentInner(agent, prompt, cwd, cfg, bus, abortController, resume, opts, () => retries);
   } finally {
     unsubscribe();
   }
+}
+
+/**
+ * Sürdürülecek konuşma eşiği geçmişse (Ayarlar: otomatik özetleme eşiği) ajan
+ * çalışmadan ÖNCE özetlenir — duvara çarpıp hata almadan. Özetlenemezse ve
+ * konuşma neredeyse doluysa (FORCE_NEW_PERCENT) yeni konuşmayla başlanır.
+ */
+async function compactIfNeeded(
+  agent: AgentDefinition,
+  cwd: string,
+  cfg: ProviderConfig,
+  bus: EventBus,
+  abortController: AbortController,
+  resume: string,
+  opts: RunAgentOptions,
+): Promise<{ resume: string | undefined; opts: RunAgentOptions }> {
+  const live = withLiveResilience(cfg);
+  const info = contextInfo(agent.config.model ?? cfg.model, live);
+  const tokens = opts.contextTokens!;
+  // Panel, sürdürülen konuşmanın doluluğunu ajan daha yanıt vermeden görsün
+  bus.emit({ type: "context_usage", agent: agent.key, tokens, window: info?.window, limit: info?.limit });
+  const esik = compactPercent(live);
+  if (!info || esik <= 0) return { resume, opts };
+  const pct = (tokens / info.limit) * 100;
+  if (pct < esik) return { resume, opts };
+
+  const r = await compactSession(agent, resume, cwd, cfg, bus, abortController, "esik", tokens);
+  if (r.ok) {
+    bus.emit({ type: "context_compacted", agent: agent.key, ok: true, pre: r.pre, post: r.post });
+    if (r.post) bus.emit({ type: "context_usage", agent: agent.key, tokens: r.post, window: info.window, limit: info.limit });
+    return { resume, opts: { ...opts, contextTokens: r.post } };
+  }
+  const yeni = pct >= FORCE_NEW_PERCENT;
+  bus.emit({ type: "context_compacted", agent: agent.key, ok: false, error: r.error, fallback: yeni ? "yeni" : "devam" });
+  return yeni ? { resume: undefined, opts: { ...opts, contextTokens: undefined } } : { resume, opts };
 }
 
 async function runAgentInner(
@@ -608,7 +772,7 @@ async function runAgentInner(
   opts: RunAgentOptions,
   retries: () => number,
 ): Promise<AgentRunResult> {
-  const session: SessionHolder = { id: resume };
+  const session: SessionHolder = { id: resume, contextTokens: opts.contextTokens };
   let result = await executeWithRetry(agent, prompt, cwd, cfg, bus, true, abortController, session, opts);
   // Şemasız yedeğe düşüldüyse structured zaten beklenmez — onarım turu denenmez
   let schemaless = false;

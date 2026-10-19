@@ -28,6 +28,9 @@ export interface SessionEntry {
   /** Oturumun hedef dizini — model gibi: açılırken genel dizinden alınır, sonra panelden
    *  yalnızca bu oturum için değişir. Eski kayıtlarda yoksa ilk koşuda o anki genel dizine sabitlenir. */
   targetDir?: string;
+  /** Entry ajanın (Analist) konuşmasının bilinen boyutu, token — panelde doluluk,
+   *  eşiği geçmişse sıradaki görevden önce özetlenir */
+  contextTokens?: number;
 }
 
 /** Görev metninden kısa bir oturum ismi türetir */
@@ -96,10 +99,11 @@ export class SessionStore {
   }
 
   /** Bir koşu bittiğinde: analistin SDK oturumunu sakla (sonraki görev resume eder) */
-  finishRun(id: string, sdkSessionId: string | undefined, status: SessionStatus): void {
+  finishRun(id: string, sdkSessionId: string | undefined, status: SessionStatus, contextTokens?: number): void {
     const s = this.get(id);
     if (!s) return;
     if (sdkSessionId) s.sdkSessionId = sdkSessionId;
+    if (contextTokens) s.contextTokens = contextTokens;
     s.lastStatus = status;
     s.updatedAt = new Date().toISOString();
     this.persist();
@@ -138,7 +142,10 @@ export class SessionStore {
     const changed = s.targetDir !== dir;
     const resetResume = changed && !keepResume && !!s.sdkSessionId;
     s.targetDir = dir;
-    if (resetResume) delete s.sdkSessionId;
+    if (resetResume) {
+      delete s.sdkSessionId;
+      delete s.contextTokens;
+    }
     this.persist();
     return { ok: true, resetResume };
   }

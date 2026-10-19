@@ -6,7 +6,8 @@ import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
 import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
 import { mcpStatus, probeMcp } from "./mcpStatus.js";
-import { fetchModels } from "./models.js";
+import { compactPercent, contextInfo } from "./context.js";
+import { fetchModels, refreshModelContext } from "./models.js";
 import { RESILIENCE_LIMIT_KEYS, RESILIENCE_RETRY_KEYS, setLiveResilience } from "./resilience.js";
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
@@ -85,7 +86,10 @@ async function executeRun(o: {
   o.sessions.addRunLog(entry.id, logName, task);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
   // entrySessionId: analistin SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
-  const sessionStore = { entrySessionId: entry.sdkSessionId };
+  const sessionStore: { entrySessionId?: string; entryContext?: number } = {
+    entrySessionId: entry.sdkSessionId,
+    entryContext: entry.contextTokens,
+  };
 
   console.log(`\n🎯 [${entry.name}] Görev: ${task}`);
   try {
@@ -116,7 +120,7 @@ async function executeRun(o: {
   } finally {
     runtime.endRun();
     unsubscribe();
-    o.sessions.finishRun(entry.id, sessionStore.entrySessionId, runtime.status);
+    o.sessions.finishRun(entry.id, sessionStore.entrySessionId, runtime.status, sessionStore.entryContext);
     o.onDone();
     console.log(`🗒  [${entry.name}] Koşu kaydı: ${runLog}`);
   }
@@ -180,9 +184,13 @@ async function main() {
   const maxParallel = cfg.maxParallelRuns ?? 3;
 
   /** Panelin sol çubuğu için oturum listesi + canlı durumlar */
+  // Analist'in modeli: düğümdeki ayar > oturumun modeli > genel model
+  const entryModel = (e: SessionEntry) =>
+    (cfg.workflow.agents[cfg.workflow.entry] as { model?: string } | undefined)?.model ?? (e.model || cfg.model);
   const sessionList = () =>
     sessions.all().map((e) => {
       const rt = runtimes.peek(e.id);
+      const ctx = e.contextTokens ? contextInfo(entryModel(e), cfg) : undefined;
       return {
         id: e.id,
         name: e.name,
@@ -198,6 +206,8 @@ async function main() {
         // Oturumun hedef dizini (yoksa genel dizin geçerli) ve diskte var mı — panel uyarısı için
         targetDir: e.targetDir,
         dirExists: dirOk(e.targetDir ?? cwd),
+        // Analist konuşmasının doluluğu — panelde yaklaşınca uyarı
+        ...(e.contextTokens ? { context: { tokens: e.contextTokens, window: ctx?.window, limit: ctx?.limit } } : {}),
       };
     });
 
@@ -513,13 +523,17 @@ async function main() {
         const current = cfg.model ?? "";
         const required = cfg.provider === "ollama"; // panel "model seçilmedi" uyarısı için
         const effort = cfg.effort ?? "";
+        // Bağlam göstergesinin renk eşiği + modeli listede olmayanlar için elle girilen pencere
+        const context = { compactPercent: compactPercent(cfg), fallbackWindow: cfg.limits?.contextTokens ?? null, reserve: cfg.limits?.maxOutputTokens ?? null };
         if (!cfg.modelsUrl) {
-          return { current, required, effort, models: [], error: "model listesi adresi tanımlı değil — ⚙ Ayarlar sayfasındaki Bağlantı bölümünden ekle" };
+          return { current, required, effort, context, models: [], error: "model listesi adresi tanımlı değil — ⚙ Ayarlar sayfasındaki Bağlantı bölümünden ekle" };
         }
         try {
-          return { current, required, effort, models: await fetchModels(cfg.modelsUrl, cfg.apiKey) };
+          const models = await fetchModels(cfg.modelsUrl, cfg.apiKey);
+          runtimes.notify(); // lobideki bağlam sınırları da tazelensin
+          return { current, required, effort, context, models };
         } catch (e) {
-          return { current, required, effort, models: [], error: e instanceof Error ? e.message : String(e) };
+          return { current, required, effort, context, models: [], error: e instanceof Error ? e.message : String(e) };
         }
       },
       setEffort: (effort, sessionId) => {
@@ -664,6 +678,8 @@ async function main() {
           },
     });
     console.log(`🖥  İzleme paneli: ${server.url}`);
+    // Bağlam pencereleri (max_model_len) model listesinden — lobi ilk açılışta da göstersin
+    void refreshModelContext(cfg.modelsUrl, cfg.apiKey).then(() => runtimes.notify());
     // Açılışta eklentileri bir kez yokla — panelde ışık ilk koşuyu beklemeden dolsun
     if (Object.values(cfg.mcpServers ?? {}).some((s) => !s.disabled)) {
       void probeMcp(cfg, mcpProbeDir()).then(() => {

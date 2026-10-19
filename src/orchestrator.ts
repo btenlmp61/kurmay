@@ -340,7 +340,8 @@ export async function runWorkflow(
   web?: WebApprovalChannel,
   // Entry ajanın SDK oturum kimliği burada tutulur: gelen değer varsa o oturum
   // sürdürülür (resume), koşu boyunca en güncel kimlikle güncellenir (bellekte)
-  sessionStore: { entrySessionId?: string } = {},
+  // entryContext: o konuşmanın bilinen boyutu (token) — eşiği geçmişse özetlenir
+  sessionStore: { entrySessionId?: string; entryContext?: number } = {},
   /** Verilirse akış (ilk düğüm dahil) bu zamana kadar bekler — görevin kendisini
    *  ileri bir saate kurmak için. Beklerken "şimdi çalıştır"/iptal/Durdur çalışır. */
   startAt?: number,
@@ -448,8 +449,12 @@ export async function runWorkflow(
     const result = await runAgent(
       agent, buildPrompt(agent, ctx), cwd, cfg, bus, abortController,
       isEntry ? sessionStore.entrySessionId : undefined,
+      isEntry && sessionStore.entrySessionId ? { contextTokens: sessionStore.entryContext } : {},
     );
-    if (isEntry && result.sessionId) sessionStore.entrySessionId = result.sessionId;
+    if (isEntry && result.sessionId) {
+      sessionStore.entrySessionId = result.sessionId;
+      sessionStore.entryContext = result.contextTokens;
+    }
     ctx.outputs.set(agent.key, { name: agent.name, result });
     ctx.feedback = undefined;
     // Structured çıktı değişen dosyalar taşıyorsa build düğümü için sakla

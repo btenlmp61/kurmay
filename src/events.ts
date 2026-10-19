@@ -56,6 +56,35 @@ export type OrchestratorEvent =
       continued?: boolean;
     }
   | {
+      /** Ajanın konuşma boyutu (son model yanıtından) — paneldeki bağlam göstergesi */
+      type: "context_usage";
+      agent: string;
+      tokens: number;
+      /** Modelin bağlam penceresi (bilinmiyorsa yok) */
+      window?: number;
+      /** Kullanılabilir sınır: pencere − yanıta ayrılan pay */
+      limit?: number;
+    }
+  | {
+      /** Konuşma özetleniyor (Claude Code /compact) */
+      type: "context_compacting";
+      agent: string;
+      tokens: number;
+      limit?: number;
+      /** esik: sıradaki görevden önce eşik aşıldı; dolu: sunucu "bağlam doldu" dedi */
+      reason: "esik" | "dolu";
+    }
+  | {
+      type: "context_compacted";
+      agent: string;
+      ok: boolean;
+      pre?: number;
+      post?: number;
+      error?: string;
+      /** Özetleme olmadıysa ne yapıldı: aynı konuşmayla devam ya da yeni konuşma */
+      fallback?: "devam" | "yeni";
+    }
+  | {
       /** Claude Code isteği kendi içinde yeniden deniyor (süreç kapanmadan) */
       type: "api_retry";
       agent: string;

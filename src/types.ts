@@ -260,6 +260,13 @@ export interface LimitsConfig {
    *  kapanmadan atlatılır; tükenirse hata bize gelir ve dış yeniden deneme
    *  (RetryConfig) devreye girer. */
   apiMaxRetries?: number;
+  /** Model listesinde bağlam sınırı (max_model_len) olmayan modeller için bağlam
+   *  penceresi, token. Claude Code'a CLAUDE_CODE_MAX_CONTEXT_TOKENS olarak da gider
+   *  (bilinen model için listedeki değer gider). */
+  contextTokens?: number;
+  /** Otomatik özetleme eşiği, kullanılabilir bağlamın yüzdesi (varsayılan 75; 0 =
+   *  kapalı). Sürdürülen konuşma bunu geçmişse sıradaki görevden önce özetlenir. */
+  compactPercent?: number;
 }
 
 /**
@@ -413,4 +420,7 @@ export interface AgentRunResult {
   sessionId?: string;
   /** Süre/tur/token ölçümü; SDK vermezse tanımsız kalır */
   metrics?: AgentMetrics;
+  /** Konuşmanın son boyutu (token): son model yanıtının girdi+çıktısı ya da özetleme
+   *  sonrası boyut. Oturum sürdürülürken bağlam doluluğu buradan bilinir */
+  contextTokens?: number;
 }
