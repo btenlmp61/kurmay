@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kurmay</title>
+<link rel="icon" href="data:,"><!-- logo yok: tarayıcı /favicon.ico istemesin -->
+<style>
+/* Güvenlik denetimi raporları — kendi koyu "güvenlik operasyon merkezi" görünümü
+   (panel temalarından bağımsız). Önem renkleri ayrılmış durum paletinden; renk hiçbir
+   yerde tek başına anlam taşımaz — her zaman ikon + etiketle birlikte. */
+:root {
+  --bg:#070b14; --bg2:#0b1120; --panel:#0f172a; --panel2:#131c33; --line:#1e2a44; --line2:#2a3a5c;
+  --text:#e6edf7; --muted:#8a9bb8; --faint:#5b6b88;
+  --accent:#38bdf8; --accent2:#22d3ee; --accentBg:rgba(56,189,248,.10);
+  --crit:#e5484d; --high:#ec835a; --med:#fab219; --low:#5aa9e6; --info:#8b95a7; --good:#2fbf71;
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+  --sans:system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; min-height:100%; }
+body { font:15px/1.55 var(--sans); color:var(--text); background:var(--bg);
+  background-image:
+    radial-gradient(1200px 500px at 70% -10%, rgba(56,189,248,.12), transparent 60%),
+    radial-gradient(900px 400px at -10% 20%, rgba(34,211,238,.06), transparent 60%),
+    linear-gradient(rgba(56,189,248,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56,189,248,.035) 1px, transparent 1px);
+  background-size:auto, auto, 32px 32px, 32px 32px; background-attachment:fixed; }
+a { color:var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+button { font:inherit; color:inherit; }
+svg.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+/* Üst şerit */
+.top { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:14px; padding:14px 24px;
+  background:rgba(7,11,20,.82); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+.logo { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.02em; }
+.logo .mark { width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+  background:linear-gradient(135deg, rgba(56,189,248,.25), rgba(34,211,238,.08)); border:1px solid rgba(56,189,248,.35);
+  color:var(--accent); box-shadow:0 0 18px rgba(56,189,248,.18); }
+.logo small { display:block; font-weight:500; color:var(--muted); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+.top .sp { flex:1; }
+.top .back { font-size:14px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+.top .back:hover { color:var(--accent); text-decoration:none; }
+
+.wrap { display:grid; grid-template-columns:300px minmax(0,1fr); gap:24px; padding:24px; max-width:1500px; margin:0 auto; }
+.wrap > *, .hero > * { min-width:0; } /* uzun yol/metin ızgarayı taşırmasın (dar ekran) */
+.loc, .files span, .tag { max-width:100%; overflow-wrap:anywhere; word-break:break-all; line-height:1.35; }
+
+/* Rapor listesi */
+.side { position:sticky; top:86px; align-self:start; max-height:calc(100vh - 110px); overflow:auto; }
+.side h2 { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:4px 4px 10px; font-weight:600; }
+.rep { display:block; width:100%; text-align:left; cursor:pointer; margin-bottom:8px; padding:12px 14px; border-radius:12px;
+  background:var(--panel); border:1px solid var(--line); transition:border-color .15s, background .15s; }
+.rep:hover { border-color:var(--line2); background:var(--panel2); }
+.rep.on { border-color:rgba(56,189,248,.6); background:linear-gradient(180deg, rgba(56,189,248,.10), var(--panel)); box-shadow:0 0 0 1px rgba(56,189,248,.25) inset; }
+.rep .t { font-weight:600; font-size:14px; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.rep .m { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+.dots { display:flex; gap:4px; margin-left:auto; }
+.dots span { font:600 11px/1 var(--mono); padding:3px 6px; border-radius:6px; background:rgba(255,255,255,.04); border:1px solid var(--line); color:var(--text); display:flex; align-items:center; gap:4px; }
+.dots span::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--c); }
+
+/* Kartlar */
+.card { background:linear-gradient(180deg, rgba(19,28,51,.92), rgba(15,23,42,.92)); border:1px solid var(--line); border-radius:16px; padding:22px 24px; margin-bottom:20px; }
+.label { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+
+/* Üst özet: risk kalkanı + ölçek + bilgiler */
+.hero { display:grid; grid-template-columns:auto minmax(0,1fr); gap:28px; align-items:center; position:relative; overflow:hidden; }
+.hero::after { content:""; position:absolute; right:-80px; top:-80px; width:280px; height:280px; border-radius:50%;
+  background:radial-gradient(circle, var(--glow, rgba(56,189,248,.18)), transparent 70%); pointer-events:none; }
+.shield { width:150px; height:170px; position:relative; display:grid; place-items:center; }
+.shield svg { position:absolute; inset:0; width:100%; height:100%; filter:drop-shadow(0 0 22px var(--glow, rgba(56,189,248,.35))); }
+.shield .lv { position:relative; text-align:center; margin-top:-6px; }
+.shield .lv b { display:block; font-size:22px; letter-spacing:.04em; }
+.shield .lv span { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+.task { font-size:20px; font-weight:650; line-height:1.35; margin:2px 0 14px; }
+.meter { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin:6px 0 6px; max-width:520px; }
+.meter i { height:8px; border-radius:4px; background:rgba(255,255,255,.07); }
+.meter i.f { background:var(--c); box-shadow:0 0 10px var(--c); }
+.meter-l { display:grid; grid-template-columns:repeat(5,1fr); max-width:520px; font-size:11px; color:var(--faint); letter-spacing:.04em; }
+.meter-l span.cur { color:var(--text); font-weight:600; }
+.meta { display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:16px; font-size:13px; color:var(--muted); }
+.meta div { display:flex; align-items:center; gap:7px; min-width:0; }
+.meta b { color:var(--text); font-weight:500; overflow-wrap:anywhere; }
+
+/* Önem kutucukları */
+.kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px; margin-bottom:20px; }
+.kpi { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; position:relative; overflow:hidden; cursor:pointer; text-align:left; }
+.kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c); }
+.kpi:hover, .kpi.on { border-color:var(--line2); background:var(--panel2); }
+.kpi.on { box-shadow:0 0 0 1px var(--c) inset; }
+.kpi .h { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); }
+.kpi .h svg { color:var(--c); }
+.kpi .n { font:700 34px/1.1 var(--sans); margin-top:6px; font-variant-numeric:tabular-nums; }
+.kpi.zero .n { color:var(--faint); }
+
+.summary { font-size:15.5px; line-height:1.65; color:#cfd8e8; }
+
+/* Bulgular */
+.fhead { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+.fhead .label { margin:0; }
+.fhead .sp { flex:1; }
+.chip { cursor:pointer; padding:6px 12px; border-radius:999px; background:rgba(255,255,255,.03); border:1px solid var(--line); font-size:13px; color:var(--muted); display:inline-flex; align-items:center; gap:6px; }
+.chip:hover { color:var(--text); border-color:var(--line2); }
+.chip.on { color:var(--text); border-color:rgba(56,189,248,.6); background:var(--accentBg); }
+.chip i { width:7px; height:7px; border-radius:50%; background:var(--c); }
+.find { border:1px solid var(--line); border-radius:14px; background:var(--panel); margin-bottom:12px; overflow:hidden; position:relative; }
+.find::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c); box-shadow:0 0 12px var(--c); }
+.find > button.fh { all:unset; cursor:pointer; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:center; padding:16px 18px 16px 20px; width:100%; box-sizing:border-box; }
+.find > button.fh:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; border-radius:14px; }
+.sev { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:5px 10px; border-radius:8px; color:var(--text); background:color-mix(in srgb, var(--c) 18%, transparent); border:1px solid color-mix(in srgb, var(--c) 55%, transparent); white-space:nowrap; }
+.sev svg { color:var(--c); width:15px; height:15px; }
+.ft { font-weight:600; font-size:15.5px; line-height:1.35; }
+.fsub { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:6px; }
+.tag { font:500 12px/1 var(--mono); padding:4px 8px; border-radius:6px; background:rgba(255,255,255,.04); border:1px solid var(--line); color:#b8c4da; }
+.tag.cat { font-family:var(--sans); }
+.loc { font:12.5px/1 var(--mono); color:var(--accent); display:inline-flex; align-items:center; gap:5px; cursor:copy; }
+.loc:hover { text-decoration:underline; }
+.chev { color:var(--muted); transition:transform .2s; }
+.find.open .chev { transform:rotate(180deg); }
+.fb { display:none; padding:0 20px 18px 20px; border-top:1px solid var(--line); }
+.find.open .fb { display:block; }
+.fb p { margin:14px 0 0; color:#cfd8e8; }
+.ev { margin-top:14px; border-radius:10px; border:1px solid var(--line); background:#060a13; overflow:auto; }
+.ev .evh { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); padding:8px 12px; border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+.ev pre { margin:0; padding:12px 14px; font:13px/1.6 var(--mono); color:#d7e3f4; white-space:pre; counter-reset:ln; }
+.ev pre span { display:block; counter-increment:ln; }
+.ev pre span::before { content:counter(ln); display:inline-block; width:2.2em; margin-right:12px; text-align:right; color:var(--faint); }
+.fix { margin-top:14px; display:flex; gap:12px; padding:12px 14px; border-radius:10px; background:rgba(47,191,113,.07); border:1px solid rgba(47,191,113,.28); }
+.fix svg { color:var(--good); margin-top:2px; }
+.fix b { display:block; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--good); margin-bottom:2px; }
+
+.pos li { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed var(--line); color:#cfd8e8; }
+.pos li:last-child { border-bottom:none; }
+.pos li svg { color:var(--good); margin-top:3px; }
+ul.pos { list-style:none; margin:0; padding:0; }
+.files { display:flex; flex-wrap:wrap; gap:8px; }
+.files span { font:12.5px/1 var(--mono); padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.03); border:1px solid var(--line); color:#b8c4da; display:inline-flex; gap:6px; align-items:center; }
+
+.empty { text-align:center; padding:70px 24px; color:var(--muted); }
+.empty .big { width:120px; height:136px; margin:0 auto 18px; color:var(--accent); opacity:.85; filter:drop-shadow(0 0 22px rgba(56,189,248,.35)); }
+.empty h3 { color:var(--text); margin:0 0 8px; font-size:19px; }
+.clean { display:flex; align-items:center; gap:14px; padding:18px; border-radius:12px; background:rgba(47,191,113,.07); border:1px solid rgba(47,191,113,.28); color:#cfe9da; }
+.clean svg { color:var(--good); width:28px; height:28px; }
+.raw { white-space:pre-wrap; font:13px/1.6 var(--mono); color:#cfd8e8; background:#060a13; border:1px solid var(--line); border-radius:10px; padding:14px; }
+.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line2); padding:9px 16px; border-radius:10px; font-size:13px; display:none; }
+.toast.show { display:block; }
+
+@media (max-width:1100px) { .kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:860px) {
+  .wrap { grid-template-columns:1fr; padding:16px; gap:16px; }
+  .side { position:static; max-height:none; display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; }
+  .side h2 { display:none; }
+  .rep { min-width:240px; margin:0; }
+  .hero { grid-template-columns:1fr; }
+  .shield { width:110px; height:125px; }
+  .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  /* Bulgu başlığı: önem rozeti üstte, başlık tam genişlikte */
+  .find > button.fh { grid-template-columns:minmax(0,1fr) auto; row-gap:10px; }
+  .find > button.fh .sev { grid-column:1 / -1; justify-self:start; }
+  .top { padding:12px 16px; }
+  .card { padding:18px 16px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .find, .kpi, .card { animation:gir .35s ease both; }
+  @keyframes gir { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo">
+    <div class="mark"><svg class="i" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+    <div>Kurmay<small>Güvenlik denetimi</small></div>
+  </div>
+  <span class="sp"></span>
+  <a class="back" href="/"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>İzleme paneli</a>
+</header>
+
+<div class="wrap">
+  <aside class="side" id="side"><h2>Raporlar</h2></aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+// Önem dereceleri: ad + renk değişkeni + ikon (renk asla tek başına anlam taşımaz)
+const SEV = {
+  critical: { ad:"Kritik", c:"var(--crit)", ic:'<path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z"/><path d="M12 8v4M12 16h.01"/>' },
+  high:     { ad:"Yüksek", c:"var(--high)", ic:'<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>' },
+  medium:   { ad:"Orta",   c:"var(--med)",  ic:'<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>' },
+  low:      { ad:"Düşük",  c:"var(--low)",  ic:'<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>' },
+  info:     { ad:"Bilgi",  c:"var(--info)", ic:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>' },
+};
+const ORDER = ["critical", "high", "medium", "low", "info"];
+// Genel risk düzeyi: ölçekte soldan sağa
+const RISK = {
+  none:     { ad:"Risk yok", c:"var(--good)", n:0 },
+  low:      { ad:"Düşük",    c:"var(--low)",  n:1 },
+  medium:   { ad:"Orta",     c:"var(--med)",  n:2 },
+  high:     { ad:"Yüksek",   c:"var(--high)", n:3 },
+  critical: { ad:"Kritik",   c:"var(--crit)", n:4 },
+};
+const RISK_ORDER = ["none", "low", "medium", "high", "critical"];
+const icon = (path, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24">${path}</svg>`;
+const I = {
+  file:  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  folder:'<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  cpu:   '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>',
+  chat:  '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  wrench:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  chev:  '<path d="m6 9 6 6 6-6"/>',
+  code:  '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
+  list:  '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  shield:'<path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/>',
+};
+const fmtDate = (iso) => new Date(iso).toLocaleString("tr-TR", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+
+let list = [], current = null, filter = "all";
+
+function counts(findings) {
+  const c = Object.fromEntries(ORDER.map((s) => [s, 0]));
+  for (const f of findings || []) if (f.severity in c) c[f.severity]++;
+  return c;
+}
+
+function renderList() {
+  $("side").innerHTML = `<h2>Raporlar</h2>` + (list.length ? list.map((r) => {
+    const rk = RISK[r.risk];
+    const dots = ORDER.filter((s) => r.counts[s] > 0 && s !== "info")
+      .map((s) => `<span style="--c:${SEV[s].c}" title="${SEV[s].ad}">${r.counts[s]}</span>`).join("");
+    return `<button class="rep${current && current.id === r.id ? " on" : ""}" data-id="${esc(r.id)}">
+      <div class="t">${esc(r.task)}</div>
+      <div class="m">${icon(I.clock)}${esc(fmtDate(r.createdAt))}
+        ${rk ? `<span class="sev" style="--c:${rk.c};padding:2px 7px;font-size:10.5px">${esc(rk.ad)}</span>` : ""}
+        <span class="dots">${dots}</span></div>
+    </button>`;
+  }).join("") : `<div style="color:var(--faint);font-size:13px;padding:4px">Henüz rapor yok.</div>`);
+}
+
+function shieldSvg(color) {
+  return `<svg viewBox="0 0 120 136" aria-hidden="true">
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}" stop-opacity=".30"/><stop offset="1" stop-color="${color}" stop-opacity=".05"/></linearGradient></defs>
+    <path d="M60 4 10 22v38c0 33 21 58 50 72 29-14 50-39 50-72V22z" fill="url(#sg)" stroke="${color}" stroke-width="2.5"/>
+    <path d="M60 16 21 30v30c0 26 16 46 39 58 23-12 39-32 39-58V30z" fill="none" stroke="${color}" stroke-opacity=".35" stroke-width="1.2" stroke-dasharray="3 4"/>
+  </svg>`;
+}
+
+function renderReport(r) {
+  const rk = RISK[r.risk] || null;
+  const c = counts(r.findings);
+  const total = r.findings.length;
+  const color = rk ? rk.c : "var(--accent)";
+  document.documentElement.style.setProperty("--glow", rk ? `color-mix(in srgb, ${rk.c} 30%, transparent)` : "rgba(56,189,248,.18)");
+  const meterCells = RISK_ORDER.map((k, i) => `<i class="${rk && i <= rk.n ? "f" : ""}" style="--c:${rk ? rk.c : "transparent"}"></i>`).join("");
+  const meterLbl = RISK_ORDER.map((k) => `<span class="${r.risk === k ? "cur" : ""}">${RISK[k].ad}</span>`).join("");
+
+  const hero = `<section class="card hero">
+    <div class="shield">${shieldSvg(color)}
+      <div class="lv"><b style="color:${color}">${rk ? esc(rk.ad) : "—"}</b><span>genel risk</span></div></div>
+    <div>
+      <div class="label">${icon(I.shield)}Denetlenen görev</div>
+      <div class="task">${esc(r.task)}</div>
+      <div class="meter" title="Genel risk: ${rk ? esc(rk.ad) : "belirlenemedi"}">${meterCells}</div>
+      <div class="meter-l">${meterLbl}</div>
+      <div class="meta">
+        <div>${icon(I.clock)}<b>${esc(fmtDate(r.createdAt))}</b></div>
+        ${r.sessionName ? `<div>${icon(I.chat)}<b>${esc(r.sessionName)}</b></div>` : ""}
+        <div>${icon(I.folder)}<b>${esc(r.targetDir)}</b></div>
+        ${r.model ? `<div>${icon(I.cpu)}<b>${esc(r.model)}</b></div>` : ""}
+        <div>${icon(I.file)}<b>${r.files.length} dosya denetlendi</b></div>
+      </div>
+    </div>
+  </section>`;
+
+  const kpis = `<section class="kpis">${ORDER.map((s) => `
+    <button class="kpi${c[s] ? "" : " zero"}${filter === s ? " on" : ""}" data-filter="${s}" style="--c:${SEV[s].c}" aria-pressed="${filter === s}">
+      <div class="h">${icon(SEV[s].ic)}${SEV[s].ad}</div>
+      <div class="n">${c[s]}</div>
+    </button>`).join("")}</section>`;
+
+  const summary = r.summary ? `<section class="card"><div class="label">${icon(I.list)}Özet</div><div class="summary">${esc(r.summary)}</div></section>` : "";
+
+  let body;
+  if (r.rawText !== undefined && !total) {
+    body = `<section class="card"><div class="label">${icon(I.code)}Denetçinin metni</div>
+      <p style="color:var(--muted);margin-top:0">Denetçi yapılandırılmış rapor üretmedi; yazdığı metin aşağıda.</p>
+      <div class="raw">${esc(r.rawText)}</div></section>`;
+  } else if (!total) {
+    body = `<section class="card"><div class="clean">${icon(I.check)}<div><b>Güvenlik açığı bulunmadı.</b><br>Denetlenen değişikliklerde bildirilecek bir sorun yok.</div></div></section>`;
+  } else {
+    const shown = r.findings.filter((f) => filter === "all" || f.severity === filter);
+    const chips = [["all", "Tümü", total, "var(--accent)"], ...ORDER.filter((s) => c[s]).map((s) => [s, SEV[s].ad, c[s], SEV[s].c])]
+      .map(([k, ad, n, col]) => `<button class="chip${filter === k ? " on" : ""}" data-filter="${k}"><i style="--c:${col}"></i>${ad} · ${n}</button>`).join("");
+    body = `<section class="card">
+      <div class="fhead"><div class="label">${icon(SEV.high.ic)}Bulgular</div><span class="sp"></span>${chips}</div>
+      ${shown.map((f, i) => findingHtml(f, i === 0 && filter === "all" ? true : shown.length === 1)).join("")}
+    </section>`;
+  }
+
+  const pos = r.positives && r.positives.length ? `<section class="card"><div class="label" style="color:var(--good)">${icon(I.check)}Doğru yapılanlar</div>
+    <ul class="pos">${r.positives.map((p) => `<li>${icon(I.check)}<span>${esc(p)}</span></li>`).join("")}</ul></section>` : "";
+  const files = r.files.length ? `<section class="card"><div class="label">${icon(I.file)}Denetlenen dosyalar</div>
+    <div class="files">${r.files.map((f) => `<span>${icon(I.file)}${esc(f)}</span>`).join("")}</div></section>` : "";
+
+  $("main").innerHTML = hero + (total ? kpis : "") + summary + body + pos + files;
+}
+
+function findingHtml(f, open) {
+  const s = SEV[f.severity] || SEV.info;
+  const loc = f.file ? `${f.file}${f.line ? ":" + f.line : ""}` : "";
+  const ev = f.evidence ? `<div class="ev"><div class="evh">${icon(I.code)}Kanıt</div><pre>${
+    f.evidence.split("\n").map((l) => `<span>${esc(l) || " "}</span>`).join("")}</pre></div>` : "";
+  return `<article class="find${open ? " open" : ""}" style="--c:${s.c}">
+    <button class="fh" aria-expanded="${open}">
+      <span class="sev" style="--c:${s.c}">${icon(s.ic)}${s.ad}</span>
+      <div><div class="ft">${esc(f.title)}</div>
+        <div class="fsub">${f.category ? `<span class="tag cat">${esc(f.category)}</span>` : ""}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ""}
+          ${loc ? `<span class="loc" data-copy="${esc(loc)}" title="Yolu kopyala">${icon(I.file)}${esc(loc)}</span>` : ""}</div></div>
+      <span class="chev">${icon(I.chev)}</span>
+    </button>
+    <div class="fb">
+      ${f.description ? `<p>${esc(f.description)}</p>` : ""}
+      ${ev}
+      ${f.recommendation ? `<div class="fix">${icon(I.wrench)}<div><b>Öneri</b>${esc(f.recommendation)}</div></div>` : ""}
+    </div>
+  </article>`;
+}
+
+function renderEmpty() {
+  $("main").innerHTML = `<section class="card empty">
+    <svg class="big" viewBox="0 0 120 136" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M60 4 10 22v38c0 33 21 58 50 72 29-14 50-39 50-72V22z"/><path d="m40 68 14 14 28-28"/></svg>
+    <h3>Henüz güvenlik raporu yok</h3>
+    <div>Güvenlik denetimi varsayılan olarak kapalıdır. <a href="/config">Ayarlar</a>'dan açtığında, Teftiş onayından sonraki<br>her koşuda denetçi değişen kodu inceler ve raporu burada görürsün.</div>
+  </section>`;
+}
+
+let toastT;
+function toast(m) { $("toast").textContent = m; $("toast").classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("show"), 1800); }
+
+async function open(id) {
+  try {
+    const r = await (await fetch("/security-reports/" + encodeURIComponent(id))).json();
+    if (!r || !r.id) throw new Error();
+    current = r; filter = "all";
+    if (location.hash.slice(1) !== id) history.replaceState(null, "", "#" + id);
+    renderList(); renderReport(r); window.scrollTo({ top: 0 });
+  } catch { toast("Rapor açılamadı"); }
+}
+
+document.addEventListener("click", (ev) => {
+  const rep = ev.target.closest(".rep"); if (rep) return open(rep.dataset.id);
+  const loc = ev.target.closest(".loc");
+  if (loc) { ev.stopPropagation(); navigator.clipboard?.writeText(loc.dataset.copy).then(() => toast("Yol kopyalandı"), () => {}); return; }
+  const f = ev.target.closest("[data-filter]");
+  if (f && current) { filter = filter === f.dataset.filter ? "all" : f.dataset.filter; return renderReport(current); }
+  const fh = ev.target.closest(".find > .fh");
+  if (fh) { const a = fh.parentElement; a.classList.toggle("open"); fh.setAttribute("aria-expanded", a.classList.contains("open")); }
+});
+
+(async () => {
+  try { list = await (await fetch("/security-reports")).json(); } catch { list = []; }
+  renderList();
+  const want = location.hash.slice(1);
+  if (list.length) open(list.some((r) => r.id === want) ? want : list[0].id);
+  else renderEmpty();
+})();
+</script>
+</body>
+</html>

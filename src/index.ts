@@ -12,6 +12,7 @@ import { RESILIENCE_LIMIT_KEYS, RESILIENCE_RETRY_KEYS, setLiveResilience } from 
 import { runWorkflow } from "./orchestrator.js";
 import { RuntimeRegistry, type SessionRuntime } from "./runtime.js";
 import { startUiServer, type ToggleKind, type UiServer } from "./server.js";
+import { SecurityReportStore, watchSecurityReports } from "./securityReport.js";
 import { SessionStore, type SessionEntry } from "./sessions.js";
 import { isFanoutNode, mainPath, type AgentDefinition, type AppConfig } from "./types.js";
 
@@ -72,6 +73,8 @@ async function executeRun(o: {
   runsDir: string;
   sessions: SessionStore;
   entry: SessionEntry;
+  /** Güvenlik denetçisinin (securityReport düğümü) raporlarının saklandığı yer */
+  securityReports: SecurityReportStore;
   onDone: () => void;
   /** Verilirse akış bu zamana kadar bekler (zamanlanmış görev) */
   startAt?: number;
@@ -85,6 +88,12 @@ async function executeRun(o: {
   const runLog = path.join(o.runsDir, logName);
   o.sessions.addRunLog(entry.id, logName, task);
   const unsubscribe = bus.subscribe((e) => fs.appendFileSync(runLog, JSON.stringify(e) + "\n"));
+  // Güvenlik denetimi raporu: denetçi düğüm (securityReport) bitince runs/guvenlik/'e kaydedilir
+  const unsubscribeReport = watchSecurityReports(bus, o.securityReports, {
+    isReportAgent: (agent) => !!(cfg.workflow.agents[agent] as { securityReport?: boolean } | undefined)?.securityReport,
+    base: { session: entry.id, sessionName: entry.name, task, targetDir: cwd, model: cfg.model },
+    label: entry.name,
+  });
   // entrySessionId: analistin SDK oturumu — varsa sürdürülür, koşu boyunca güncellenir
   const sessionStore: { entrySessionId?: string; entryContext?: number } = {
     entrySessionId: entry.sdkSessionId,
@@ -120,6 +129,7 @@ async function executeRun(o: {
   } finally {
     runtime.endRun();
     unsubscribe();
+    unsubscribeReport();
     o.sessions.finishRun(entry.id, sessionStore.entrySessionId, runtime.status, sessionStore.entryContext);
     o.onDone();
     console.log(`🗒  [${entry.name}] Koşu kaydı: ${runLog}`);
@@ -174,6 +184,7 @@ async function main() {
   }
 
   const runsDir = path.join(configRoot, "runs");
+  const securityReports = new SecurityReportStore(path.join(runsDir, "guvenlik"));
   fs.mkdirSync(runsDir, { recursive: true });
 
   // Oturum kataloğu (runs/sessions.json) + oturum başına çalışma zamanları. Sunucu
@@ -232,6 +243,7 @@ async function main() {
       runsDir,
       sessions,
       entry: e,
+      securityReports,
       onDone: () => runtimes.notify(),
       startAt: runAt,
     });
@@ -634,6 +646,8 @@ async function main() {
       }),
       setNodeDisabled,
       getToggles,
+      listSecurityReports: () => securityReports.list(),
+      getSecurityReport: (id) => securityReports.get(id),
       setToggle,
       getMcpStatus: mcpView,
       probeMcp: async () => {

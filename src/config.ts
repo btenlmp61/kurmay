@@ -105,6 +105,10 @@ export function loadAppConfig(configPath: string): AppConfig {
           (type === "parallel" ? ' — paralel inceleme kaldırıldı; tek teftiş düğümü için "verdict" kullan' : ""),
       );
     }
+    const sr = (node as { securityReport?: unknown }).securityReport;
+    if (sr !== undefined && typeof sr !== "boolean") {
+      throw new Error(`config: "${key}.securityReport" true/false olmalı (verilen: ${JSON.stringify(sr)})`);
+    }
     if (node.disabled !== undefined && typeof node.disabled !== "boolean") {
       throw new Error(`config: "${key}.disabled" true/false olmalı (verilen: ${JSON.stringify(node.disabled)})`);
     }

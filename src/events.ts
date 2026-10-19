@@ -159,6 +159,15 @@ export type OrchestratorEvent =
   | { type: "build_module_finished"; module: string }
   | { type: "build_failed"; module: string; code: number }
   | { type: "build_finished"; order: string[] }
+  // Güvenlik denetçisinin raporu kaydedildi — panel /guvenlik#id bağlantısı gösterir
+  | {
+      type: "security_report";
+      id: string;
+      agent: string;
+      risk?: string;
+      counts: Record<"critical" | "high" | "medium" | "low" | "info", number>;
+      structured: boolean;
+    }
   | { type: "run_scheduled"; agent: string; runAt: number }
   | { type: "run_resumed"; agent: string; source: "timer" | "terminal" | "web" }
   | { type: "run_schedule_cancelled"; agent: string; source: "timer" | "terminal" | "web" }

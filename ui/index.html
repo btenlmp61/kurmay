@@ -590,6 +590,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <aside class="rail">
   <div class="rail-tools">
     <a class="tool" href="/toggles" title="Aç / Kapat" aria-label="Aç / Kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="6"/><circle cx="16" cy="12" r="2.5"/></svg></a>
+    <a class="tool" href="/guvenlik" title="Güvenlik raporları" aria-label="Güvenlik raporları"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></a>
     <a class="tool" href="/config" title="Ayarlar" aria-label="Ayarlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
     <span class="tool-sep" aria-hidden="true"></span>
     <div class="tswitch" role="radiogroup" aria-label="Tema">
@@ -689,6 +690,7 @@ const ROLES = {
   analist: { ad: "Analist", ic: "◎", c: "arch" },
   saha: { ad: "Saha Timi", ic: "</>", c: "dev" },
   teftis: { ad: "Teftiş", ic: "✓", c: "rev" },
+  guvenlik: { ad: "Güvenlik Denetçisi", ic: "🛡", c: "other" },
 };
 // Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
 // harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
@@ -715,7 +717,9 @@ function assignCodeName(key) {
 const mintika = (repo) => (repo === "." ? "merkez" : repo);
 // Modelden/backend'den gelen teknik değerlerin ekrandaki Türkçe karşılıkları
 const ACTION_NAMES = { create: "yeni", created: "yeni", modify: "değişecek", modified: "değişti", delete: "silinecek", deleted: "silindi" };
-const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek" };
+const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek", critical: "kritik", info: "bilgi" };
+// Güvenlik denetçisinin genel risk düzeyi (şema enum'u İngilizce kalır, ekranda Türkçe)
+const RISK_NAMES = { none: "risk yok", low: "düşük", medium: "orta", high: "yüksek", critical: "kritik" };
 const SOURCE_NAMES = { web: "panel", terminal: "terminal", timer: "zamanlayıcı" };
 const ROUTE_VALUES = { implement: "uygulama", done: "bitir", developer: "uygulama" }; // son değer: eski kayıtlar
 const TOOL_NAMES = { Read: "Dosya oku", Write: "Dosya yaz", Edit: "Düzenle", MultiEdit: "Çoklu düzenle", NotebookEdit: "Defter düzenle",
@@ -975,11 +979,15 @@ const FIELD_LABELS = {
   verification: "Doğrulama", issues: "Sorunlar", answer: "Cevap", references: "Kaynaklar",
   file: "Dosya", path: "Dosya", action: "İşlem", description: "Açıklama", severity: "Önem",
   location: "Yer", before: "Önce", after: "Sonra", rationale: "Gerekçe", note: "Not", line: "Satır",
+  // Güvenlik denetçisi
+  risk: "Genel risk", findings: "Bulgular", positives: "Doğru yapılanlar", title: "Başlık", category: "Kategori",
+  evidence: "Kanıt", recommendation: "Öneri",
 };
 const HIDDEN_FIELDS = new Set(["route", "approved", "file_plan"]); // kartta/akışta zaten anlatılıyor
 function valueText(k, v) {
   if (k === "action") return ACTION_NAMES[v] || v;
   if (k === "severity") return SEVERITY_NAMES[v] || v;
+  if (k === "risk") return RISK_NAMES[v] || v;
   return v;
 }
 function structuredView(obj, depth = 0) {
@@ -1805,6 +1813,17 @@ function handleEvent(e) {
     case "build_finished":
       addLog(e.ts, `derleme tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
       break;
+    // Güvenlik denetçisinin raporu kaydedildi: özet + rapor sayfasına bağlantı
+    case "security_report": {
+      const c = e.counts || {};
+      const top = ["critical", "high", "medium", "low"].filter((s) => c[s]).map((s) => `${c[s]} ${SEVERITY_NAMES[s]}`).join(", ");
+      const toplam = Object.values(c).reduce((a, b) => a + b, 0);
+      const ozet = !e.structured ? "yapılandırılmış rapor gelmedi, denetçinin metni kaydedildi"
+        : toplam ? `risk: ${RISK_NAMES[e.risk] || e.risk || "?"} · ${toplam} bulgu${top ? ` (${top})` : ""}` : "güvenlik açığı bulunmadı";
+      const cls = c.critical || c.high ? "err" : c.medium || !e.structured ? "warn" : "ok";
+      addLog(e.ts, `🛡 Güvenlik raporu hazır — ${esc(ozet)} <a href="/guvenlik#${encodeURIComponent(e.id)}" target="_blank" rel="noopener">raporu aç ↗</a>`, cls);
+      break;
+    }
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");
