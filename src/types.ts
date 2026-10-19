@@ -79,6 +79,9 @@ export interface AgentNodeConfig {
   hooks?: HookConfig[];
   /** true ise bu ajanın çıktısı sonrasında kullanıcı onayı beklenir */
   requiresUserApproval?: boolean;
+  /** true ise bu ajanın çıktısı güvenlik denetimi raporu olarak runs/guvenlik/ altına
+   *  kaydedilir ve /guvenlik sayfasında gösterilir (src/securityReport.ts) */
+  securityReport?: boolean;
   /** Koşulsuz geçiş: bir sonraki ajanın adı (null/tanımsız = akış biter) */
   next?: string | null;
   /** Tanımlıysa çıktıdan structured verdict çıkarılır ve karara göre dallanılır */

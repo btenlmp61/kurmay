@@ -112,8 +112,8 @@ for (const b of document.querySelectorAll(".tsw")) {
 applyThemeUI();
 
 // Görünen adlar — config anahtarları teknik kalır, ekranda Türkçe ad (panel/ayarlar ile aynı)
-const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
-const ROLE_ICONS = { analist:["◎","var(--arch)"], saha:["</>","var(--dev)"], teftis:["✓","var(--rev)"] };
+const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş", guvenlik:"Güvenlik Denetçisi" };
+const ROLE_ICONS = { analist:["◎","var(--arch)"], saha:["</>","var(--dev)"], teftis:["✓","var(--rev)"], guvenlik:["🛡","var(--teal)"] };
 let data = null;
 
 /** Düğüm anahtarı → ekrandaki ad. Dağıtımın işçisi takımın adıyla görünür ("Saha Timi"):

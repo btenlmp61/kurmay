@@ -66,6 +66,24 @@ input[type=text], input[type=number], select { width:100%; }
 .tybadge.fanout { background:var(--amberBg); color:var(--amber); }
 .tybadge.entry { background:var(--tealBg); color:var(--teal); }
 #msg { font-size:13px; }
+/* Güvenlik denetimi kartı + iPhone tarzı anahtar (Aç/Kapat sayfasıyla aynı görünüm) */
+.secc { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.secc-ic { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; flex:none; background:var(--tealBg); color:var(--teal); }
+.secc-ic svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.secc-t { flex:1; min-width:220px; }
+.secc-h { font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.secc-st { font:600 11.5px/1 var(--font-ui); padding:4px 9px; border-radius:999px; background:var(--bg); color:var(--muted); }
+.secc-st.on { background:var(--tealBg); color:var(--teal); }
+.secc-a { font-size:13px; white-space:nowrap; }
+.sw { appearance:none; -webkit-appearance:none; flex:none; position:relative; width:51px !important; height:31px; min-height:0 !important; margin:0; cursor:pointer;
+  border-radius:999px !important; background:var(--md-outline-variant); transition:background-color 220ms ease; }
+[data-theme="radar"] .sw { background:var(--md-outline); }
+.sw::after { content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50% !important; background:#fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.18), 0 1px 1px rgba(0,0,0,.16); transition:transform 220ms cubic-bezier(.3,.7,.4,1); }
+.sw:checked, [data-theme] .sw:checked { background:var(--md-secondary); }
+.sw:checked::after { transform:translateX(20px); }
+.sw:focus-visible { outline:2px solid var(--md-primary); outline-offset:2px; }
+.sw:disabled { opacity:.5; cursor:default; }
 .mono { font-family:ui-monospace,Consolas,monospace; }
 /* Rol tanımı düzenleyicisi (persona .md) — büyük pencere */
 .mdd { border:none; padding:0; width:min(1000px, calc(100vw - 32px)); max-height:calc(100vh - 32px);
@@ -113,6 +131,18 @@ input[type=text], input[type=number], select { width:100%; }
     <button class="tsw" data-t="radar" aria-label="Radar"></button>
   </div>
   <a href="/">← izleme paneli</a>
+</div>
+
+<!-- Güvenlik denetimi: denetçi ajan (securityReport düğümü) için tek dokunuşla aç/kapat.
+     Düğümün "devre dışı" ayarını değiştirir — anında uygulanır, Kaydet beklemez. -->
+<div class="card secc" id="secCard" style="margin-bottom:14px">
+  <div class="secc-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+  <div class="secc-t">
+    <div class="secc-h">Güvenlik denetimi <span id="secState" class="secc-st"></span></div>
+    <div class="fhint" id="secHint" style="font-size:12.5px">Açıkken Teftiş onayından sonra Güvenlik Denetçisi değişen kodu güvenlik açısından inceler; raporu ayrı sayfada görürsün. Yerel modelde koşuyu uzatır.</div>
+  </div>
+  <a href="/guvenlik" class="secc-a">Raporlar →</a>
+  <input type="checkbox" role="switch" class="sw" id="secSw" aria-label="Güvenlik denetimi">
 </div>
 
 <div class="card" style="margin-bottom:14px">
@@ -378,7 +408,7 @@ $("mdDlg").addEventListener("keydown", (ev)=>{
 });
 
 // Görünen adlar — config anahtarları (analist, saha…) teknik kalır, ekranda tam Türkçe ad
-const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş" };
+const NODE_NAMES = { analist:"Analist", saha:"Saha ajanı", teftis:"Teftiş", guvenlik:"Güvenlik Denetçisi" };
 const TYPE_NAMES = { agent:"ajan", command:"komut", fanout:"dağıtım" };
 const ROUTE_VALUES = { implement:"uygulama", done:"bitir", default:"varsayılan" };
 const FIELD_NAMES = { route:"rota" };
@@ -598,8 +628,38 @@ function chipEditor(list, options, onChange, label = (v)=>v){
   return wrap;
 }
 
+// Güvenlik denetimi kartı: config'te securityReport düğümü varsa onun açık/kapalı durumu
+const secKey = () => cfg && keys().find((k)=> nodes()[k] && nodes()[k].securityReport);
+function renderSecCard(){
+  const k = secKey(), sw = $("secSw");
+  if (!k){
+    sw.checked = false; sw.disabled = true;
+    $("secState").textContent = "akışta yok"; $("secState").className = "secc-st";
+    return;
+  }
+  const on = !nodes()[k].disabled;
+  sw.disabled = false; sw.checked = on;
+  $("secState").textContent = on ? "açık" : "kapalı"; $("secState").className = "secc-st" + (on ? " on" : "");
+}
+$("secSw").addEventListener("change", async ()=>{
+  const k = secKey(); if (!k) return;
+  const want = !$("secSw").checked; // disabled
+  $("secSw").disabled = true;
+  try {
+    const res = await fetch("/node-disabled", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ key:k, disabled: want }) });
+    const data = await res.json().catch(()=>({}));
+    if (!data.ok) throw new Error(data.error || "uygulanamadı");
+    if (want) nodes()[k].disabled = true; else delete nodes()[k].disabled;
+    $("msg").innerHTML = `<span style="color:var(--teal)">✓ Güvenlik denetimi ${want ? "kapatıldı" : "açıldı"} — sıradaki görevde geçerli</span>`;
+  } catch (err){
+    $("msg").innerHTML = `<span style="color:var(--red)">✗ ${esc(err.message)}</span>`;
+  }
+  render();
+});
+
 function render(){
   drawGraph();
+  renderSecCard();
   const panel = $("panel");
   panel.innerHTML = "";
   if (!selected){ panel.innerHTML = `<div class="hint">Düzenlemek için bir düğüm seç.</div>`; return; }
