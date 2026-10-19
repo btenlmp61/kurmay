@@ -11,6 +11,8 @@ export interface ModelInfo {
 /** Model listesinden okunan bağlam pencereleri — her liste çekilişinde güncellenir */
 const contextByModel = new Map<string, number>();
 let contextFetchedAt = 0;
+/** Başarıyla alınmış listede görülen model kimlikleri — listede olup sınırı yazmayan model için tekrar çekilmez */
+const seenModels = new Set<string>();
 let contextFetching: Promise<void> | null = null;
 
 /** Modelin bilinen bağlam penceresi (listede yoksa ya da liste çekilmediyse undefined) */
@@ -19,12 +21,15 @@ export function modelContextLength(model?: string): number | undefined {
 }
 
 /**
- * Model listesini (bağlam pencereleri için) gerekiyorsa tazeler: en fazla
- * maxAgeMs'de bir çekilir, hata yutulur — liste alınamazsa elle girilen değer
- * (limits.contextTokens) geçerli olur. Aynı anda tek istek.
+ * Modelin bağlam penceresi henüz bilinmiyorsa model listesini çeker. Bir kez
+ * öğrenilen pencere unutulmaz ve bir daha çekilmez (sınırlar değişmiyor). Liste
+ * alınamazsa (ör. model sunucusu meşgul, 503) hata yutulur, en erken 10 sn sonra
+ * yeniden denenir — o arada elle girilen değer (limits.contextTokens) geçerli.
+ * Aynı anda tek istek.
  */
-export async function refreshModelContext(url: string | undefined, apiKey?: string, maxAgeMs = 10 * 60_000): Promise<void> {
-  if (!url || Date.now() - contextFetchedAt < maxAgeMs) return;
+export async function refreshModelContext(url: string | undefined, apiKey?: string, model?: string): Promise<void> {
+  if (!url || (model ? contextByModel.has(model) || seenModels.has(model) : seenModels.size > 0)) return;
+  if (Date.now() - contextFetchedAt < 10_000) return;
   if (!contextFetching) {
     contextFetching = fetchModels(url, apiKey)
       .then(() => undefined, () => { contextFetchedAt = Date.now(); }) // hatada da sık sık denenmesin
@@ -91,9 +96,13 @@ export async function fetchModels(url: string, apiKey?: string): Promise<ModelIn
     seen.add(id);
     models.push({ id, name: name ?? id, ...(contextLength ? { contextLength } : {}) });
   }
-  // Bağlam pencerelerini hatırla (ajan koşuları ve panel buradan okur)
-  contextByModel.clear();
-  for (const m of models) if (m.contextLength) contextByModel.set(m.id, m.contextLength);
+  // Bağlam pencerelerini hatırla (ajan koşuları ve panel buradan okur). Silinmez,
+  // yalnızca eklenir/güncellenir: yük altında liste bir kez sınır alanı olmadan
+  // dönerse (farklı ayarlı bir sunucu/ağ geçidi) bilinen pencere unutulmasın
+  for (const m of models) {
+    seenModels.add(m.id);
+    if (m.contextLength) contextByModel.set(m.id, m.contextLength);
+  }
   contextFetchedAt = Date.now();
   return models;
 }
