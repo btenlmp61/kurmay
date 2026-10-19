@@ -17,13 +17,8 @@
   },
   "mcpServers": {
     "jetbrains-index-mcp-server": {
-      "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "-y",
-        "jetbrains-index-mcp-server"
-      ]
+      "type": "http",
+      "url": "http://127.0.0.1:29170/index-mcp/streamable-http"
     }
   },
   "workflow": {
