@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt } from "./approval.js";
 import type { ModelInfo } from "./models.js";
-import type { McpLight } from "./mcpStatus.js";
+import type { McpLight, McpToolInfo } from "./mcpStatus.js";
 
 /** Paneldeki eklenti durum ışıklarının verisi */
 export interface McpStatusView {
@@ -120,6 +120,8 @@ export interface UiServerOptions {
   getMcpStatus?: () => McpStatusView;
   /** Eklentileri şimdi yoklar (model çağrısı yok), bitince güncel durumu döner (POST /mcp-probe) */
   probeMcp?: () => Promise<McpStatusView>;
+  /** Eklentinin araçları açıklama + parametreleriyle (GET /mcp-tools?name=) — eklentiye doğrudan sorulur */
+  getMcpTools?: (name: string) => Promise<{ ok: boolean; tools?: McpToolInfo[]; error?: string }>;
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -128,6 +130,10 @@ export interface UiServerOptions {
   getToggles?: () => unknown;
   /** Bir ajanı/beceriyi/MCP sunucusunu açar ya da kapatır: canlı + config.json */
   setToggle?: (kind: ToggleKind, name: string, disabled: boolean) => { ok: boolean; error?: string };
+  /** Güvenlik denetimi raporları (GET /security-reports): en yeni önce özetler */
+  listSecurityReports?: () => unknown[];
+  /** Tek rapor (GET /security-reports/<id>); yoksa undefined */
+  getSecurityReport?: (id: string) => unknown;
 }
 
 /**
@@ -153,6 +159,9 @@ export interface UiServerOptions {
  *   POST /node-disabled { key: string, disabled: boolean } — düğümü kapatır/açar (canlı + config.json)
  *   GET  /agent-md?file=  { raw, body, description } — rol tanımı dosyası (.claude/agents/*.md)
  *   POST /agent-md-save   { file, body, description } | { file, raw } — doğrulayıp kaydeder (canlı)
+ *   GET  /guvenlik      Güvenlik denetimi raporları sayfası (ui/guvenlik.html)
+ *   GET  /security-reports       [{ id, createdAt, task, risk, counts }] — en yeni önce
+ *   GET  /security-reports/<id>  tam rapor (bulgular, olumlu tespitler…)
  *   GET  /toggles       Aç/Kapat sayfası (ui/toggles.html)
  *   GET  /toggles-data  { entry, agents[], skills[], mcpServers[] } — açık/kapalı durumları
  *   POST /toggle        { kind: "agent"|"rule"|"skill"|"mcp", name, disabled } — açar/kapatır (canlı + config.json)
@@ -162,6 +171,7 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
   const uiPath = path.join(uiDir, "index.html");
   const configUiPath = path.join(uiDir, "config.html");
   const togglesUiPath = path.join(uiDir, "toggles.html");
+  const securityUiPath = path.join(uiDir, "guvenlik.html");
   const themeCssPath = path.join(uiDir, "theme.css");
   const dirPickerPath = path.join(uiDir, "dirpicker.js");
   const sseClients = new Set<http.ServerResponse>();
@@ -492,6 +502,21 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/guvenlik") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(fs.readFileSync(securityUiPath));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/security-reports") {
+      return json(res, 200, options.listSecurityReports?.() ?? []);
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/security-reports/")) {
+      const r = options.getSecurityReport?.(decodeURIComponent(url.pathname.slice("/security-reports/".length)));
+      return r ? json(res, 200, r) : json(res, 404, { ok: false, error: "rapor bulunamadı" });
+    }
+
     if (req.method === "GET" && req.url === "/toggles") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(fs.readFileSync(togglesUiPath));
@@ -500,6 +525,15 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "GET" && req.url === "/mcp-status") {
       return json(res, 200, options.getMcpStatus?.() ?? { servers: [], probing: false });
+    }
+
+    if (req.method === "GET" && url.pathname === "/mcp-tools") {
+      if (!options.getMcpTools) return json(res, 200, { ok: false, error: "kapalı" });
+      options.getMcpTools(url.searchParams.get("name") ?? "").then(
+        (r) => json(res, r.ok ? 200 : 400, r),
+        (e: unknown) => json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }),
+      );
+      return;
     }
 
     if (req.method === "POST" && req.url === "/mcp-probe") {

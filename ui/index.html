@@ -90,6 +90,41 @@ body { overflow:hidden; }
 /* Başlıkta ekip tek satır: sığmazsa yatay kayar (fanout kopyaları çoğalınca başlık şişmesin) */
 .chat-head .pipe { order:3; flex:1 0 100%; flex-wrap:nowrap; overflow-x:auto; padding:2px 0 4px; scrollbar-width:thin; }
 .chat-head .pipe:empty { display:none; }
+/* Başlıkta eklenti şeridi: durum hep burada görünür (sohbete her harekâtta "bağlandı" yazılmaz);
+   tıklayınca araç listesi açılır */
+.mcpbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; order:2; }
+.mcpbar:empty { display:none; }
+.mcpchip { display:inline-flex; align-items:center; gap:7px; min-height:28px; padding:2px 10px; font:600 12px var(--font-ui);
+  border:1px solid var(--border); border-radius:999px; background:var(--md-surface-container-lowest); color:var(--text); cursor:pointer; max-width:360px; }
+.mcpchip b { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.mcpchip small { color:var(--muted); font-weight:400; white-space:nowrap; }
+.mcpchip.err { border-color:#e5484d; }
+.mcpchip:hover, .mcpchip:focus-visible { border-color:var(--md-primary); outline:none; }
+[data-theme="evrak"] .mcpchip { border-radius:3px; }
+[data-theme="radar"] .mcpchip { border-radius:2px; }
+.mcp-row.click { cursor:pointer; }
+.mcp-row.click:hover b { text-decoration:underline; }
+/* Eklenti araç listesi penceresi */
+.mdlg { border:none; padding:0; width:min(760px, calc(100vw - 32px)); max-height:calc(100vh - 48px);
+  background:var(--md-surface-container); color:var(--text); border-radius:var(--md-shape-lg); box-shadow:var(--md-elev-3); }
+.mdlg::backdrop { background:rgba(0,0,0,.45); }
+.mdlg-in { display:flex; flex-direction:column; gap:10px; padding:18px 22px; max-height:calc(100vh - 48px); }
+.mdlg-h { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:var(--md-type-title-md); }
+.mdlg-h .sp { flex:1; }
+.mdlg-sub { font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; }
+#mcpToolFilter { width:100%; }
+#mcpToolList { overflow:auto; min-height:0; flex:1; display:flex; flex-direction:column; gap:8px; padding-right:4px; }
+.mtool { border:1px solid var(--border); border-radius:12px; padding:9px 12px; background:var(--md-surface-container-lowest); }
+.mtool-h { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-height:26px; }
+.mtool-h code { font:600 13px ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+.mtag { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--md-surface-container-high); color:var(--muted); white-space:nowrap; }
+.mtag.w { background:color-mix(in srgb, #e5484d 15%, transparent); color:#e5484d; }
+.mtool .sig { font:12px ui-monospace,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
+.mtool ul { margin:6px 0 0; padding-left:18px; font-size:12px; color:var(--muted); }
+.mtool ul code { font:600 12px ui-monospace,Consolas,monospace; color:var(--text); }
+.mtool p { margin:6px 0 0; font-size:12.5px; line-height:1.45; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; max-height:9.5em; overflow:auto; }
+[data-theme="evrak"] .mdlg, [data-theme="evrak"] .mtool { border-radius:3px; }
+[data-theme="radar"] .mdlg, [data-theme="radar"] .mtool { border-radius:2px; }
 .pill { white-space:nowrap; }
 .pipe .arrow { color:var(--muted); font-size:13px; }
 .node.mem { display:flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px; border:1px solid var(--border);
@@ -484,6 +519,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
       <span class="pill" id="status" style="background:var(--blueBg);color:var(--blue)">bekleniyor</span>
       <span class="pill soft" id="cycle"></span>
     </div>
+    <div class="mcpbar" id="mcpBar" aria-label="Eklentiler"></div>
     <div class="pipe" id="pipeline"></div>
     <button id="btnCancel" class="hidden danger">■ Durdur</button>
   </header>
@@ -590,6 +626,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 <aside class="rail">
   <div class="rail-tools">
     <a class="tool" href="/toggles" title="Aç / Kapat" aria-label="Aç / Kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="6"/><circle cx="16" cy="12" r="2.5"/></svg></a>
+    <a class="tool" href="/guvenlik" title="Güvenlik raporları" aria-label="Güvenlik raporları"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.7 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></a>
     <a class="tool" href="/config" title="Ayarlar" aria-label="Ayarlar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
     <span class="tool-sep" aria-hidden="true"></span>
     <div class="tswitch" role="radiogroup" aria-label="Tema">
@@ -630,6 +667,15 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
 </aside>
 </div>
 
+<dialog id="mcpDlg" class="mdlg" aria-labelledby="mcpDlgTitle">
+  <div class="mdlg-in">
+    <div class="mdlg-h"><span class="led" id="mcpDlgLed"></span><span id="mcpDlgTitle"></span><span class="sp"></span>
+      <button type="button" id="mcpDlgClose">Kapat</button></div>
+    <div class="mdlg-sub" id="mcpDlgSub"></div>
+    <input type="text" id="mcpToolFilter" placeholder="Araç ara…" autocomplete="off">
+    <div id="mcpToolList"></div>
+  </div>
+</dialog>
 <script>
 const $ = (id) => document.getElementById(id);
 
@@ -689,6 +735,7 @@ const ROLES = {
   analist: { ad: "Analist", ic: "◎", c: "arch" },
   saha: { ad: "Saha Timi", ic: "</>", c: "dev" },
   teftis: { ad: "Teftiş", ic: "✓", c: "rev" },
+  guvenlik: { ad: "Güvenlik Denetçisi", ic: "🛡", c: "other" },
 };
 // Saha ajanlarının kod adları: mıntıka (repo) adından türetilir — aynı repo her
 // harekâtta aynı ajana düşer. Aynı harekâtta çakışırsa sıradaki boş ad verilir.
@@ -715,7 +762,9 @@ function assignCodeName(key) {
 const mintika = (repo) => (repo === "." ? "merkez" : repo);
 // Modelden/backend'den gelen teknik değerlerin ekrandaki Türkçe karşılıkları
 const ACTION_NAMES = { create: "yeni", created: "yeni", modify: "değişecek", modified: "değişti", delete: "silinecek", deleted: "silindi" };
-const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek" };
+const SEVERITY_NAMES = { low: "düşük", medium: "orta", high: "yüksek", critical: "kritik", info: "bilgi" };
+// Güvenlik denetçisinin genel risk düzeyi (şema enum'u İngilizce kalır, ekranda Türkçe)
+const RISK_NAMES = { none: "risk yok", low: "düşük", medium: "orta", high: "yüksek", critical: "kritik" };
 const SOURCE_NAMES = { web: "panel", terminal: "terminal", timer: "zamanlayıcı" };
 const ROUTE_VALUES = { implement: "uygulama", done: "bitir", developer: "uygulama" }; // son değer: eski kayıtlar
 const TOOL_NAMES = { Read: "Dosya oku", Write: "Dosya yaz", Edit: "Düzenle", MultiEdit: "Çoklu düzenle", NotebookEdit: "Defter düzenle",
@@ -975,11 +1024,15 @@ const FIELD_LABELS = {
   verification: "Doğrulama", issues: "Sorunlar", answer: "Cevap", references: "Kaynaklar",
   file: "Dosya", path: "Dosya", action: "İşlem", description: "Açıklama", severity: "Önem",
   location: "Yer", before: "Önce", after: "Sonra", rationale: "Gerekçe", note: "Not", line: "Satır",
+  // Güvenlik denetçisi
+  risk: "Genel risk", findings: "Bulgular", positives: "Doğru yapılanlar", title: "Başlık", category: "Kategori",
+  evidence: "Kanıt", recommendation: "Öneri",
 };
 const HIDDEN_FIELDS = new Set(["route", "approved", "file_plan"]); // kartta/akışta zaten anlatılıyor
 function valueText(k, v) {
   if (k === "action") return ACTION_NAMES[v] || v;
   if (k === "severity") return SEVERITY_NAMES[v] || v;
+  if (k === "risk") return RISK_NAMES[v] || v;
   return v;
 }
 function structuredView(obj, depth = 0) {
@@ -1649,6 +1702,8 @@ function handleEvent(e) {
         const ok = s.status === "connected";
         const ad = MCP_STATUS_NAMES[s.status] || s.status;
         if (!replaying) loadMcpStatus(); // ışık da güncellensin
+        // "Bağlandı" sohbete yazılmaz — başlıktaki eklenti şeridinde hep görünüyor; sorun yazılır
+        if (ok) continue;
         addLog(e.ts, `${ok ? "🔌" : "⚠"} eklenti <b>${esc(s.name)}</b>: ${esc(ad)}` +
           `${s.tools !== undefined ? ` (${s.tools} araç)` : ""}` +
           `${s.error ? ` — ${esc(trunc(s.error, 200))}` : ""}` +
@@ -1820,6 +1875,17 @@ function handleEvent(e) {
     case "build_finished":
       addLog(e.ts, `derleme tamam: ${e.order.map(esc).join(" → ") || "—"}`, "ok");
       break;
+    // Güvenlik denetçisinin raporu kaydedildi: özet + rapor sayfasına bağlantı
+    case "security_report": {
+      const c = e.counts || {};
+      const top = ["critical", "high", "medium", "low"].filter((s) => c[s]).map((s) => `${c[s]} ${SEVERITY_NAMES[s]}`).join(", ");
+      const toplam = Object.values(c).reduce((a, b) => a + b, 0);
+      const ozet = !e.structured ? "yapılandırılmış rapor gelmedi, denetçinin metni kaydedildi"
+        : toplam ? `risk: ${RISK_NAMES[e.risk] || e.risk || "?"} · ${toplam} bulgu${top ? ` (${top})` : ""}` : "güvenlik açığı bulunmadı";
+      const cls = c.critical || c.high ? "err" : c.medium || !e.structured ? "warn" : "ok";
+      addLog(e.ts, `🛡 Güvenlik raporu hazır — ${esc(ozet)} <a href="/guvenlik#${encodeURIComponent(e.id)}" target="_blank" rel="noopener">raporu aç ↗</a>`, cls);
+      break;
+    }
     case "run_scheduled":
       $("approval").classList.add("hidden");
       $("schedule").classList.remove("hidden");
@@ -2430,10 +2496,83 @@ loadModels();
 const MCP_LED = { connected:"on", failed:"err", "needs-auth":"wait", pending:"wait", disabled:"off" };
 const MCP_SHORT = { connected:"bağlı", failed:"bağlanamadı", "needs-auth":"kimlik istiyor", pending:"bağlanıyor", disabled:"kapalı", unknown:"denenmedi" };
 let mcpTimer = null;
+let mcpData = { servers: [] };   // son /mcp-status yanıtı (araç listesi penceresi buradan okur)
+let mcpDlgName = "";
+let mcpDetails = {};             // eklenti → {tools} | {error} | "yukleniyor" (açıklama + parametreler, eklentiye sorulur)
+
+// Eklentinin araç listesi: ad, sunucunun açıklaması (sunucunun dilinde), salt okunur/değiştirir
+function fillMcpDialog() {
+  const s = (mcpData.servers || []).find((x) => x.name === mcpDlgName);
+  if (!s) return;
+  $("mcpDlgLed").className = "led " + (MCP_LED[s.status] || "");
+  $("mcpDlgTitle").textContent = s.name;
+  const parca = [MCP_STATUS_NAMES[s.status] || MCP_SHORT[s.status] || s.status];
+  if (s.tools !== undefined) parca.push(`${s.tools} araç`);
+  if (s.version) parca.push(s.version);
+  if (s.at) parca.push(`son bilgi ${time(s.at)}`);
+  $("mcpDlgSub").textContent = parca.join(" · ") + (s.error ? ` — ${s.error}` : "");
+  $("mcpDlgSub").title = "";
+  // Ayrıntı (açıklama + parametre) eklentiye sorulunca gelir; o zamana kadar yalnızca adlar
+  const ayr = mcpDetails[s.name];
+  const tools = ayr && ayr.tools ? ayr.tools : (s.toolList || []);
+  if (s.status === "connected" && !ayr) {
+    mcpDetails[s.name] = "yukleniyor";
+    fetch("/mcp-tools?name=" + encodeURIComponent(s.name)).then((r) => r.json()).then((d) => {
+      mcpDetails[s.name] = d.ok ? { tools: d.tools || [] } : { error: d.error || "alınamadı" };
+    }, () => { mcpDetails[s.name] = { error: "servise ulaşılamadı" }; }).finally(() => {
+      if ($("mcpDlg").open && mcpDlgName === s.name) fillMcpDialog();
+    });
+  }
+  const not = ayr === "yukleniyor" || (s.status === "connected" && !ayr) ? " · açıklamalar alınıyor…"
+    : ayr && ayr.error ? " · açıklamalar alınamadı" : "";
+  if (not) $("mcpDlgSub").textContent += not;
+  if (ayr && ayr.error) $("mcpDlgSub").title = ayr.error;
+  $("mcpToolFilter").classList.toggle("hidden", tools.length < 6);
+  if (!tools.length) {
+    $("mcpToolList").innerHTML = `<div class="empty">${s.status === "connected"
+      ? "Eklenti araç bildirmedi."
+      : "Araç listesi eklenti bağlanınca görünür — sağdaki ↻ ile yeniden yoklayabilirsin."}</div>`;
+    return;
+  }
+  const q = $("mcpToolFilter").value.trim().toLocaleLowerCase("tr");
+  const goster = tools.filter((t) => !q || (t.name + " " + (t.description || "")).toLocaleLowerCase("tr").includes(q));
+  $("mcpToolList").innerHTML = goster.map((t) => {
+    const params = t.params || [];
+    // İmza: zorunlu parametreler düz, isteğe bağlılar "?" ile
+    const imza = params.length
+      ? `<div class="sig">(${params.map((p) => esc(p.name) + (p.required ? "" : "?") + (p.type ? ": " + esc(p.type) : "")).join(", ")})</div>` : "";
+    const aciklamali = params.filter((p) => p.description);
+    const liste = aciklamali.length
+      ? `<ul>${aciklamali.map((p) => `<li><code>${esc(p.name)}</code>${p.required ? " (zorunlu)" : ""} — ${esc(p.description)}</li>`).join("")}</ul>` : "";
+    return `<div class="mtool"><div class="mtool-h"><code>${esc(t.name)}</code>` +
+      (t.readOnly ? `<span class="mtag">salt okunur</span>` : "") +
+      (t.destructive ? `<span class="mtag w">değişiklik yapar</span>` : "") + `</div>` + imza +
+      (t.description ? `<p>${esc(t.description.trim())}</p>` : "") + liste + `</div>`;
+  }).join("") ||
+    `<div class="empty">Aramaya uyan araç yok</div>`;
+}
+function openMcpDialog(name) {
+  mcpDlgName = name;
+  $("mcpToolFilter").value = "";
+  fillMcpDialog();
+  $("mcpDlg").showModal();
+  $("mcpToolList").scrollTop = 0;
+}
+for (const id of ["mcpBar", "mcpList"]) {
+  $(id).addEventListener("click", (ev) => {
+    const el = ev.target.closest("[data-mcp]");
+    if (el) openMcpDialog(el.dataset.mcp);
+  });
+}
+$("mcpDlgClose").addEventListener("click", () => $("mcpDlg").close());
+$("mcpToolFilter").addEventListener("input", fillMcpDialog);
+// Pencerenin dışına tıklayınca kapanır
+$("mcpDlg").addEventListener("click", (ev) => { if (ev.target === $("mcpDlg")) $("mcpDlg").close(); });
 function renderMcp(data) {
   const list = data.servers || [];
   $("mcpBox").classList.toggle("hidden", list.length === 0);
   $("mcpProbe").disabled = !!data.probing;
+  if (data.probing) mcpDetails = {}; // yeniden yoklanıyor: araç ayrıntıları da tazelensin
   $("mcpList").innerHTML = list.map((s) => {
     const led = data.probing && s.status !== "disabled" ? "wait" : (MCP_LED[s.status] || "");
     const durum = data.probing && s.status !== "disabled" ? "yoklanıyor" : (MCP_SHORT[s.status] || s.status);
@@ -2444,8 +2583,19 @@ function renderMcp(data) {
       s.at ? `son bilgi: ${time(s.at)} (${s.source === "ajan" ? "ajan koşusu" : "yoklama"})` : "",
       s.status === "unknown" ? "henüz denenmedi — ↻ ile yokla" : "",
     ].filter(Boolean).join("\n");
-    return `<div class="mcp-row" title="${esc(ipucu)}"><span class="led ${led}"></span><b>${esc(s.name)}</b><small>${esc(durum)}</small></div>`;
+    return `<div class="mcp-row click" data-mcp="${esc(s.name)}" title="${esc(ipucu + "\nTıkla: araç listesi")}"><span class="led ${led}"></span><b>${esc(s.name)}</b><small>${esc(durum)}</small></div>`;
   }).join("") + (data.error ? `<div class="mcp-row" style="color:var(--red)">yoklama yapılamadı: ${esc(trunc(data.error, 120))}</div>` : "");
+  // Başlıktaki şerit: kapalılar hariç her eklenti, durumu ve araç sayısıyla
+  mcpData = data;
+  $("mcpBar").innerHTML = list.filter((s) => s.status !== "disabled").map((s) => {
+    const led = data.probing ? "wait" : (MCP_LED[s.status] || "");
+    const durum = data.probing ? "yoklanıyor" : (MCP_SHORT[s.status] || s.status);
+    const arac = s.tools !== undefined ? ` · ${s.tools} araç` : "";
+    const ipucu = s.status === "connected" ? "Tıkla: eklentinin araçları" : `${MCP_STATUS_NAMES[s.status] || durum}${s.error ? " — " + s.error : ""}`;
+    return `<button type="button" class="mcpchip${s.status === "failed" ? " err" : ""}" data-mcp="${esc(s.name)}" title="${esc(ipucu)}">` +
+      `<span class="led ${led}"></span><b>${esc(s.name)}</b><small>${esc(durum + arac)}</small></button>`;
+  }).join("");
+  if ($("mcpDlg").open) fillMcpDialog();
   clearTimeout(mcpTimer);
   mcpTimer = setTimeout(loadMcpStatus, data.probing ? 1000 : 20000);
 }

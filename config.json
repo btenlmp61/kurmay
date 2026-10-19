@@ -45,7 +45,7 @@
           {
             "event": "PreToolUse",
             "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
-            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
+            "command": "node \"${configDir}/.claude/hooks/guard-readonly.js\""
           }
         ],
         "requiresUserApproval": true,
@@ -97,9 +97,31 @@
           "arama"
         ],
         "verdict": {
-          "onApprove": null,
+          "onApprove": "guvenlik",
           "onReject": "saha-timi"
         }
+      },
+      "guvenlik": {
+        "file": ".claude/agents/guvenlik.md",
+        "tools": [
+          "Read",
+          "Glob",
+          "Grep",
+          "mcp__jetbrains-index-mcp-server"
+        ],
+        "rules": [
+          "arama"
+        ],
+        "hooks": [
+          {
+            "event": "PreToolUse",
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+            "command": "node D:/work/yaver/.claude/hooks/guard-readonly.js"
+          }
+        ],
+        "securityReport": true,
+        "disabled": true,
+        "next": null
       }
     }
   }

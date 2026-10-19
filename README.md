@@ -15,8 +15,34 @@ Kontrol akışı kodda, personalar md dosyalarında, tüm ayarlar tek `config.js
 
 ## Kurulum
 
+### npm paketiyle (önerilen)
+
+```sh
+npm install -g @yigitalp/kurmay   # şirket ağında: Nexus'un npm vekil (proxy) deposu üzerinden de çekilir
+mkdir kurmay-calisma && cd kurmay-calisma
+kurmay init                       # config.json + .claude/ (personalar, kurallar, beceriler, hook'lar) oluşur
+kurmay serve                      # paneli açar; sağlayıcı/model/hedef dizin ⚙ Ayarlar'dan girilir
+```
+
+- `kurmay "görev"` tek görev modu; bayraklar aynıdır (`--port`, `--cwd`, `--config`, `--at`).
+- Ayarlar, personalar ve koşu kayıtları (`runs/`) komutun çalıştırıldığı klasörde durur; paket klasörüne yazılmaz. Personaları/kuralları bu klasörde düzenleyebilirsin.
+- `kurmay init` var olan dosyaların üstüne yazmaz (paket güncellenince yeni şablonu görmek için boş bir klasörde çalıştır).
+- Hook komutlarında `${configDir}` config.json'ın bulunduğu klasöre çevrilir — mutlak yol yazmaya gerek yok.
+- Şablondaki JetBrains eklentisi Windows'a göre (`cmd /c npx …`) tanımlıdır; başka sistemde Aç/Kapat'tan kapat ya da `command`'ı düzelt.
+
+### Kaynak koddan
+
 ```sh
 npm install
+npm run serve
+```
+
+### Paketi yayımlamak (bakımcı için)
+
+```sh
+npm login                  # npmjs.com hesabı
+npm version patch          # sürümü artır (0.1.0 → 0.1.1)
+npm publish                # prepack derler (dist/), herkese açık yayımlanır
 ```
 
 ## Docker
