@@ -5,7 +5,7 @@ import { checkAgentMd, composeAgentMd, frontDescription, resolveAgentMd, splitAg
 import { loadAgents, skillInfo } from "./agents.js";
 import { fmtDate, parseRunAt } from "./approval.js";
 import { disabledMcpServers, isEffort, loadAppConfig, modelMissing } from "./config.js";
-import { mcpStatus, probeMcp } from "./mcpStatus.js";
+import { listMcpTools, mcpStatus, probeMcp } from "./mcpStatus.js";
 import { compactPercent, contextInfo } from "./context.js";
 import { fetchModels, refreshModelContext } from "./models.js";
 import { RESILIENCE_LIMIT_KEYS, RESILIENCE_RETRY_KEYS, setLiveResilience } from "./resilience.js";
@@ -636,6 +636,16 @@ async function main() {
       getToggles,
       setToggle,
       getMcpStatus: mcpView,
+      getMcpTools: async (name) => {
+        const server = cfg.mcpServers?.[name];
+        if (!server) return { ok: false, error: "eklenti bulunamadı" };
+        if (server.disabled) return { ok: false, error: "eklenti kapalı" };
+        try {
+          return { ok: true, tools: await listMcpTools(name, server, mcpProbeDir()) };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
       probeMcp: async () => {
         await probeMcp(cfg, mcpProbeDir());
         return mcpView();

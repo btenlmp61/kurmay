@@ -133,7 +133,8 @@ async function reportMcpStatus(
   console.log(`  ${sorunlu ? "⚠" : "🔌"} eklentiler — ` + servers.map((s) =>
     `${s.name}: ${MCP_STATUS_NAMES[s.status] ?? s.status}` +
     `${s.tools !== undefined ? ` (${s.tools} araç)` : ""}${s.error ? ` (${s.error})` : ""}`).join(" · "));
-  bus.emit({ type: "mcp_status", agent: agentKey, servers });
+  // Araç listesi olaya konmaz (her ajan koşusunda kayda yazılırdı) — panel /mcp-status'tan alır
+  bus.emit({ type: "mcp_status", agent: agentKey, servers: servers.map(({ toolList: _, version: __, ...s }) => s) });
 }
 
 /**

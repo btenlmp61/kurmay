@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunAt } from "./approval.js";
 import type { ModelInfo } from "./models.js";
-import type { McpLight } from "./mcpStatus.js";
+import type { McpLight, McpToolInfo } from "./mcpStatus.js";
 
 /** Paneldeki eklenti durum ışıklarının verisi */
 export interface McpStatusView {
@@ -120,6 +120,8 @@ export interface UiServerOptions {
   getMcpStatus?: () => McpStatusView;
   /** Eklentileri şimdi yoklar (model çağrısı yok), bitince güncel durumu döner (POST /mcp-probe) */
   probeMcp?: () => Promise<McpStatusView>;
+  /** Eklentinin araçları açıklama + parametreleriyle (GET /mcp-tools?name=) — eklentiye doğrudan sorulur */
+  getMcpTools?: (name: string) => Promise<{ ok: boolean; tools?: McpToolInfo[]; error?: string }>;
   /** Akışın ana yolu + düğümlerin açık/kapalı durumu (GET /workflow) — görev kartı çipleri */
   getWorkflow?: () => { entry: string; nodes: Array<{ key: string; type: string; disabled: boolean; agent?: string }> };
   /** Düğümü devre dışı bırakır/açar: çalışan sürece uygular, config.json'a yazar */
@@ -500,6 +502,15 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
 
     if (req.method === "GET" && req.url === "/mcp-status") {
       return json(res, 200, options.getMcpStatus?.() ?? { servers: [], probing: false });
+    }
+
+    if (req.method === "GET" && url.pathname === "/mcp-tools") {
+      if (!options.getMcpTools) return json(res, 200, { ok: false, error: "kapalı" });
+      options.getMcpTools(url.searchParams.get("name") ?? "").then(
+        (r) => json(res, r.ok ? 200 : 400, r),
+        (e: unknown) => json(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }),
+      );
+      return;
     }
 
     if (req.method === "POST" && req.url === "/mcp-probe") {
