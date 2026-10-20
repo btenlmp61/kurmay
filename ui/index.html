@@ -165,6 +165,11 @@ body { overflow:hidden; }
 
 /* — Sohbet: kullanıcı görevi sağda, ajan mesajları solda avatarla, sistem olayları ortada — */
 .chat { flex:1; overflow-y:auto; padding:22px 24px 12px; min-height:0; scroll-behavior:smooth; }
+/* Büyük oturum yüklenirken bilgi satırı (geçmiş yeniden oynatılıyor) */
+.loadinfo { position:sticky; top:0; z-index:5; width:max-content; max-width:100%; margin:0 auto 12px; padding:6px 14px;
+  border-radius:999px; font-size:13px; background:var(--blueBg); color:var(--blue); box-shadow:var(--md-elev-2, 0 2px 6px rgba(0,0,0,.15)); }
+.loadinfo .bar { display:block; height:3px; margin-top:4px; border-radius:2px; background:color-mix(in srgb, var(--blue) 20%, transparent); overflow:hidden; }
+.loadinfo .bar i { display:block; height:100%; background:var(--blue); }
 #stream { display:flex; flex-direction:column; gap:14px; overflow-wrap:anywhere; }
 #stream > .me { align-self:flex-end; max-width:min(680px, 78%); background:var(--md-on-surface); color:var(--md-surface); padding:11px 16px; border-radius:20px 20px 6px 20px; white-space:pre-wrap; box-shadow:var(--md-elev-1); }
 .msg { display:flex; gap:12px; max-width:94%; align-items:flex-start; } /* geniş ekranda sütunu doldursun (sabit üst sınır 32" monitörde yarıda bırakıyordu) */
@@ -526,6 +531,7 @@ textarea { resize:none; overflow-y:auto; line-height:1.45; max-height:clamp(120p
   </header>
 
   <div class="chat" id="chat">
+    <div class="loadinfo hidden" id="loadInfo" role="status" aria-live="polite"></div>
     <div class="logfilter hidden" id="logFilter">
       <span id="logFilterText"></span>
       <button id="btnLogAll">Tümünü göster</button>
@@ -1185,7 +1191,9 @@ document.addEventListener("click", (ev) => {
   }).catch(() => {});
 });
 
+let replayStatus = null; // yeniden oynatma sırasında gelen son durum — "ready"de uygulanır
 function setStatus(text, kind) {
+  if (replaying) { replayStatus = [text, kind]; return; }
   const el = $("status");
   el.textContent = text;
   const map = { run:["var(--blueBg)","var(--blue)"], ok:["var(--tealBg)","var(--teal)"], err:["var(--redBg)","var(--red)"], warn:["var(--amberBg)","var(--amber)"] };
@@ -1301,9 +1309,14 @@ function agentTag(agent) {
 
 // Satırı akışa ekler; süzgeç açıksa ve satır o ajana ait değilse gizli eklenir
 // Sohbet en alttaysa yeni mesajla birlikte kayar; kullanıcı yukarıda okuyorsa yerinde bırakılır
+// Geçmiş yeniden oynatılırken HİÇ kaydırılmaz: her kaydırma tarayıcıya tüm sohbeti yeniden
+// ölçtürüyor, büyük oturumda yüklemenin %90'ı buydu (24 bin olay 3 dakikada bitmiyordu).
+// Yükleme bitince ("ready") bir kez, animasyonsuz en alta inilir.
 function scrollChat(force) {
+  if (replaying) return;
   const c = $("chat");
-  if (force || replaying || c.scrollHeight - c.scrollTop - c.clientHeight < 160) c.scrollTop = c.scrollHeight;
+  if (force || c.scrollHeight - c.scrollTop - c.clientHeight < 160)
+    c.scrollTo({ top: c.scrollHeight, behavior: force ? "instant" : "smooth" });
 }
 
 function appendStream(el) {
@@ -2172,8 +2185,27 @@ function syncTaskCard() {
   else showTaskCard();
 }
 
+// Yükleme bilgisi: kaç olaydan kaçı işlendi (büyük oturumda birkaç saniye sürebilir)
+let loadTotal = 0, loadDone = 0, loadInfoRaf = 0;
+function showLoadInfo() {
+  if (loadInfoRaf) return;
+  loadInfoRaf = requestAnimationFrame(() => {
+    loadInfoRaf = 0;
+    if (!replaying) return;
+    const el = $("loadInfo");
+    const n = (x) => x.toLocaleString("tr-TR");
+    const pct = loadTotal ? Math.min(100, Math.round((loadDone / loadTotal) * 100)) : 0;
+    el.innerHTML = `⏳ Oturum geçmişi yükleniyor${loadTotal ? ` — ${n(loadDone)} / ${n(loadTotal)} olay (%${pct})` : "…"}` +
+      (loadTotal ? `<span class="bar"><i style="width:${pct}%"></i></span>` : "");
+    el.classList.remove("hidden");
+  });
+}
+
 function openSession(id) {
   if (es) { es.close(); es = null; }
+  // Başka oturum yüklenirken geçildiyse onun yükleme durumu kalmasın
+  replaying = false;
+  $("loadInfo").classList.add("hidden");
   viewSessionId = id || "";
   try { history.replaceState(null, "", viewSessionId ? "#" + viewSessionId : location.pathname); } catch {}
   resetView();
@@ -2191,12 +2223,23 @@ function openSession(id) {
   $("task").textContent = s ? s.name : "yükleniyor…";
   setStatus("yükleniyor", "run");
   replaying = true;
+  replayStatus = null;
+  loadTotal = 0; loadDone = 0;
+  showLoadInfo();
   es = new EventSource("/events?session=" + encodeURIComponent(viewSessionId));
   // Yeniden bağlanınca sunucu geçmişi baştan gönderir — çift kayıt olmasın
-  es.onopen = () => { replaying = true; resetView(); };
-  es.onmessage = (m) => handle(JSON.parse(m.data));
+  es.onopen = () => { replaying = true; replayStatus = null; loadDone = 0; resetView(); showLoadInfo(); };
+  // Sunucu geçmişten önce kaç olay geleceğini söyler (eski sunucu söylemezse sayı yazılmaz)
+  es.addEventListener("history", (m) => { loadTotal = JSON.parse(m.data).count || 0; showLoadInfo(); });
+  es.onmessage = (m) => {
+    handle(JSON.parse(m.data));
+    if (replaying && ++loadDone % 250 === 0) showLoadInfo();
+  };
   es.addEventListener("ready", (m) => {
     replaying = false;
+    $("loadInfo").classList.add("hidden");
+    if (replayStatus) setStatus(...replayStatus);
+    else setStatus("hazır", "ok");
     const r = JSON.parse(m.data);
     viewBusy = r.busy;
     if (!r.busy) {
