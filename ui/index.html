@@ -214,11 +214,12 @@ body { overflow:hidden; }
 #taskCard .row textarea:focus { box-shadow:none; }
 .composer-opts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; padding-top:10px; border-top:1px solid var(--border); }
 .composer-opts select { min-height:34px; padding:4px 10px; font-size:13px; }
-/* Kutu boşken seçenekler (zaman, akış çipleri, oturum notu) gizli — dizüstü ekranda sohbete yer
-   kalsın; yazmaya başlayınca açılır. Zamanlama seçiliyse ya da kapalı bir adım varsa hep görünür
-   (kullanıcı bunu fark etmeli). Uyarılar ve hata satırı her zaman görünür. Odağa bağlanamaz:
-   kart açılınca kutu otomatik odaklanıyor. */
-#taskCard:has(#taskInput:placeholder-shown):has(#taskWhenPreset option[value="0"]:checked):not(:has(.fchip.off)) :is(.composer-opts, #taskCtx) { display:none; }
+/* Kutu boşken zaman seçimi ve oturum notu gizli — dizüstü ekranda sohbete yer kalsın; yazmaya
+   başlayınca açılır, zamanlama seçiliyse hep görünür. Akış çipleri (ajanları aç/kapat) HER ZAMAN
+   görünür — kullanıcı görev yazmadan önce adımları ayarlıyor. Uyarılar ve hata satırı her zaman
+   görünür. Odağa bağlanamaz: kart açılınca kutu otomatik odaklanıyor. */
+#taskCard:has(#taskInput:placeholder-shown):has(#taskWhenPreset option[value="0"]:checked) :is(#taskWhen, #taskCtx) { display:none !important; } /* #taskWhen satır içi display:flex taşıyor */
+#taskCard:has(#taskInput:placeholder-shown):has(#taskWhenPreset option[value="0"]:checked) .composer-opts:not(:has(.fchip)) { display:none; }
 .composer-opts .flow { margin-top:0; }
 #btnStart { flex:none; box-shadow:var(--md-elev-2); }
 
@@ -2612,10 +2613,17 @@ loadMcpStatus();
 
 // Akış çipleri: ana yoldaki düğümler sırayla; tıklayınca kapanır/açılır. Kalıcıdır
 // (config.json'a yazılır) — ör. küçük işler için analisti kapatıp doğrudan saha timine ver.
+let flowRetry = 0;
 async function loadFlow() {
-  let wf = { nodes: [] };
+  let wf;
   try { wf = await (await fetch("/workflow")).json(); } catch {}
   const el = $("flowChips");
+  if (!wf) {
+    // Alınamadı (servis yeniden başlıyor vb.) — eldeki çipler kalsın, kısa süre sonra yeniden dene
+    clearTimeout(flowRetry);
+    flowRetry = setTimeout(loadFlow, 3000);
+    return;
+  }
   if (!wf.nodes || !wf.nodes.length) { el.innerHTML = ""; return; }
   // Komut düğümleri teknik adıyla, ajan/fanout düğümleri heyetteki adıyla
   const flowName = (n) => n.type === "command" ? n.key : roleOf(n.type === "fanout" ? n.agent : n.key).ad;
