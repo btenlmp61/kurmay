@@ -1,5 +1,5 @@
 import path from "node:path";
-import { getSessionMessages, query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionInfo, getSessionMessages, query, type HookCallbackMatcher, type HookEvent, type McpServerConfig, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { activeMcpServers, buildAgentEnv, disabledMcpServers, isOffMcpTool } from "./config.js";
 import { mcpStatus, toLights } from "./mcpStatus.js";
 import { refreshModelContext } from "./models.js";
@@ -545,6 +545,27 @@ async function countPrompt(sessionId: string, cwd: string, prompt: string): Prom
   }
 }
 
+/**
+ * Sürdürülemeyen konuşmanın kaydını tüm proje klasörlerinde arar ve sonucu olay
+ * olarak yazar. Claude Code konuşmaları çalışma dizinine göre saklar
+ * (~/.claude/projects/<dizin>/<kimlik>.jsonl); başka dizinde ya da başka
+ * kullanıcıda/konteynerde açılmış konuşma burada bulunamaz.
+ */
+async function reportLostSession(agent: AgentDefinition, sessionId: string, cwd: string, bus: EventBus): Promise<void> {
+  let foundDir: string | undefined;
+  try {
+    foundDir = (await getSessionInfo(sessionId))?.cwd;
+  } catch {
+    /* aranamadı — "bulunamadı" yazılır */
+  }
+  console.warn(
+    `  ⚠ ${agent.name}: önceki konuşma (${sessionId}) ` +
+      (foundDir ? `başka klasörde kayıtlı: ${foundDir} (bu koşunun dizini: ${cwd})` : "bu bilgisayarda bulunamadı") +
+      " — yeni konuşmayla başlanıyor",
+  );
+  bus.emit({ type: "session_lost", agent: agent.key, sessionId, cwd, ...(foundDir ? { foundDir } : {}) });
+}
+
 /** Konuşma kaydı var mı (en az bir mesaj); okunamazsa undefined */
 async function sessionExists(sessionId: string, cwd: string): Promise<boolean | undefined> {
   try {
@@ -619,6 +640,9 @@ async function executeWithRetry(
       let note = "";
       let decided = false;
       if (info.kind === "lost_session") {
+        // Önceki konuşma kayboldu: nerede olduğunu (varsa) bul, panele sebebiyle yaz —
+        // "neden hatırlamıyor" sorusu tahmine kalmasın
+        if (base && session.id === base) await reportLostSession(agent, base, cwd, bus);
         // Sürdürülecek konuşma yok: kendi açtığımız konuşma kayda hiç geçmediyse
         // önceki konuşmaya, o da yoksa yeni konuşmaya dön — görev baştan gider
         session.id = session.id !== base ? base : undefined;
@@ -669,8 +693,9 @@ async function executeWithRetry(
         }
       }
 
-      const delay = backoffDelay(step, s);
-      step++;
+      // Kayıp konuşmada beklemek bir şey değiştirmez — hemen yeni konuşmayla dene
+      const delay = info.kind === "lost_session" ? 0 : backoffDelay(step, s);
+      if (info.kind !== "lost_session") step++;
       const continued = attemptPrompt === CONTINUE_PROMPT || attemptPrompt === CONTINUE_PROMPT_SHORT;
       const nasil = note || (!session.id ? "oturum baştan" : continued ? "kaldığı yerden devam" : "oturum sürdürülecek");
       const sn = delay < 10_000 ? (delay / 1000).toFixed(1) : String(Math.round(delay / 1000));

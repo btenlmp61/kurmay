@@ -1191,6 +1191,7 @@ document.addEventListener("click", (ev) => {
   }).catch(() => {});
 });
 
+const lostShown = {}; // ajan → "önceki konuşma bulunamadı" notu yazıldı (ardından gelen deneme satırı yazılmaz)
 let replayStatus = null; // yeniden oynatma sırasında gelen son durum — "ready"de uygulanır
 function setStatus(text, kind) {
   if (replaying) { replayStatus = [text, kind]; return; }
@@ -1637,8 +1638,22 @@ function handleEvent(e) {
       }
       break;
     }
+    case "session_lost": {
+      // Önceki konuşma bulunamadı: sebebi açıkça yaz (aynı hatanın yeniden deneme satırı yazılmaz)
+      lostShown[e.agent] = true;
+      const yol = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+      const neden = !e.foundDir
+        ? "kaydı bu bilgisayarda bulunamadı — silinmiş olabilir ya da başka bir kullanıcı, bilgisayar veya konteynerde oluşturulmuş"
+        : yol(e.foundDir) !== yol(e.cwd)
+          ? `kaydı başka bir klasöre bağlı: <code>${esc(e.foundDir)}</code> (bu koşunun dizini <code>${esc(e.cwd)}</code>)`
+          : "kaydı duruyor ama sürdürülemedi";
+      bubbleNote(bubbleOf(e.agent, e.ts),
+        `⚠ Önceki konuşmanın ${neden}. Yeni konuşmayla başlıyor — önceki konuşmayı hatırlamayacak.`, "warn");
+      break;
+    }
     case "agent_retrying": {
       // Model sunucusu hatası — akış ölmedi, bekleyip yeniden deneyecek
+      if (e.kind === "lost_session" && lostShown[e.agent]) { delete lostShown[e.agent]; break; }
       const kac = e.maxAttempts > 0 ? `${e.attempt}/${e.maxAttempts}` : `${e.attempt}`;
       const nasil = e.continued ? "kaldığı yerden devam" : e.resumed ? "oturum sürdürülecek" : "oturum baştan";
       if (!e.reason) {

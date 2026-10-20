@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { getSessionInfo } from "@anthropic-ai/claude-agent-sdk";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -192,6 +193,22 @@ async function main() {
   // modunda onaylar yalnızca panelden (exclusive): birden çok oturum aynı anda
   // soru sorabilir, terminal cevabının hangi oturuma gittiği belirsiz olurdu.
   const sessions = new SessionStore(runsDir);
+  // Hedef dizini kayıtlı olmayan eski oturumlar ilk koşuda o anki genel dizine
+  // sabitleniyordu; genel dizin o arada değiştiyse Analist'in konuşması yanlış
+  // klasörde aranıp "konuşma bulunamadı" oluyordu. Konuşmanın gerçek dizini
+  // Claude Code'un kaydında yazıyor — açılışta oradan alınır.
+  for (const e of sessions.all()) {
+    if (e.targetDir || !e.sdkSessionId) continue;
+    try {
+      const dir = (await getSessionInfo(e.sdkSessionId))?.cwd;
+      if (dir) {
+        sessions.setTargetDir(e.id, dir, true);
+        console.log(`📁 "${e.name}" oturumunun dizini konuşma kaydından alındı: ${dir}`);
+      }
+    } catch {
+      /* okunamadı — eski davranış: ilk koşuda genel dizin */
+    }
+  }
   const runtimes = new RuntimeRegistry(runsDir, !task);
   const maxParallel = cfg.maxParallelRuns ?? 3;
 
