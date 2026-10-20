@@ -26,7 +26,8 @@ kurmay serve                      # paneli açar; sağlayıcı/model/hedef dizin
 
 - `kurmay "görev"` tek görev modu; bayraklar aynıdır (`--port`, `--cwd`, `--config`, `--at`).
 - Ayarlar, personalar ve koşu kayıtları (`runs/`) komutun çalıştırıldığı klasörde durur; paket klasörüne yazılmaz. Personaları/kuralları bu klasörde düzenleyebilirsin.
-- `kurmay init` var olan dosyaların üstüne yazmaz (paket güncellenince yeni şablonu görmek için boş bir klasörde çalıştır).
+- `kurmay init` var olan dosyaların üstüne yazmaz.
+- **Güncelleme:** `npm install -g kurmay-ai@latest`, ardından çalışma klasöründe `kurmay update`. Eksik şablonlar eklenir, senin hiç değiştirmediğin dosyalar yeni sürümle yenilenir; senin değiştirdiğin dosyalara dokunulmaz, yeni sürümü yanına `<ad>.yeni` olarak konur (karşılaştırıp istersen alırsın). `config.json`'a dokunulmaz. Sonra `kurmay serve`'ü yeniden başlat.
 - Hook komutlarında `${configDir}` config.json'ın bulunduğu klasöre çevrilir — mutlak yol yazmaya gerek yok.
 - Şablondaki JetBrains eklentisi Windows'a göre (`cmd /c npx …`) tanımlıdır; başka sistemde Aç/Kapat'tan kapat ya da `command`'ı düzelt.
 
