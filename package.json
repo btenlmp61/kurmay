@@ -1,6 +1,6 @@
 {
-  "name": "@yigitalp/kurmay",
-  "version": "0.1.0",
+  "name": "kurmay-ai",
+  "version": "0.1.1",
   "description": "Md tanımlı ajanları (Analist / Saha Timi / Teftiş) deterministik bir iş akışıyla koordine eden orkestratör",
   "type": "module",
   "bin": {
