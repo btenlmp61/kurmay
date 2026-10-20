@@ -242,6 +242,8 @@ export function startUiServer(port: number, options: UiServerOptions): Promise<U
       }
       let unsubscribe = () => {};
       openSse(req, res, () => unsubscribe());
+      // Panel büyük oturumda yükleme ilerlemesini gösterebilsin diye önce olay sayısı
+      res.write(`event: history\ndata: ${JSON.stringify({ count: rt.bus.history.length })}\n\n`);
       for (const e of rt.bus.history) res.write(`data: ${JSON.stringify(e)}\n\n`);
       // Geçmiş bitti: panel yeniden oynatmayı burada kapatır, oturumun anlık durumunu uygular
       res.write(`event: ready\ndata: ${JSON.stringify({ status: rt.status, busy: rt.busy })}\n\n`);
