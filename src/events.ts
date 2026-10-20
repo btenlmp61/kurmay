@@ -85,6 +85,15 @@ export type OrchestratorEvent =
       fallback?: "devam" | "yeni";
     }
   | {
+      /** Sürdürülecek konuşmanın kaydı bulunamadı — ajan yeni konuşmayla başlıyor.
+       *  foundDir: kayıt başka bir proje klasöründe bulunduysa oradaki çalışma dizini */
+      type: "session_lost";
+      agent: string;
+      sessionId: string;
+      cwd: string;
+      foundDir?: string;
+    }
+  | {
       /** Claude Code isteği kendi içinde yeniden deniyor (süreç kapanmadan) */
       type: "api_retry";
       agent: string;

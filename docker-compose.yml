@@ -17,5 +17,11 @@ services:
       - /app/node_modules
       # Ajanların üzerinde çalışacağı hedef proje dizini (config.json'daki targetDir'i ezer)
       - ${TARGET_DIR:-./target}:/workspace/target
+      # Analist'in konuşma kayıtları (Claude Code ~/.claude/projects) — kalıcı olmazsa
+      # konteyner yeniden oluşunca oturumlar "konuşma bulunamadı" ile baştan başlar
+      - kurmay-claude:/root/.claude
     command: ["--cwd", "/workspace/target", "--port", "4141"]
     restart: unless-stopped
+
+volumes:
+  kurmay-claude:
