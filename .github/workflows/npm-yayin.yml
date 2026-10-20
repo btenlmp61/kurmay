@@ -1,0 +1,54 @@
+# main'e her birleştirmede npm'e yayımlar (paket: package.json "name").
+# Kimlik: npm "trusted publishing" (OIDC) — depoda token/sır YOK; npmjs.com'da paket
+# ayarlarına bu depo + bu dosya adı (npm-yayin.yml) güvenilir yayıncı olarak eklenmeli.
+# Aynı sürüm npm'e ikinci kez gönderilemez: package.json sürümü yayındakiyle aynıysa
+# yayın atlanır (iş yine yeşil biter). Yeni sürüm için birleştirmeden önce `npm version patch`.
+name: npm yayını
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing için
+
+concurrency:
+  group: npm-yayin
+  cancel-in-progress: false
+
+jobs:
+  yayimla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # trusted publishing npm 11.5.1+ ister
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - name: Sürüm zaten yayında mı?
+        id: kontrol
+        run: |
+          AD=$(node -p "require('./package.json').name")
+          SURUM=$(node -p "require('./package.json').version")
+          if npm view "$AD@$SURUM" version >/dev/null 2>&1; then
+            echo "yayinla=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$AD@$SURUM zaten npm'de — yayın atlandı (yeni sürüm için package.json sürümünü artır)"
+          else
+            echo "yayinla=true" >> "$GITHUB_OUTPUT"
+            echo "$AD@$SURUM yayımlanacak"
+          fi
+
+      - name: npm'e yayımla
+        if: steps.kontrol.outputs.yayinla == 'true'
+        run: npm publish
